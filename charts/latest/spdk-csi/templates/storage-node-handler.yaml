@@ -53,6 +53,8 @@ spec:
           value: "{{ .Values.storagenode.numPartitions }}"
         - name: NUMDEVICES
           value: "{{ .Values.storagenode.numDevices }}"
+        - name: DISABLEHAJM
+          value: "{{ .Values.storagenode.disableHAJM }}"
         - name: IOBUFSMALLPOOLCOUNT
           value: "{{ .Values.storagenode.iobufSmallPoolCount }}"
         - name: IOBUFLARGEPOOLCOUNT

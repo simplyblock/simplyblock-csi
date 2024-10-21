@@ -142,6 +142,7 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.numDevices`               | the number of devices per storage node	                                                                                  | `1`                                                                        |  |
 | `storagenode.iobufSmallPoolCount`      | bdev_set_options param	                                                                                                  | `<empty>`                                                                  |  |
 | `storagenode.iobufLargePoolCount`      | bdev_set_options param	                                                                                                  | `<empty>`                                                                  |  |
+| `storagenode.disableHAJM`              | Disbable ha Journal Manager	                                                                                                  | `<empty>`                                                                  |  |
 
 
 ## troubleshooting
