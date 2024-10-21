@@ -132,6 +132,7 @@ storagenode:
   jmPercent: 3
   numPartitions: 0
   numDevices: 1
+  disableHAJM: false
   iobufSmallPoolCount: 
   iobufLargePoolCount:
   daemonsets:
