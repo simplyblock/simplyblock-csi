@@ -11,6 +11,6 @@ LABEL description="SPDK-CSI Plugin"
 COPY spdkcsi /usr/local/bin/spdkcsi
 
 RUN apk update && \
-    apk add nvme-cli open-iscsi e2fsprogs xfsprogs blkid
+    apk add nvme-cli open-iscsi e2fsprogs xfsprogs blkid xfsprogs-extra e2fsprogs-extra
 
 ENTRYPOINT ["/usr/local/bin/spdkcsi"]
