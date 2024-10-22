@@ -302,6 +302,7 @@ func (ns *nodeServer) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVol
 
 	volumeID := req.GetVolumeId()
 	volumeMountPath := req.GetVolumePath()
+	updatedSize := req.GetCapacityRange().GetRequiredBytes()
 
 	stagingParentPath := req.GetStagingTargetPath()
 	volumeContext, err := util.LookupVolumeContext(stagingParentPath)
@@ -332,7 +333,7 @@ func (ns *nodeServer) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVol
 		}
 	}
 
-	return &csi.NodeExpandVolumeResponse{}, nil
+	return &csi.NodeExpandVolumeResponse{CapacityBytes: updatedSize}, nil
 }
 
 // must be idempotent
