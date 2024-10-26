@@ -76,8 +76,8 @@ data:
         return []
 
     def activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, distr_ndcs, distr_npcs):
-        retries = 60
         total_value = distr_ndcs + distr_npcs + 1
+        retries = total_value * 30
         while retries > 0:
             node_statuses = get_node_statuses(cluster_ip, cluster_uuid, cluster_secret)
             online_nodes = [node for node in node_statuses if node.get('status') == 'online']
