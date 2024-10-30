@@ -18,7 +18,16 @@ spec:
         app: spdkcsi-node
     spec:
       serviceAccountName: spdkcsi-node-sa
+      nodeSelector:
+        type: {{ .Values.node.nodeSelector }}
       hostNetwork: true
+      {{- if .Values.node.tolerations.create }}
+      tolerations:
+      - effect: {{ .Values.node.tolerations.effect }}
+        key: {{ .Values.node.tolerations.key }}
+        operator: {{ .Values.node.tolerations.operator }}
+        value: {{ .Values.node.tolerations.value }}
+      {{- end }}
       containers:
       - name: spdkcsi-registrar
         securityContext:
