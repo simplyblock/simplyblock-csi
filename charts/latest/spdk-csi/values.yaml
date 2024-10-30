@@ -109,6 +109,15 @@ benchmarks: 0
 # AL2_x86_64: eth0
 # AL2023_x86_64_STANDARD: ens5
 
+node:
+  nodeSelector: simplyblock-node
+  tolerations:
+    create: false
+    effect: NoSchedule
+    key: dedicated
+    operator: Equal
+    value: simplyblock-node
+
 cachingnode:
   tolerations:
     create: false
@@ -116,6 +125,7 @@ cachingnode:
     key: dedicated
     operator: Equal
     value: simplyblock-cache
+  nodeSelector: simplyblock-cache
   ifname: eth0
   cpuMask: 
   spdkMem:
