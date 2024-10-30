@@ -11,7 +11,7 @@ metadata:
   name: storage-node-role
 rules:
 - apiGroups: [""]
-  resources: ["pods", "configmaps"]
+  resources: ["pods", "namespaces"]
   verbs: ["list", "get", "create", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
