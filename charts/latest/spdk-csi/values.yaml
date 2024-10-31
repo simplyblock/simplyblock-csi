@@ -110,7 +110,6 @@ benchmarks: 0
 # AL2023_x86_64_STANDARD: ens5
 
 node:
-  nodeSelector: simplyblock-node
   tolerations:
     create: false
     effect: NoSchedule
