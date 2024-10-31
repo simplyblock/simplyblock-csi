@@ -57,10 +57,16 @@ spec:
       hostNetwork: true
       {{- if .Values.cachingnode.tolerations.create }}
       tolerations:
-      - effect: {{ .Values.cachingnode.tolerations.effect }}
+      - operator: {{ .Values.cachingnode.tolerations.operator }}
+        {{- if .Values.cachingnode.tolerations.effect }}
+        effect: {{ .Values.cachingnode.tolerations.effect }}
+        {{- end }}
+        {{- if .Values.cachingnode.tolerations.key }}
         key: {{ .Values.cachingnode.tolerations.key }}
-        operator: {{ .Values.cachingnode.tolerations.operator }}
+        {{- end }}
+        {{- if .Values.cachingnode.tolerations.value }}
         value: {{ .Values.cachingnode.tolerations.value }}
+        {{- end }}
       {{- end }}
       containers:
       - name: c-node-api-container

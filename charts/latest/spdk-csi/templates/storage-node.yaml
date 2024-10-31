@@ -58,10 +58,16 @@ spec:
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
-      - effect: {{ .tolerations.effect }}
+      - operator: {{ .tolerations.operator }}
+        {{- if .tolerations.effect }}
+        effect: {{ .tolerations.effect }}
+        {{- end }}
+        {{- if .tolerations.key }}
         key: {{ .tolerations.key }}
-        operator: {{ .tolerations.operator }}
+        {{- end }}
+        {{- if .tolerations.value }}
         value: {{ .tolerations.value }}
+        {{- end }}
       {{- end }}
       containers:
       - name: s-node-api-container

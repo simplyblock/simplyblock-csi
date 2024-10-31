@@ -21,10 +21,16 @@ spec:
       hostNetwork: true
       {{- if .Values.node.tolerations.create }}
       tolerations:
-      - effect: {{ .Values.node.tolerations.effect }}
+      - operator: {{ .Values.node.tolerations.operator }}
+        {{- if .Values.node.tolerations.effect }}
+        effect: {{ .Values.node.tolerations.effect }}
+        {{- end }}
+        {{- if .Values.node.tolerations.key }}
         key: {{ .Values.node.tolerations.key }}
-        operator: {{ .Values.node.tolerations.operator }}
+        {{- end }}
+        {{- if .Values.node.tolerations.value }}
         value: {{ .Values.node.tolerations.value }}
+        {{- end }}
       {{- end }}
       containers:
       - name: spdkcsi-registrar
