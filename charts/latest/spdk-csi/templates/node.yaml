@@ -18,8 +18,6 @@ spec:
         app: spdkcsi-node
     spec:
       serviceAccountName: spdkcsi-node-sa
-      nodeSelector:
-        type: {{ .Values.node.nodeSelector }}
       hostNetwork: true
       {{- if .Values.node.tolerations.create }}
       tolerations:
