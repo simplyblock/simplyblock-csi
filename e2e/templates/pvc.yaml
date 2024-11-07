@@ -9,7 +9,7 @@ metadata:
   annotations:
     simplybk/secret-name: simplyblock-pvc-keys
     simplybk/secret-namespace: default
-    simplybk/host-id:
+    simplybk/host-id: 2b36e940-acad-42a4-9307-6c02905d0763
 spec:
   accessModes:
   - ReadWriteOnce
