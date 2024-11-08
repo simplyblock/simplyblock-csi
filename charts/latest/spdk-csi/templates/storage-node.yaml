@@ -55,6 +55,9 @@ spec:
         - name: dev-vol
           hostPath:
             path: /dev
+        - name: etc-simplyblock
+          hostPath:
+            path: /etc/simplyblock
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -84,4 +87,6 @@ spec:
         volumeMounts:
         - name: dev-vol
           mountPath: /dev
+        - name: etc-simplyblock
+          mountPath: /etc/simplyblock
 {{- end }}
