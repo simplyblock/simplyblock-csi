@@ -1,3 +1,4 @@
+{{- if .Values.storagenode.create -}}
 ---
 apiVersion: batch/v1
 kind: Job
@@ -44,3 +45,5 @@ spec:
               mountPath: /config
       restartPolicy: Never
   backoffLimit: 4
+
+{{- end -}}

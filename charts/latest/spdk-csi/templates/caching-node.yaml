@@ -1,3 +1,4 @@
+{{- if .Values.cachingnode.create -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -83,3 +84,5 @@ spec:
         volumeMounts:
         - name: dev-vol
           mountPath: /dev
+
+{{- end -}}

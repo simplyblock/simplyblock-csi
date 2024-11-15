@@ -118,20 +118,22 @@ node:
     value:
 
 cachingnode:
-  tolerations:
-    create: false
-    operator: Exists
-    effect: 
-    key: 
-    value:
+  create: false
   nodeSelector: simplyblock-cache
   ifname: eth0
   cpuMask: 
   spdkMem:
   spdkImage: 
   multipathing: true
+  tolerations:
+    create: false
+    operator: Exists
+    effect: 
+    key: 
+    value:
 
 storagenode:
+  create: false
   ifname: eth0
   cpuMask:
   spdkImage:
