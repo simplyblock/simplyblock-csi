@@ -83,6 +83,7 @@ type CreateLVolData struct {
 	MaxSize     string `json:"max_size"`
 	DistNdcs    int    `json:"distr_ndcs"`
 	DistNpcs    int    `json:"distr_npcs"`
+	PriorClass  int    `json:"priority_class"`
 	CryptoKey1  string `json:"crypto_key1"`
 	CryptoKey2  string `json:"crypto_key2"`
 	HostID      string `json:"host_id"`

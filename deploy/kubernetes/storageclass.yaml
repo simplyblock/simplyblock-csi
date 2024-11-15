@@ -19,6 +19,7 @@ parameters:
   encryption: "False"
   distr_ndcs: "1"
   distr_npcs: "1"
+  priority_class: "0"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -42,6 +43,7 @@ parameters:
   encryption: "False"
   distr_ndcs: "1"
   distr_npcs: "1"
+  priority_class: "0"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
