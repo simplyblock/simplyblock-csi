@@ -7,7 +7,7 @@ MGMT_IP='44.203.108.107'
 CLUSTER_SECRET='ziVjCH713s4sjZPTZK30'
 
 # list in creation order
-files=(driver config-map nodeserver-config-map secret controller-rbac node-rbac controller node storageclass caching-node)
+files=(driver config-map nodeserver-config-map secret controller-rbac node-rbac controller node storageclass caching-node rbac-snapshot-controller setup-snapshot-controller snapshot.storage.k8s.io_volumesnapshotclasses snapshot.storage.k8s.io_volumesnapshotcontents snapshot.storage.k8s.io_volumesnapshots)
 
 if [ "$1" = "teardown" ]; then
 	# delete in reverse order
