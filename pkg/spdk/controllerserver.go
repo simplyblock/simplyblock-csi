@@ -231,7 +231,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		return nil, err
 	}
 
-	priorClass, err := getIntParameter(params, "lvol_priority_class", 1)
+	priorClass, err := getIntParameter(params, "lvol_priority_class", 0)
 	if err != nil {
 		return nil, err
 	}
