@@ -102,6 +102,7 @@ logicalVolume:
   encryption: "False"
   distr_ndcs: "1"
   distr_npcs: "1"
+  lvol_priority_class: "0"
 
 benchmarks: 0
 
