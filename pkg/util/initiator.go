@@ -238,19 +238,20 @@ func (nvmf *initiatorNVMf) updateConnectionInfo() error {
 		return err
 	}
 
+	var connInfo connectionInfo
 	respBytes, err := json.Marshal(resp)
 	if err != nil {
 		return fmt.Errorf("failed to marshal response: %v", err)
 	}
 
-	if err := json.Unmarshal(respBytes, &connectionInfo); err != nil {
+	if err := json.Unmarshal(respBytes, &connInfo); err != nil {
 		return fmt.Errorf("failed to unmarshal connection details: %v", err)
 	}
 
 	for i := range nvmf.connections {
-		nvmf.connections[i].IP = connectionInfo.IP
+		nvmf.connections[i].IP = connInfo.IP
 	}
-	klog.Infof("updated connection info for lvol_id %s: IP=%s", lvolID, connectionInfo.IP)
+	klog.Infof("updated connection info for lvol_id %s: IP=%s", lvolID, connInfo.IP)
 	return nil
 }
 
@@ -259,7 +260,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	if err := nvmf.updateConnectionInfo(); err != nil {
 		return "", fmt.Errorf("failed to update connection info: %v", err)
 	}
-	
+
 	// nvme connect -t tcp -a 192.168.1.100 -s 4420 -n "nqn"
 	klog.Info("connections", nvmf.connections)
 	for _, conn := range nvmf.connections {
