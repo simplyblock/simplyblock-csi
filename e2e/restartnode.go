@@ -17,11 +17,11 @@ var (
 	rpcClient util.RPCClient
 )
 
-var _ = ginkgo.Describe("SPDKCSI-CompleteWorkflow", func() {
+var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 	f := framework.NewDefaultFramework("spdkcsi")
 
-	ginkgo.Context("Complete PVC and Snapshot Workflow", func() {
-		ginkgo.It("Create PVC, Snapshot, and Clone with Node Restart", func() {
+	ginkgo.Context("Test SPDK CSI node restart", func() {
+		ginkgo.It("Test SPDK CSI node restart", func() {
 			var storageNodeID string
 			testPodLabel := metav1.ListOptions{
 				LabelSelector: "app=spdkcsi-pvc",
@@ -29,67 +29,158 @@ var _ = ginkgo.Describe("SPDKCSI-CompleteWorkflow", func() {
 			persistData := []string{"Data that needs to be stored"}
 			persistDataPath := []string{"/spdkvol/test"}
 
-			ginkgo.By("creating PVC and writing data")
-			deployPVC()
-			deployTestPod()
-			defer deleteTestPod()
+			
+			ginkgo.By("create source pvc and write data", func() {
+				deployPVC()
+				deployTestPod()
+				defer deleteTestPod()
+				// do not delete pvc here, since we need it for snapshot
 
-			err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+				// write data to source pvc
+				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
+			})
 
-			writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
 
-			ginkgo.By("retrieving storage-node-id from PVC annotations")
-			pvc, err := f.ClientSet.CoreV1().PersistentVolumeClaims("spdk-csi").Get(context.TODO(), "spdkcsi-pvc", metav1.GetOptions{})
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
-			storageNodeID = pvc.Annotations["simplybk/host-id"]
 
-			ginkgo.By("restarting the storage node")
-			err = restartStorageNode(storageNodeID)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
 
-			ginkgo.By("polling storage node status")
-			err = pollStorageNodeStatus(storageNodeID, 20)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
 
-			ginkgo.By("creating snapshot and checking data")
-			deploySnapshot()
-			defer deleteSnapshot()
+			ginkgo.By("create snapshot and check data persistency", func() {
+				deploySnapshot()
+				defer deleteSnapshot()
 
-			err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
-			err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+				err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
 
-			ginkgo.By("creating clone and checking data")
-			deployClone()
-			defer deleteClone()
 
-			err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
-			err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
-		})
-	})
-})
+			ginkgo.By("create clone and check data persistency", func() {
+				deployClone()
+				defer deleteClone()
+
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+				err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+			
+			
+
+			
+
+
+			ginkgo.By("retrieving storage-node-id from PVC annotations",func(){
+				pvc, err := f.ClientSet.CoreV1().PersistentVolumeClaims("spdk-csi").Get(context.TODO(), "spdkcsi-pvc", metav1.GetOptions{})
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+				storageNodeID = pvc.Annotations["simplybk/host-id"]
+
+				defer deletePVC()
+
+			})
+
+
+			ginkgo.By("restarting the storage node", func(){
+				err = restartStorageNode(storageNodeID)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+
+
+
+			ginkgo.By("polling storage node status",func(){
+				err = pollStorageNodeStatus(storageNodeID, 20)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+			}})
+
+
+			ginkgo.By("create source pvc and write data", func() {
+				deployPVC()
+				deployTestPod()
+				defer deleteTestPod()
+				// do not delete pvc here, since we need it for snapshot
+
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+				// write data to source pvc
+				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
+			})
+
+
+
+
+			
+			ginkgo.By("create snapshot and check data persistency", func() {
+				deploySnapshot()
+				defer deleteSnapshot()
+
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+				err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+
+
+			ginkgo.By("create clone and check data persistency", func() {
+				deployClone()
+				defer deleteClone()
+				defer deletePVC()
+
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+				err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+
+
+
+
+
+			
+
+
 
 func restartStorageNode(nodeID string) error {
+
+	url := fmt.Sprintf("/storagenode/suspend/%s", nodeID)
+
+	_, err := rpcClient.CallSBCLI("GET", url, nil)
+	if err != nil {
+		return errors.New("failed to suspend storage node: " + err.Error())
+	}
+
+	url := fmt.Sprintf("/storagenode/shutdown/%s", nodeID)
+
+	_, err := rpcClient.CallSBCLI("GET", url, nil)
+	if err != nil {
+		return errors.New("failed to shutdown storage node: " + err.Error())
+	}
 
 	url := fmt.Sprintf("/storagenode/restart/%s", nodeID)
 
@@ -97,9 +188,12 @@ func restartStorageNode(nodeID string) error {
 	if err != nil {
 		return errors.New("failed to restart storage node: " + err.Error())
 	}
-
+	
 	return nil
 }
+
+
+
 
 func pollStorageNodeStatus(nodeID string, timeout int) error {
 	url := fmt.Sprintf("/storagenode/%s", nodeID)
@@ -128,3 +222,6 @@ func pollStorageNodeStatus(nodeID string, timeout int) error {
 	}
 	return errors.New("storage node did not come online in time")
 }
+
+
+
