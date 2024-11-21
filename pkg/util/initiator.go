@@ -228,7 +228,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	for _, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn,
+			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", "30",
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 		if err != nil {
