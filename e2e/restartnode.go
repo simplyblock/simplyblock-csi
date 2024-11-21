@@ -17,6 +17,17 @@ var (
 	rpcClient util.RPCClient
 )
 
+
+type storageNode struct {
+    UUID   string `json:"uuid"`
+    NodeIP string `json:"node_ip"`
+}
+
+type storageNodeResp struct{
+	ApiEndpoint string `json:"api_endpoint"`
+}
+
+
 var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 	f := framework.NewDefaultFramework("spdkcsi")
 
@@ -175,16 +186,30 @@ func restartStorageNode(nodeID string) error {
 		return errors.New("failed to suspend storage node: " + err.Error())
 	}
 
-	url := fmt.Sprintf("/storagenode/shutdown/%s", nodeID)
+	url := fmt.Sprintf("/storagenode/shutdown/%s/?force=True", nodeID)
 
 	_, err := rpcClient.CallSBCLI("GET", url, nil)
 	if err != nil {
 		return errors.New("failed to shutdown storage node: " + err.Error())
 	}
+	
 
-	url := fmt.Sprintf("/storagenode/restart/%s", nodeID)
+	url := fmt.Sprintf("/storagenode/%s",nodeID)
+	resp,err := rpcClient.CallSBCLI("GET",url, nil)
+	data := storageNodeResp{}
+	json.Unmarshal(resp, data)
 
-	_, err := rpcClient.CallSBCLI("GET", url, nil)
+
+
+
+	args := Args{
+		UUID: nodeID,
+		NodeIP: data.api_endpoint,
+	}
+
+	url := fmt.Sprintf("/storagenode/restart/%s", nodeID, args)
+
+	_, err := rpcClient.CallSBCLI("PUT", url, nil)
 	if err != nil {
 		return errors.New("failed to restart storage node: " + err.Error())
 	}
