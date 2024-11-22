@@ -250,7 +250,6 @@ func (nvmf *initiatorNVMf) updateConnectionInfo() error {
 	for i := range nvmf.connections {
 		nvmf.connections[i].IP = result[0].IP
 	}
-	klog.Infof("updated connection info for lvol_id %s: IP=%s", lvolID, result[0].IP)
 	return nil
 }
 
