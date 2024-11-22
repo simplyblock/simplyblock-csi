@@ -231,27 +231,26 @@ func (nvmf *initiatorNVMf) updateConnectionInfo() error {
 	}
 	lvolID := parts[3]
 
-	req := map[string]string{"lvol_id": lvolID}
-	resp, err := nvmf.client.CallSBCLI("GET", fmt.Sprintf("/lvol/connect/%s", lvolID), req)
+	resp, err := nvmf.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
 	if err != nil {
 		klog.Errorf("failed to fetch connection details for lvol_id %s: %v", lvolID, err)
 		return err
 	}
 
-	var connInfo connectionInfo
+	var result []*LvolConnectResp
 	respBytes, err := json.Marshal(resp)
 	if err != nil {
 		return fmt.Errorf("failed to marshal response: %v", err)
 	}
 
-	if err := json.Unmarshal(respBytes, &connInfo); err != nil {
+	if err := json.Unmarshal(respBytes, &result); err != nil {
 		return fmt.Errorf("failed to unmarshal connection details: %v", err)
 	}
 
 	for i := range nvmf.connections {
-		nvmf.connections[i].IP = connInfo.IP
+		nvmf.connections[i].IP = result[0].IP
 	}
-	klog.Infof("updated connection info for lvol_id %s: IP=%s", lvolID, connInfo.IP)
+	klog.Infof("updated connection info for lvol_id %s: IP=%s", lvolID, result[0].IP)
 	return nil
 }
 
