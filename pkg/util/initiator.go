@@ -59,6 +59,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (S
 			connections: connections,
 			nqn:         volumeContext["nqn"],
 			model:       volumeContext["model"],
+			client:      *spdkNode.client,
 		}, nil
 	case "cache":
 		return &initiatorCache{
@@ -77,6 +78,7 @@ type initiatorNVMf struct {
 	connections []connectionInfo
 	nqn         string
 	model       string
+	client      RPCClient
 }
 
 type initiatorCache struct {
@@ -222,13 +224,47 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 	return err
 }
 
+func (nvmf *initiatorNVMf) updateConnectionInfo() error {
+	parts := strings.Split(nvmf.nqn, ":")
+	if len(parts) < 4 || parts[2] != "lvol" {
+		return fmt.Errorf("invalid NQN format, lvol_id not found: %s", nvmf.nqn)
+	}
+	lvolID := parts[3]
+
+	resp, err := nvmf.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+	if err != nil {
+		klog.Errorf("failed to fetch connection details for lvol_id %s: %v", lvolID, err)
+		return err
+	}
+
+	var result []*LvolConnectResp
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("failed to marshal response: %v", err)
+	}
+
+	if err := json.Unmarshal(respBytes, &result); err != nil {
+		return fmt.Errorf("failed to unmarshal connection details: %v", err)
+	}
+
+	for i := range nvmf.connections {
+		nvmf.connections[i].IP = result[0].IP
+	}
+	return nil
+}
+
 func (nvmf *initiatorNVMf) Connect() (string, error) {
+
+	if err := nvmf.updateConnectionInfo(); err != nil {
+		return "", fmt.Errorf("failed to update connection info: %v", err)
+	}
+
 	// nvme connect -t tcp -a 192.168.1.100 -s 4420 -n "nqn"
 	klog.Info("connections", nvmf.connections)
 	for _, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn,
+			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", "30",
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 		if err != nil {
