@@ -41,7 +41,7 @@ import (
 type nodeServer struct {
 	*csicommon.DefaultNodeServer
 	mounter       mount.Interface
-	mounter2      *mount.SafeFormatAndMount
+	mounter2      mount.SafeFormatAndMount
 	volumeLocks   *util.VolumeLocks
 	xpuConnClient *grpc.ClientConn
 	xpuTargetType string
