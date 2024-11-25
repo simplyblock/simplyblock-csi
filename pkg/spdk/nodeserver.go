@@ -41,6 +41,7 @@ import (
 type nodeServer struct {
 	*csicommon.DefaultNodeServer
 	mounter       mount.Interface
+	mounter2      *mount.SafeFormatAndMount
 	volumeLocks   *util.VolumeLocks
 	xpuConnClient *grpc.ClientConn
 	xpuTargetType string
@@ -215,7 +216,8 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 		return &csi.NodeUnstageVolumeResponse{}, nil
 	}
 
-	err = ns.deleteMountPoint(stagingTargetPath) // idempotent
+	//err = ns.deleteMountPoint(stagingTargetPath) // idempotent
+	err = CleanupMountPoint(stagingTargetPath, ns.mounter2, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
@@ -261,7 +263,8 @@ func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpubl
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	err := ns.deleteMountPoint(req.GetTargetPath()) // idempotent
+	//err := ns.deleteMountPoint(req.GetTargetPath()) // idempotent
+	err := CleanupMountPoint(req.GetTargetPath(), ns.mounter2, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", req.GetTargetPath(), err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -467,4 +470,8 @@ func getStagingTargetPath(req interface{}) string {
 		klog.Warningf("invalid request %T", vr)
 	}
 	return ""
+}
+
+func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck bool) error {
+	return mount.CleanupMountPoint(path, m, extensiveCheck)
 }
