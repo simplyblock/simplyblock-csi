@@ -215,8 +215,8 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 		return &csi.NodeUnstageVolumeResponse{}, nil
 	}
 
-	//err = ns.deleteMountPoint(stagingTargetPath) // idempotent
-	err = CleanupMountPoint(stagingTargetPath, ns.mounter, true /*extensiveMountPointCheck*/)
+	err = ns.deleteMountPoint(stagingTargetPath) // idempotent
+	//err = CleanupMountPoint(stagingTargetPath, ns.mounter, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
@@ -262,8 +262,8 @@ func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpubl
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	//err := ns.deleteMountPoint(req.GetTargetPath()) // idempotent
-	err := CleanupMountPoint(req.GetTargetPath(), ns.mounter, true /*extensiveMountPointCheck*/)
+	err := ns.deleteMountPoint(req.GetTargetPath()) // idempotent
+	//err := CleanupMountPoint(req.GetTargetPath(), ns.mounter, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", req.GetTargetPath(), err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -450,9 +450,14 @@ func (ns *nodeServer) deleteMountPoint(path string) error {
 	}
 	if isMount {
 		err = ns.mounter.Unmount(path)
-		if err != nil {
-			return err
-		}
+        if err != nil {
+            klog.Errorf("Standard unmount failed for %s: %v. Attempting force unmount.", path, err)
+            // Attempt a force unmount
+            cmd := exec.Command("umount", "-f", path)
+            if forceErr := cmd.Run(); forceErr != nil {
+                return fmt.Errorf("force unmount failed for %s: %w", path, forceErr)
+            }
+        }
 	}
 	return os.RemoveAll(path)
 }
