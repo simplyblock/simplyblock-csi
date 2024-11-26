@@ -1,3 +1,4 @@
+{{- if .Values.storagenode.create -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -66,3 +67,5 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
       restartPolicy: Always
+
+{{- end -}}

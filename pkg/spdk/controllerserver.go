@@ -231,6 +231,11 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		return nil, err
 	}
 
+	priorClass, err := getIntParameter(params, "lvol_priority_class", 0)
+	if err != nil {
+		return nil, err
+	}
+
 	compression := getBoolParameter(params, "compression")
 	encryption := getBoolParameter(params, "encryption")
 
@@ -269,6 +274,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		MaxRmBytes:  params["qos_r_mbytes"],
 		MaxWmBytes:  params["qos_w_mbytes"],
 		MaxSize:     params["max_size"],
+		PriorClass:  priorClass,
 		Compression: compression,
 		Encryption:  encryption,
 		DistNdcs:    distrNdcs,

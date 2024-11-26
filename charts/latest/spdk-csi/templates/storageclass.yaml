@@ -20,6 +20,7 @@ parameters:
   encryption: "{{ .Values.logicalVolume.encryption }}"
   distr_ndcs: "{{ .Values.logicalVolume.distr_ndcs }}"
   distr_npcs: "{{ .Values.logicalVolume.distr_npcs }}"
+  lvol_priority_class: "{{ .Values.logicalVolume.lvol_priority_class }}"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -42,6 +43,7 @@ parameters:
   encryption: "{{ .Values.logicalVolume.encryption }}"
   distr_ndcs: "{{ .Values.logicalVolume.distr_ndcs }}"
   distr_npcs: "{{ .Values.logicalVolume.distr_npcs }}"
+  lvol_priority_class: "{{ .Values.logicalVolume.lvol_priority_class }}"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true

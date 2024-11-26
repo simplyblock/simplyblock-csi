@@ -21,34 +21,35 @@ spec:
       hostNetwork: true
       containers:
       - name: spdkcsi-provisioner
-        image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
-        imagePullPolicy: "IfNotPresent"
+        image: registry.k8s.io/sig-storage/csi-provisioner:v4.0.1
+        imagePullPolicy: "Always"
         args:
         - "--v=5"
         - "--csi-address=unix:///csi/csi-provisioner.sock"
         - "--timeout=30s"
         - "--retry-interval-start=500ms"
         - "--leader-election=false"
+        - "--extra-create-metadata=true"
         - "--feature-gates=Topology=true"
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
       - name: spdkcsi-snapshotter
-        image: registry.k8s.io/sig-storage/csi-snapshotter:v7.0.1
+        image: registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2
         args:
         - "--csi-address=unix:///csi/csi-provisioner.sock"
         - "--v=5"
         - "--timeout=150s"
         - "--leader-election=false"
-        imagePullPolicy: "IfNotPresent"
+        imagePullPolicy: "Always"
         securityContext:
           privileged: true
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
       - name: spdkcsi-attacher
-        image: gcr.io/k8s-staging-sig-storage/csi-attacher:v3.5.0
-        imagePullPolicy: "IfNotPresent"
+        image: gcr.io/k8s-staging-sig-storage/csi-attacher:v4.5.1
+        imagePullPolicy: "Always"
         args:
         - "--v=5"
         - "--csi-address=unix:///csi/csi-provisioner.sock"
@@ -57,8 +58,8 @@ spec:
         - name: socket-dir
           mountPath: /csi
       - name: spdkcsi-resizer
-        image: gcr.io/k8s-staging-sig-storage/csi-resizer:v1.10.0
-        imagePullPolicy: "IfNotPresent"
+        image: gcr.io/k8s-staging-sig-storage/csi-resizer:v1.10.1
+        imagePullPolicy: "Always"
         args:
           - "--v=5"
           - "--csi-address=unix:///csi/csi-provisioner.sock"
@@ -67,8 +68,8 @@ spec:
           - name: socket-dir
             mountPath: /csi
       - name: spdkcsi-health-monitor
-        image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:v0.10.0
-        imagePullPolicy: "IfNotPresent"
+        image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:v0.11.0
+        imagePullPolicy: "Always"
         args:
           - "--v=5"
           - "--csi-address=unix:///csi/csi-provisioner.sock"
