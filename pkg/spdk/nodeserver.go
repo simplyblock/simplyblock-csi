@@ -220,9 +220,6 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 
 	err := ns.mounter.Unmount(stagingTargetPath)
 	if err != nil {
-		return err
-	}
-	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
 	}
@@ -268,10 +265,6 @@ func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpubl
 	defer unlock()
 
 	err := ns.mounter.Unmount(req.GetTargetPath())
-	if err != nil {
-		return err
-	}
-	
 	//err := ns.deleteMountPoint(req.GetTargetPath()) // idempotent
 	//err := CleanupMountPoint(req.GetTargetPath(), ns.mounter, true /*extensiveMountPointCheck*/)
 	if err != nil {
