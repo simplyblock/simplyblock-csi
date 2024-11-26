@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -398,7 +399,7 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 	isMount, err := ns.mounter.IsMountPoint(stagingPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) || strings.Contains(err.Error(), "input/output error") {
 			return false, nil
 		}
 		klog.Warningf("check is stage error: %v", err)
@@ -450,14 +451,14 @@ func (ns *nodeServer) deleteMountPoint(path string) error {
 	}
 	if isMount {
 		err = ns.mounter.Unmount(path)
-        if err != nil {
-            klog.Errorf("Standard unmount failed for %s: %v. Attempting force unmount.", path, err)
-            // Attempt a force unmount
-            cmd := exec.Command("umount", "-f", path)
-            if forceErr := cmd.Run(); forceErr != nil {
-                return fmt.Errorf("force unmount failed for %s: %w", path, forceErr)
-            }
-        }
+		if err != nil {
+			klog.Errorf("Standard unmount failed for %s: %v. Attempting force unmount.", path, err)
+			// Attempt a force unmount
+			cmd := exec.Command("umount", "-f", path)
+			if forceErr := cmd.Run(); forceErr != nil {
+				return fmt.Errorf("force unmount failed for %s: %w", path, forceErr)
+			}
+		}
 	}
 	return os.RemoveAll(path)
 }
