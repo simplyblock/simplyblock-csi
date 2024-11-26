@@ -2,35 +2,21 @@ package e2e
 
 import (
 	"context"
-	"net/http"
+	"fmt"
+	"os"
 	"time"
 
+	"math/rand"
+
 	ginkgo "github.com/onsi/ginkgo/v2"
-	"github.com/spdk/spdk-csi/pkg/util"
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-// var (
-// 	rpcClient util.RPCClient
-// )
-
 type storageNode struct {
 	UUID   string `json:"uuid"`
 	NodeIP string `json:"node_ip"`
-}
-
-type storageNodeResp struct {
-	ApiEndpoint string `json:"api_endpoint"`
-}
-
-func (s SimplyBlock) initializeRPCClient() util.RPCClient {
-	return util.RPCClient{
-		ClusterID:     s.UUID,
-		ClusterIP:     s.IP,
-		ClusterSecret: s.Secret,
-		HTTPClient:    &http.Client{Timeout: 10 * time.Second},
-	}
 }
 
 var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
@@ -38,24 +24,47 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 
 	ginkgo.Context("Test SPDK CSI node restart", func() {
 		ginkgo.It("Test SPDK CSI node restart", func() {
-			var storageNodeID string
 			testPodLabel := metav1.ListOptions{
 				LabelSelector: "app=spdkcsi-pvc",
 			}
 			persistData := []string{"Data that needs to be stored"}
 			persistDataPath := []string{"/spdkvol/test"}
+			c := f.ClientSet
+			n, _ := numberOfNodes(c)
+			r := rand.New(rand.NewSource(time.Now().UnixNano()))
+			randomValue := r.Intn(n - 1)
 
 			ginkgo.By("create source pvc and write data", func() {
-				deployPVC()
-				deployTestPod()
-				defer deleteTestPod()
-				// do not delete pvc here, since we need it for snapshot
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				storageNodeID, _ := getStorageNodeId(c, randomValue)
+
+				data, _ := os.ReadFile(pvcPath)
+				var yamlContent map[string]interface{}
+				err := yaml.Unmarshal(data, &yamlContent)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-				// write data to source pvc
+
+				annotations, _ := yamlContent["metadata"].(map[string]interface{})["annotations"].(map[string]interface{})
+				annotations["simplybk/host-id"] = storageNodeID
+				updatedData, err := yaml.Marshal(yamlContent)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = os.WriteFile(pvcPath, updatedData, 0644)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				deployPVC()
+				deployTestPod()
+				defer deleteTestPod()
+
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
 				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
 			})
 
@@ -87,37 +96,28 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				}
 			})
 
-			ginkgo.By("retrieving storage-node-id from PVC annotations", func() {
-				pvc, err := f.ClientSet.CoreV1().PersistentVolumeClaims(nameSpace).Get(context.TODO(), "spdkcsi-pvc", metav1.GetOptions{})
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				storageNodeID = pvc.Annotations["simplybk/host-id"]
-
-				defer deletePVC()
-
-			})
-
 			ginkgo.By("restarting the storage node", func() {
 
-				c := f.ClientSet
+				pvc, _ := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(context.TODO(), "spdkcsi-pvc", metav1.GetOptions{})
+				storageNodeID := pvc.Annotations["simplybk/host-id"]
+				fmt.Println()
 				err := restartStorageNode(c, storageNodeID)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
+				defer deletePVC()
+
 			})
 
 			ginkgo.By("create source pvc and write data", func() {
 				deployPVC()
 				deployTestPod()
 				defer deleteTestPod()
-				// do not delete pvc here, since we need it for snapshot
 
 				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-				// write data to source pvc
 				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
 			})
 

@@ -473,10 +473,61 @@ func (s SimplyBlock) getStoragenode() (string, error) {
 
 	// TODO: get a random storage node
 	storageNodes, ok := out.([]interface{})[0].(map[string]interface{})
+
 	if !ok {
 		return "", errors.New("failed to get storage node from simplyblock api")
 	}
 	sn, ok := storageNodes["hostname"].(string)
+	fmt.Println("^^^^^^")
+	fmt.Println(sn)
+	fmt.Println("^^^^^^")
+	if !ok {
+		return "", errors.New("failed to get storage node from simplyblock api")
+	}
+	return sn, nil
+}
+
+func (s SimplyBlock) numberOfNodes() (int, error) {
+	var rpcClient util.RPCClient
+	rpcClient.ClusterID = s.UUID
+	rpcClient.ClusterIP = s.IP
+	rpcClient.ClusterSecret = s.Secret
+
+	rpcClient.HTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+	out, err := rpcClient.CallSBCLI("GET", "/storagenode", nil)
+	if err != nil {
+		return 0, err
+	}
+
+	//get the number of storage nodes
+	sn := len(out.([]interface{}))
+
+	return sn, nil
+
+}
+func (s SimplyBlock) getStoragenodeId(random int) (string, error) {
+	var rpcClient util.RPCClient
+	rpcClient.ClusterID = s.UUID
+	rpcClient.ClusterIP = s.IP
+	rpcClient.ClusterSecret = s.Secret
+
+	rpcClient.HTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+	// get the list of storage nodes
+	out, err := rpcClient.CallSBCLI("GET", "/storagenode", nil)
+	if err != nil {
+		return "", err
+	}
+
+	// TODO: get a random storage node
+
+	storageNodes, ok := out.([]interface{})[random].(map[string]interface{})
+
+	if !ok {
+		return "", errors.New("failed to get storage node from simplyblock api")
+	}
+	sn, ok := storageNodes["id"].(string)
 	if !ok {
 		return "", errors.New("failed to get storage node from simplyblock api")
 	}
@@ -488,6 +539,7 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 	rpcClient.ClusterID = s.UUID
 	rpcClient.ClusterIP = s.IP
 	rpcClient.ClusterSecret = s.Secret
+	rpcClient.HTTPClient = http.DefaultClient
 
 	// Step 1: Suspend Storage Node
 	url := fmt.Sprintf("/storagenode/suspend/%s", nodeID)
@@ -508,52 +560,39 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 		return fmt.Errorf("failed to fetch storage node info: %w", err)
 	}
 
-	// Unmarshal the response
-	respBytes, ok := resp.([]byte)
-	if !ok {
-		return fmt.Errorf("invalid response type: expected []byte, got %T", resp)
-	}
-	var data storageNodeResp
-	if err := json.Unmarshal(respBytes, &data); err != nil {
-		return fmt.Errorf("failed to parse storage node info: %w", err)
-	}
+	result, _ := resp.([]interface{})[0].(map[string]interface{})
 
 	// Step 4: Restart Storage Node
 	args := storageNode{
-		UUID:   nodeID,
-		NodeIP: data.ApiEndpoint,
+		UUID:   result["id"].(string),
+		NodeIP: result["api_endpoint"].(string),
 	}
-	url = fmt.Sprintf("/storagenode/restart/%s", nodeID)
+	url = fmt.Sprintf("/storagenode/restart/")
 	if _, err := rpcClient.CallSBCLI("PUT", url, args); err != nil {
 		return fmt.Errorf("failed to restart storage node: %w", err)
 	}
 
 	// Step 5: Poll for Node Status
 	url = fmt.Sprintf("/storagenode/%s", nodeID)
-	for i := 0; i < 20; i++ {
-		response, err := rpcClient.CallSBCLI("GET", url, nil)
-		if err != nil {
-			return fmt.Errorf("error while polling node status: %w", err)
-		}
+	retry := 0
 
-		responseData, ok := response.([]byte)
-		if !ok {
-			return fmt.Errorf("invalid response type: expected []byte, got %T", response)
-		}
+	for {
+		time.Sleep(1 * time.Minute)
+		response, _ := rpcClient.CallSBCLI("GET", url, args)
+		resp, _ := response.([]interface{})[0].(map[string]interface{})
 
-		var nodeStatus map[string]interface{}
-		if err := json.Unmarshal(responseData, &nodeStatus); err != nil {
-			return fmt.Errorf("failed to parse node status: %w", err)
-		}
+		statusCode, _ := resp["status_code"].(float64)
 
-		if statusCode, ok := nodeStatus["status_code"]; ok && statusCode == "online" {
+		if int(statusCode) == 0 {
 			return nil
 		}
+		retry++
+		if retry > 2 {
+			return errors.New("storage node did not come online in time")
+		}
 
-		time.Sleep(3 * time.Second)
 	}
 
-	return errors.New("storage node did not come online in time")
 }
 
 func waitForPodRunning(ctx context.Context, c kubernetes.Interface, namespace, podName string, timeout time.Duration) error {
@@ -793,6 +832,71 @@ func getStorageNode(c kubernetes.Interface) (string, error) {
 	}
 	return sn, nil
 }
+func numberOfNodes(c kubernetes.Interface) (int, error) {
+	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
+	if err != nil {
+		return 0, err
+	}
+	value := cm.Data["config.json"]
+	var creds simplyblockCreds
+	err = json.Unmarshal([]byte(value), &creds)
+	if err != nil {
+		return 0, err
+	}
+
+	// use k8s client go to get the value of the secret s pdkcsi-secret
+	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
+	if err != nil {
+		return 0, err
+	}
+	value = string(secret.Data["secret.json"])
+	err = json.Unmarshal([]byte(value), &creds)
+	if err != nil {
+		return 0, err
+	}
+
+	s := creds.Simplyblock
+	sn, err := s.numberOfNodes()
+
+	if err != nil {
+		return 0, err
+	}
+	return sn, nil
+}
+func getStorageNodeId(c kubernetes.Interface, random int) (string, error) {
+	// get the credentials from the configmap
+	// get the storage node Id from the simplyblock api
+	// return the storage node Id
+	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	value := cm.Data["config.json"]
+	var creds simplyblockCreds
+	err = json.Unmarshal([]byte(value), &creds)
+	if err != nil {
+		return "", err
+	}
+
+	// use k8s client go to get the value of the secret s pdkcsi-secret
+	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	value = string(secret.Data["secret.json"])
+	err = json.Unmarshal([]byte(value), &creds)
+	if err != nil {
+		return "", err
+	}
+
+	s := creds.Simplyblock
+	sn, err := s.getStoragenodeId(random)
+
+	if err != nil {
+		return "", err
+	}
+	return sn, nil
+}
 
 func restartStorageNode(c kubernetes.Interface, nodeID string) error {
 	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
@@ -806,7 +910,7 @@ func restartStorageNode(c kubernetes.Interface, nodeID string) error {
 		return err
 	}
 
-	// use k8s client go to get the value of the secret s pdkcsi-secret
+	// use k8s client go to get the value of the secret spdkcsi-secret
 	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
 	if err != nil {
 		return err
