@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -399,7 +398,7 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 	isMount, err := ns.mounter.IsMountPoint(stagingPath)
 	if err != nil {
-		if os.IsNotExist(err) || strings.Contains(err.Error(), "input/output error") {
+		if os.IsNotExist(err) {
 			return false, nil
 		}
 		klog.Warningf("check is stage error: %v", err)
