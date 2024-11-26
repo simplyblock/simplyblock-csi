@@ -206,7 +206,7 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingTargetPath := getStagingTargetPath(req)
 
 	isStaged, err := ns.isStaged(stagingTargetPath)
-	if err != nil {
+	if err != nil && !IsCorruptedMnt(err) {
 		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -471,6 +471,6 @@ func getStagingTargetPath(req interface{}) string {
 	return ""
 }
 
-func CleanupMountPoint(path string, m mount.Interface, extensiveCheck bool) error {
-	return mount.CleanupMountPoint(path, m, extensiveCheck)
+func IsCorruptedMnt(err error) bool {
+	return mount.IsCorruptedMnt(err)
 }
