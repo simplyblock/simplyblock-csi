@@ -452,12 +452,7 @@ func (ns *nodeServer) deleteMountPoint(path string) error {
 	if isMount {
 		err = ns.mounter.Unmount(path)
 		if err != nil {
-			klog.Errorf("Standard unmount failed for %s: %v. Attempting force unmount.", path, err)
-			// Attempt a force unmount
-			cmd := exec.Command("umount", "-f", path)
-			if forceErr := cmd.Run(); forceErr != nil {
-				return fmt.Errorf("force unmount failed for %s: %w", path, forceErr)
-			}
+			return err
 		}
 	}
 	return os.RemoveAll(path)
