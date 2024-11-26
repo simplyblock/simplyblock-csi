@@ -205,18 +205,23 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingParentPath := req.GetStagingTargetPath()
 	stagingTargetPath := getStagingTargetPath(req)
 
-	isStaged, err := ns.isStaged(stagingTargetPath)
-	if err != nil && !IsCorruptedMnt(err) {
-		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if !isStaged {
-		klog.Warning("volume already unstaged")
-		return &csi.NodeUnstageVolumeResponse{}, nil
-	}
+	// isStaged, err := ns.isStaged(stagingTargetPath)
+	// if err != nil && !IsCorruptedMnt(err) {
+	// 	klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
+	// 	return nil, status.Error(codes.Internal, err.Error())
+	// }
+	// if !isStaged {
+	// 	klog.Warning("volume already unstaged")
+	// 	return &csi.NodeUnstageVolumeResponse{}, nil
+	// }
 
 	//err = ns.deleteMountPoint(stagingTargetPath) // idempotent
-	err = CleanupMountPoint(stagingTargetPath, ns.mounter, true /*extensiveMountPointCheck*/)
+	//err = CleanupMountPoint(stagingTargetPath, ns.mounter, true /*extensiveMountPointCheck*/)
+
+	err := ns.mounter.Unmount(stagingTargetPath)
+	if err != nil {
+		return err
+	}
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
@@ -262,8 +267,13 @@ func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpubl
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	//err = ns.deleteMountPoint(req.GetTargetPath()) // idempotent
-	err := CleanupMountPoint(req.GetTargetPath(), ns.mounter, true /*extensiveMountPointCheck*/)
+	err := ns.mounter.Unmount(req.GetTargetPath())
+	if err != nil {
+		return err
+	}
+	
+	//err := ns.deleteMountPoint(req.GetTargetPath()) // idempotent
+	//err := CleanupMountPoint(req.GetTargetPath(), ns.mounter, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", req.GetTargetPath(), err)
 		return nil, status.Error(codes.Internal, err.Error())
