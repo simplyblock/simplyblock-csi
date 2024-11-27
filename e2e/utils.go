@@ -526,7 +526,7 @@ func (s SimplyBlock) getStoragenodeId(random int) (string, error) {
 	if !ok {
 		return "", errors.New("failed to get storage node from simplyblock api")
 	}
-	sn, ok := storageNodes["id"].(string)
+	sn, ok := storageNodes["uuid"].(string)
 	if !ok {
 		return "", errors.New("failed to get storage node from simplyblock api")
 	}
