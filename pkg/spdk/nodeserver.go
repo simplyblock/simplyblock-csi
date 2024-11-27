@@ -206,7 +206,7 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingTargetPath := getStagingTargetPath(req)
 
 	isStaged, err := ns.isStaged(stagingTargetPath)
-	if err != nil && !IsCorruptedMnt(err) {
+	if err != nil {
 		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -216,7 +216,6 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	}
 
 	err = ns.deleteMountPoint(stagingTargetPath) // idempotent
-	//err = CleanupMountPoint(stagingTargetPath, ns.mounter, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
@@ -263,7 +262,6 @@ func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpubl
 	defer unlock()
 
 	err := ns.deleteMountPoint(req.GetTargetPath()) // idempotent
-	//err := CleanupMountPoint(req.GetTargetPath(), ns.mounter, true /*extensiveMountPointCheck*/)
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", req.GetTargetPath(), err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -404,7 +402,7 @@ func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 			return true, nil
 		}
 		klog.Warningf("check is stage error: %v", err)
-		return true, nil
+		return false, err
 	}
 	return isMount, nil
 }
@@ -452,7 +450,7 @@ func (ns *nodeServer) deleteMountPoint(path string) error {
 			isMount = true
 		} else {
 			klog.Errorf("Error checking mount point %s: %v", path, err)
-			isMount = true
+			return err
 		}
 	}
 
@@ -477,12 +475,4 @@ func getStagingTargetPath(req interface{}) string {
 		klog.Warningf("invalid request %T", vr)
 	}
 	return ""
-}
-
-func IsCorruptedMnt(err error) bool {
-	return mount.IsCorruptedMnt(err)
-}
-
-func CleanupMountPoint(path string, m mount.Interface, extensiveCheck bool) error {
-	return mount.CleanupMountPoint(path, m, extensiveCheck)
 }
