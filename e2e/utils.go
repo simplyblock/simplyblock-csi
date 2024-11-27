@@ -554,8 +554,8 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 			return fmt.Errorf("failed to fetch storage node info: %w", err)
 		}
 		result, _ := resp.([]interface{})[0].(map[string]interface{})
-		statusCode, _ := result["status_code"].(float64)
-		if int(statusCode) == 2 {
+		status, _ := result["status"].(string)
+		if string(status) == "suspended" {
 			break
 		} else {
 			continue
@@ -577,8 +577,8 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 			return fmt.Errorf("failed to fetch storage node info: %w", err)
 		}
 		result, _ := resp.([]interface{})[0].(map[string]interface{})
-		statusCode, _ := result["status_code"].(float64)
-		if int(statusCode) == 1 {
+		status, _ := result["status"].(string)
+		if string(status) == "offline" {
 			break
 		} else {
 			continue
@@ -614,9 +614,9 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 		response, _ := rpcClient.CallSBCLI("GET", url, args)
 		resp, _ := response.([]interface{})[0].(map[string]interface{})
 
-		statusCode, _ := resp["status_code"].(float64)
+		status, _ := resp["status"].(string)
 
-		if int(statusCode) == 0 {
+		if string(status) == "online" {
 			return nil
 		}
 		retry++

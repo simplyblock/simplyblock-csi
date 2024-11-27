@@ -37,7 +37,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 			r := rand.New(rand.NewSource(time.Now().UnixNano()))
 			randomValue := r.Intn(n - 1)
 
-			ginkgo.By("create source pvc and write data", func() {
+			ginkgo.By("check pvc write, clone, snapshot before node restart", func() {
 
 				storageNodeID, _ := getStorageNodeId(c, randomValue)
 
@@ -59,23 +59,22 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-
+				//write data to pvc and check
 				deployPVC()
 				deployTestPod()
-				defer deleteTestPod()
 
 				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
 				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
-			})
 
-			ginkgo.By("create snapshot and check data persistency", func() {
+				deleteTestPod()
+
+				// snapshot and check
 				deploySnapshot()
-				defer deleteSnapshot()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -83,13 +82,13 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-			})
 
-			ginkgo.By("create clone and check data persistency", func() {
+				deleteSnapshot()
+
+				// clone and check
 				deployClone()
-				defer deleteClone()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -97,6 +96,8 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
+				deleteClone()
+
 			})
 
 			ginkgo.By("restarting the storage node", func() {
@@ -112,23 +113,22 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 
 			})
 
-			ginkgo.By("create source pvc and write data", func() {
+			ginkgo.By("check pvc write, clone, snapshot after node restart", func() {
 				deployPVC()
 				deployTestPod()
-				defer deleteTestPod()
 
 				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
 				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
-			})
 
-			ginkgo.By("create snapshot and check data persistency", func() {
+				deleteTestPod()
+
+				// check snapshot
 				deploySnapshot()
-				defer deleteSnapshot()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -136,14 +136,14 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-			})
 
-			ginkgo.By("create clone and check data persistency", func() {
+				deleteSnapshot()
+
+				//check clone
+
 				deployClone()
-				defer deleteClone()
-				defer deletePVC()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -151,6 +151,9 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
+
+				deleteClone()
+				deletePVC()
 			})
 		})
 	})
