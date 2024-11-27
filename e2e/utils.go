@@ -502,7 +502,6 @@ func (s SimplyBlock) numberOfNodes() (int, error) {
 
 	//get the number of storage nodes
 	sn := len(out.([]interface{}))
-
 	return sn, nil
 
 }
@@ -546,6 +545,22 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 	if _, err := rpcClient.CallSBCLI("GET", url, nil); err != nil {
 		return fmt.Errorf("failed to suspend storage node: %w", err)
 	}
+	//check whether the node has suspended
+	for {
+		time.Sleep(10 * time.Second)
+		url = fmt.Sprintf("/storagenode/%s", nodeID)
+		resp, err := rpcClient.CallSBCLI("GET", url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to fetch storage node info: %w", err)
+		}
+		result, _ := resp.([]interface{})[0].(map[string]interface{})
+		statusCode, _ := result["status_code"].(float64)
+		if int(statusCode) == 2 {
+			break
+		} else {
+			continue
+		}
+	}
 
 	// Step 2: Shutdown Storage Node
 	url = fmt.Sprintf("/storagenode/shutdown/%s/?force=True", nodeID)
@@ -553,7 +568,25 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 		return fmt.Errorf("failed to shutdown storage node: %w", err)
 	}
 
+	// check whether node has shutdown
+	for {
+		time.Sleep(10 * time.Second)
+		url = fmt.Sprintf("/storagenode/%s", nodeID)
+		resp, err := rpcClient.CallSBCLI("GET", url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to fetch storage node info: %w", err)
+		}
+		result, _ := resp.([]interface{})[0].(map[string]interface{})
+		statusCode, _ := result["status_code"].(float64)
+		if int(statusCode) == 1 {
+			break
+		} else {
+			continue
+		}
+	}
+
 	// Step 3: Fetch Storage Node Info
+
 	url = fmt.Sprintf("/storagenode/%s", nodeID)
 	resp, err := rpcClient.CallSBCLI("GET", url, nil)
 	if err != nil {

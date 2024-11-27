@@ -30,7 +30,10 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 			persistData := []string{"Data that needs to be stored"}
 			persistDataPath := []string{"/spdkvol/test"}
 			c := f.ClientSet
-			n, _ := numberOfNodes(c)
+			n, err := numberOfNodes(c)
+			if err != nil {
+				ginkgo.Fail(err.Error())
+			}
 			r := rand.New(rand.NewSource(time.Now().UnixNano()))
 			randomValue := r.Intn(n - 1)
 
