@@ -404,7 +404,7 @@ func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 			return true, nil
 		}
 		klog.Warningf("check is stage error: %v", err)
-		return false, err
+		return true, nil
 	}
 	return isMount, nil
 }
@@ -443,14 +443,17 @@ func (ns *nodeServer) createMountPoint(path string) (bool, error) {
 // unmount and delete mount point, must be idempotent
 func (ns *nodeServer) deleteMountPoint(path string) error {
 	isMount, err := ns.mounter.IsMountPoint(path)
-	if os.IsNotExist(err) {
-		klog.Infof("%s already deleted", path)
-		return nil
-	}
-	if err != nil && mount.IsCorruptedMnt(err) {
-		isMount = true
-	} else if err != nil {
-		return err
+	if err != nil {
+		if os.IsNotExist(err) {
+			klog.Infof("%s already deleted", path)
+			return nil
+		} else if mount.IsCorruptedMnt(err) {
+			klog.Warningf("Corrupted mount point detected at %s", path)
+			isMount = true
+		} else {
+			klog.Errorf("Error checking mount point %s: %v", path, err)
+			isMount = true
+		}
 	}
 
 	if isMount {
