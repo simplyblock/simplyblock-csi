@@ -847,7 +847,7 @@ func getStorageNode(c kubernetes.Interface) (string, error) {
 		return "", err
 	}
 
-	// use k8s client go to get the value of the secret s pdkcsi-secret
+	// use k8s client go to get the value of the secret spdkcsi-secret
 	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
 	if err != nil {
 		return "", err
