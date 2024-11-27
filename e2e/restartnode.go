@@ -109,7 +109,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-				defer deletePVC()
+				deletePVC()
 
 			})
 

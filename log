@@ -1,9 +1,0 @@
-Nov 27 20:01:33.705: INFO: The --provider flag is not set. Continuing as if --provider=skeleton had been used.
-=== RUN   TestE2E
-Running Suite: SPDKCSI E2E suite - /Users/gordon/sb/simplyblock-csi/e2e
-=======================================================================
-Random Seed: [1m1732717893[0m
-
-Will run [1m1[0m of [1m8[0m specs
-I1127 20:01:38.776156   59487 jsonrpc.go:418] Calling Simplyblock API: Method: GET: RequestURL: https://yjwlna9s25.execute-api.us-east-2.amazonaws.com///storagenode: Body: {}
-I1127 20:01:47.281676   59487 jsonrpc.go:418] Calling Simplyblock API: Method: GET: RequestURL: https://yjwlna9s25.execute-api.us-east-2.amazonaws.com///storagenode: Body: {}
