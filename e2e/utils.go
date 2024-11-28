@@ -533,7 +533,41 @@ func (s SimplyBlock) getStoragenodeId(random int) (string, error) {
 	return sn, nil
 }
 
+func checkNodeStatus(nodeID string, expected string, rpcClient util.RPCClient, retries int, delay time.Duration) error {
+	for try := 1; try <= retries; try++ {
+		time.Sleep(delay)
+
+		url := fmt.Sprintf("/storagenode/%s", nodeID)
+		response, err := rpcClient.CallSBCLI("GET", url, nil)
+		if err != nil {
+			return fmt.Errorf("error calling RPC: %w", err)
+		}
+
+		respArray, ok := response.([]interface{})
+		if !ok || len(respArray) == 0 {
+			return fmt.Errorf("unexpected response format: %v", response)
+		}
+
+		resp, ok := respArray[0].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected response format: %v", respArray[0])
+		}
+
+		status, ok := resp["status"].(string)
+		if !ok {
+			return fmt.Errorf("status field missing or invalid in response: %v", resp)
+		}
+
+		if status == expected {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("storage node %s did not transition to '%s' state after %d retries", nodeID, expected, retries)
+}
+
 func (s SimplyBlock) restartStorageNode(nodeID string) error {
+
 	var rpcClient util.RPCClient
 	rpcClient.ClusterID = s.UUID
 	rpcClient.ClusterIP = s.IP
@@ -546,20 +580,14 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 		return fmt.Errorf("failed to suspend storage node: %w", err)
 	}
 	//check whether the node has suspended
-	for {
-		time.Sleep(10 * time.Second)
-		url = fmt.Sprintf("/storagenode/%s", nodeID)
-		resp, err := rpcClient.CallSBCLI("GET", url, nil)
-		if err != nil {
-			return fmt.Errorf("failed to fetch storage node info: %w", err)
-		}
-		result, _ := resp.([]interface{})[0].(map[string]interface{})
-		status, _ := result["status"].(string)
-		if string(status) == "suspended" {
-			break
-		} else {
-			continue
-		}
+	expectedStatus := "suspended"
+	retries := 10
+	delay := 10 * time.Second
+
+	err := checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
+
+	if err != nil {
+		return err
 	}
 
 	// Step 2: Shutdown Storage Node
@@ -568,25 +596,15 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 		return fmt.Errorf("failed to shutdown storage node: %w", err)
 	}
 
-	// check whether node has shutdown
-	for {
-		time.Sleep(10 * time.Second)
-		url = fmt.Sprintf("/storagenode/%s", nodeID)
-		resp, err := rpcClient.CallSBCLI("GET", url, nil)
-		if err != nil {
-			return fmt.Errorf("failed to fetch storage node info: %w", err)
-		}
-		result, _ := resp.([]interface{})[0].(map[string]interface{})
-		status, _ := result["status"].(string)
-		if string(status) == "offline" {
-			break
-		} else {
-			continue
-		}
+	//check whether the node has shutdown
+	expectedStatus = "shutdown"
+	err = checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
+
+	if err != nil {
+		return err
 	}
 
 	// Step 3: Fetch Storage Node Info
-
 	url = fmt.Sprintf("/storagenode/%s", nodeID)
 	resp, err := rpcClient.CallSBCLI("GET", url, nil)
 	if err != nil {

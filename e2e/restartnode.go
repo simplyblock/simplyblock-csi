@@ -35,7 +35,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				ginkgo.Fail(err.Error())
 			}
 			r := rand.New(rand.NewSource(time.Now().UnixNano()))
-			randomValue := r.Intn(n - 1)
+			randomValue := r.Intn(n)
 
 			ginkgo.By("check pvc write, clone, snapshot before node restart", func() {
 
@@ -83,7 +83,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 					ginkgo.Fail(err.Error())
 				}
 
-				deleteSnapshot()
+				// deleteSnapshot()
 
 				// clone and check
 				deployClone()
@@ -96,7 +96,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-				deleteClone()
+				// deleteClone()
 
 			})
 
@@ -109,6 +109,8 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
+				deleteClone()
+				deleteSnapshot()
 				deletePVC()
 
 			})
