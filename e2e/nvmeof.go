@@ -28,6 +28,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 		})
 
 		ginkgo.It("Test the flow for Dynamic volume provisioning", func() {
+			testPodName := "spdkcsi-test"
 			ginkgo.By("creating a PVC and verify dynamic PV", func() {
 				deployPVC()
 				defer deletePVC()
@@ -41,7 +42,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				deployPVC()
 				deployTestPod()
 				defer deletePVCAndTestPod()
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -49,6 +50,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 		})
 
 		ginkgo.It("Test the flow for Caching nodes", func() {
+			testPodName := "spdkcsi-test"
 			ginkgo.By("creating a caching PVC and bind it to a pod", func() {
 				deployCachePVC()
 				deployCacheTestPod()
@@ -64,7 +66,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				deployTestPod()
 				defer deletePVCAndTestPod()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -77,12 +79,13 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 		})
 
 		ginkgo.It("Test multiple PVCs", func() {
+			multiTestPodName := "spdkcsi-test-multi"
 			ginkgo.By("create multiple pvcs and a pod with multiple pvcs attached, and check data persistence after the pod is removed and recreated", func() {
 				deployMultiPvcs()
 				deployTestPodWithMultiPvcs()
 				defer func() {
 					deleteMultiPvcsAndTestPodWithMultiPvcs()
-					if err := waitForTestPodGone(f.ClientSet, "spdkcsi-test-multi"); err != nil {
+					if err := waitForTestPodGone(f.ClientSet, multiTestPodName); err != nil {
 						ginkgo.Fail(err.Error())
 					}
 					for _, pvcName := range []string{"spdkcsi-pvc1", "spdkcsi-pvc2", "spdkcsi-pvc3"} {
@@ -91,7 +94,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 						}
 					}
 				}()
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-multi")
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}

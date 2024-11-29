@@ -54,6 +54,8 @@ const (
 	// controller statefulset and node daemonset names
 	controllerStsName = "spdkcsi-controller"
 	nodeDsName        = "spdkcsi-node"
+	testPodName       = "spdkcsi-test"
+	multiTestPodName  = "spdkcsi-test-multi"
 	cachetestPodName  = "spdkcsi-cache-test"
 	PodStatusRunning  = "Running"
 )
@@ -349,13 +351,13 @@ func checkDataPersist(f *framework.Framework) error {
 	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, &opt)
 
 	deleteTestPod()
-	err := waitForTestPodGone(f.ClientSet, "spdkcsi-test")
+	err := waitForTestPodGone(f.ClientSet, testPodName)
 	if err != nil {
 		return err
 	}
 
 	deployTestPod()
-	err = waitForTestPodReady(f.ClientSet, 5*time.Minute, "spdkcsi-test")
+	err = waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
 	if err != nil {
 		return err
 	}
@@ -390,13 +392,13 @@ func checkDataPersistForMultiPvcs(f *framework.Framework) error {
 	}
 
 	deleteTestPodWithMultiPvcs()
-	err := waitForTestPodGone(f.ClientSet, "spdkcsi-test-multi")
+	err := waitForTestPodGone(f.ClientSet, multiTestPodName)
 	if err != nil {
 		return err
 	}
 
 	deployTestPodWithMultiPvcs()
-	err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-multi")
+	err = waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName)
 	if err != nil {
 		return err
 	}

@@ -27,6 +27,9 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 			testPodLabel := metav1.ListOptions{
 				LabelSelector: "app=spdkcsi-pvc",
 			}
+
+			testPodName := "spdkcsi-test"
+			snap1TestPodName := "spdkcsi-test-snapshot1"
 			persistData := []string{"Data that needs to be stored"}
 			persistDataPath := []string{"/spdkvol/test"}
 			c := f.ClientSet
@@ -63,7 +66,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				deployPVC()
 				deployTestPod()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -74,7 +77,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				// snapshot and check
 				deploySnapshot()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-snapshot1")
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, snap1TestPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -116,7 +119,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				deployPVC()
 				deployTestPod()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -127,7 +130,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				// check snapshot
 				deploySnapshot()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-snapshot1")
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, snap1TestPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}

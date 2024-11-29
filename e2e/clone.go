@@ -16,6 +16,8 @@ var _ = ginkgo.Describe("SPDKCSI-CLONE", func() {
 			testPodLabel := metav1.ListOptions{
 				LabelSelector: "app=spdkcsi-pvc",
 			}
+			testPodName := "spdkcsi-test"
+			cloneTestPodName := "spdkcsi-test-clone"
 			persistData := []string{"Data that needs to be stored"}
 			persistDataPath := []string{"/spdkvol/test"}
 
@@ -24,7 +26,7 @@ var _ = ginkgo.Describe("SPDKCSI-CLONE", func() {
 				deployTestPod()
 				defer deleteTestPod()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -36,7 +38,7 @@ var _ = ginkgo.Describe("SPDKCSI-CLONE", func() {
 				defer deleteClone()
 				defer deletePVC()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-clone")
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, cloneTestPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
