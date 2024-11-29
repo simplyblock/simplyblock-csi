@@ -558,6 +558,17 @@ func checkNodeStatus(nodeID string, expected string, rpcClient util.RPCClient, r
 			return fmt.Errorf("status field missing or invalid in response: %v", resp)
 		}
 
+		// check node is online and healthy
+		if expected == "online" {
+			healthy, ok := resp["health_check"].(bool)
+			if !ok {
+				return fmt.Errorf("health field missing or invalid in response: %v", resp)
+			}
+			if status == expected && healthy {
+				return nil
+			}
+		}
+
 		if status == expected {
 			return nil
 		}
