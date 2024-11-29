@@ -54,9 +54,8 @@ const (
 	// controller statefulset and node daemonset names
 	controllerStsName = "spdkcsi-controller"
 	nodeDsName        = "spdkcsi-node"
-	// testPodName       = "spdkcsi-test"
-	cachetestPodName = "spdkcsi-cache-test"
-	PodStatusRunning = "Running"
+	cachetestPodName  = "spdkcsi-cache-test"
+	PodStatusRunning  = "Running"
 )
 
 var ctx = context.TODO()
