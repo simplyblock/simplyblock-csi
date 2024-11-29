@@ -597,7 +597,7 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 	}
 
 	//check whether the node has shutdown
-	expectedStatus = "shutdown"
+	expectedStatus = "offline"
 	err = checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
 
 	if err != nil {
@@ -611,37 +611,28 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 		return fmt.Errorf("failed to fetch storage node info: %w", err)
 	}
 
-	result, _ := resp.([]interface{})[0].(map[string]interface{})
+	result, ok := resp.([]interface{})[0].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("type assertion failed")
+	}
 
 	// Step 4: Restart Storage Node
 	args := storageNode{
 		UUID:   result["id"].(string),
 		NodeIP: result["api_endpoint"].(string),
 	}
-	url = fmt.Sprintf("/storagenode/restart/")
+	url = "/storagenode/restart/"
 	if _, err := rpcClient.CallSBCLI("PUT", url, args); err != nil {
 		return fmt.Errorf("failed to restart storage node: %w", err)
 	}
 
-	// Step 5: Poll for Node Status
-	url = fmt.Sprintf("/storagenode/%s", nodeID)
-	retry := 0
+	expectedStatus = "online"
+	err = checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
 
-	for {
-		time.Sleep(1 * time.Minute)
-		response, _ := rpcClient.CallSBCLI("GET", url, args)
-		resp, _ := response.([]interface{})[0].(map[string]interface{})
-
-		status, _ := resp["status"].(string)
-
-		if string(status) == "online" {
-			return nil
-		}
-		retry++
-		if retry > 2 {
-			return errors.New("storage node did not come online in time")
-		}
-
+	if err != nil {
+		return err
+	} else {
+		return nil
 	}
 
 }
