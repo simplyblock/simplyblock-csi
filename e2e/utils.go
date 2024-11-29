@@ -477,9 +477,7 @@ func (s SimplyBlock) getStoragenode() (string, error) {
 		return "", errors.New("failed to get storage node from simplyblock api")
 	}
 	sn, ok := storageNodes["hostname"].(string)
-	fmt.Println("^^^^^^")
-	fmt.Println(sn)
-	fmt.Println("^^^^^^")
+
 	if !ok {
 		return "", errors.New("failed to get storage node from simplyblock api")
 	}
