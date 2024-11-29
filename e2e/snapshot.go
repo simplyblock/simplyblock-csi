@@ -27,7 +27,7 @@ var _ = ginkgo.Describe("SPDKCSI-SNAPSHOT", func() {
 				defer deleteTestPod()
 				// do not delete pvc here, since we need it for snapshot
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -39,7 +39,7 @@ var _ = ginkgo.Describe("SPDKCSI-SNAPSHOT", func() {
 				deploySnapshot()
 				defer deleteSnapshot()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-snapshot1")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -53,7 +53,7 @@ var _ = ginkgo.Describe("SPDKCSI-SNAPSHOT", func() {
 				deployTestPod()
 				defer deleteTestPod()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -66,7 +66,7 @@ var _ = ginkgo.Describe("SPDKCSI-SNAPSHOT", func() {
 				defer deleteSnapshot2()
 				defer deletePVC()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "s")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}

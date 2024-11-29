@@ -41,7 +41,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				deployPVC()
 				deployTestPod()
 				defer deletePVCAndTestPod()
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -64,7 +64,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				deployTestPod()
 				defer deletePVCAndTestPod()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -82,7 +82,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				deployTestPodWithMultiPvcs()
 				defer func() {
 					deleteMultiPvcsAndTestPodWithMultiPvcs()
-					if err := waitForTestPodGone(f.ClientSet); err != nil {
+					if err := waitForTestPodGone(f.ClientSet, "spdkcsi-test-multi"); err != nil {
 						ginkgo.Fail(err.Error())
 					}
 					for _, pvcName := range []string{"spdkcsi-pvc1", "spdkcsi-pvc2", "spdkcsi-pvc3"} {
@@ -91,7 +91,7 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 						}
 					}
 				}()
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-multi")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}

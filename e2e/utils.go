@@ -54,9 +54,9 @@ const (
 	// controller statefulset and node daemonset names
 	controllerStsName = "spdkcsi-controller"
 	nodeDsName        = "spdkcsi-node"
-	testPodName       = "spdkcsi-test"
-	cachetestPodName  = "spdkcsi-cache-test"
-	PodStatusRunning  = "Running"
+	// testPodName       = "spdkcsi-test"
+	cachetestPodName = "spdkcsi-cache-test"
+	PodStatusRunning = "Running"
 )
 
 var ctx = context.TODO()
@@ -243,7 +243,7 @@ func waitForNodeServerReady(c kubernetes.Interface, timeout time.Duration) error
 	return nil
 }
 
-func waitForTestPodReady(c kubernetes.Interface, timeout time.Duration) error {
+func waitForTestPodReady(c kubernetes.Interface, timeout time.Duration, testPodName string) error {
 	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
 		pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, testPodName, metav1.GetOptions{})
 		if err != nil {
@@ -277,7 +277,7 @@ func waitForCacheTestPodReady(c kubernetes.Interface, timeout time.Duration) err
 	return nil
 }
 
-func waitForTestPodGone(c kubernetes.Interface) error {
+func waitForTestPodGone(c kubernetes.Interface, testPodName string) error {
 	err := wait.PollImmediate(3*time.Second, 5*time.Minute, func() (bool, error) {
 		_, err := c.CoreV1().Pods(nameSpace).Get(ctx, testPodName, metav1.GetOptions{})
 		if err != nil {
@@ -350,13 +350,13 @@ func checkDataPersist(f *framework.Framework) error {
 	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, &opt)
 
 	deleteTestPod()
-	err := waitForTestPodGone(f.ClientSet)
+	err := waitForTestPodGone(f.ClientSet, "spdkcsi-test")
 	if err != nil {
 		return err
 	}
 
 	deployTestPod()
-	err = waitForTestPodReady(f.ClientSet, 5*time.Minute)
+	err = waitForTestPodReady(f.ClientSet, 5*time.Minute, "spdkcsi-test")
 	if err != nil {
 		return err
 	}
@@ -391,13 +391,13 @@ func checkDataPersistForMultiPvcs(f *framework.Framework) error {
 	}
 
 	deleteTestPodWithMultiPvcs()
-	err := waitForTestPodGone(f.ClientSet)
+	err := waitForTestPodGone(f.ClientSet, "spdkcsi-test-multi")
 	if err != nil {
 		return err
 	}
 
 	deployTestPodWithMultiPvcs()
-	err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
+	err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-multi")
 	if err != nil {
 		return err
 	}

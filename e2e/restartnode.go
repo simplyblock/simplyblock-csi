@@ -63,7 +63,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				deployPVC()
 				deployTestPod()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -74,7 +74,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				// snapshot and check
 				deploySnapshot()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-snapshot1")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -82,13 +82,11 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-
-				// deleteSnapshot()
 
 				// clone and check
 				deployClone()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-clone")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -96,7 +94,6 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
-				// deleteClone()
 
 			})
 
@@ -119,7 +116,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				deployPVC()
 				deployTestPod()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -130,7 +127,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				// check snapshot
 				deploySnapshot()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-snapshot1")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -145,7 +142,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 
 				deployClone()
 
-				err = waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err = waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-clone")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}

@@ -24,7 +24,7 @@ var _ = ginkgo.Describe("SPDKCSI-CLONE", func() {
 				deployTestPod()
 				defer deleteTestPod()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
@@ -36,7 +36,7 @@ var _ = ginkgo.Describe("SPDKCSI-CLONE", func() {
 				defer deleteClone()
 				defer deletePVC()
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute)
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-clone")
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
