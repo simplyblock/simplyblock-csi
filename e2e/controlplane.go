@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	ginko "github.com/onsi/ginkgo/v2"
@@ -26,7 +27,10 @@ var _ = ginko.Describe("CSI Driver tests", func() {
 		ginko.It("if a node has lvol with IO running, adding and deleting an new lvol from the same node should work", func() {
 			ginko.By("run a pod with fio and add and delete an lvol from the same node", func() {
 				c := f.ClientSet
-				sn, err := getStorageNode(c)
+				r := rand.New(rand.NewSource(time.Now().UnixNano()))
+				n, _ := numberOfNodes(c)
+				randomValue := r.Intn(n)
+				sn, _, err := getStorageNode(c, randomValue)
 				if err != nil {
 					fmt.Fprintf(ginko.GinkgoWriter, "Error when getStorageNode %s \n", err.Error())
 					ginko.Fail(err.Error())

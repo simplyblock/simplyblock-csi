@@ -1,19 +1,14 @@
-# SPDX-License-Identifier: Apache-2.0
-# Copyright (c) Arm Limited and Contributors
-# Copyright (c) Intel Corporation
----
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: spdkcsi-pvc
-  annotations:
-    simplybk/secret-name: simplyblock-pvc-keys
-    simplybk/secret-namespace: default
-    simplybk/host-id:
+    annotations:
+        simplybk/secret-name: simplyblock-pvc-keys
+        simplybk/secret-namespace: default
+    name: spdkcsi-pvc
 spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 256Mi
-  storageClassName: spdkcsi-sc
+    accessModes:
+        - ReadWriteOnce
+    resources:
+        requests:
+            storage: 256Mi
+    storageClassName: spdkcsi-sc

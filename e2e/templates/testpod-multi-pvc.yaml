@@ -5,7 +5,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: spdkcsi-test
+  name: spdkcsi-test-multi
   labels:
     app: spdkcsi-pvc
 spec:

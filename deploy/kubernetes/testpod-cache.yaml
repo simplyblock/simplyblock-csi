@@ -11,7 +11,7 @@ spec:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 256Mi
+      storage: 10Gi
   storageClassName: spdkcsi-sc-cache
 
 ---
