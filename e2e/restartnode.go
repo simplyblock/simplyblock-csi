@@ -42,7 +42,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 
 			ginkgo.By("check pvc write, clone, snapshot before node restart", func() {
 
-				storageNodeID, _ := getStorageNodeId(c, randomValue)
+				_, storageNodeID, _ := getStorageNode(c, randomValue)
 
 				data, _ := os.ReadFile(pvcPath)
 				var yamlContent map[string]interface{}
@@ -101,7 +101,6 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 			})
 
 			ginkgo.By("restarting the storage node", func() {
-
 				pvc, _ := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(context.TODO(), "spdkcsi-pvc", metav1.GetOptions{})
 				storageNodeID := pvc.Annotations["simplybk/host-id"]
 				fmt.Println()

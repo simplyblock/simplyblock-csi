@@ -458,7 +458,7 @@ type StorageNode struct {
 	APIendpoint string `json:"api_endpoint"`
 }
 
-func (s SimplyBlock) getStoragenode() (string, error) {
+func (s SimplyBlock) getStoragenode(random int) (string, string, error) {
 	var rpcClient util.RPCClient
 	rpcClient.ClusterID = s.UUID
 	rpcClient.ClusterIP = s.IP
@@ -469,21 +469,25 @@ func (s SimplyBlock) getStoragenode() (string, error) {
 	// get the list of storage nodes
 	out, err := rpcClient.CallSBCLI("GET", "/storagenode", nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// TODO: get a random storage node
-	storageNodes, ok := out.([]interface{})[0].(map[string]interface{})
+	storageNodes, ok := out.([]interface{})[random].(map[string]interface{})
 
 	if !ok {
-		return "", errors.New("failed to get storage node from simplyblock api")
+		return "", "", errors.New("failed to get storage node from simplyblock api")
 	}
 	sn, ok := storageNodes["hostname"].(string)
+<<<<<<< Updated upstream
+=======
+	snid, ok := storageNodes["uuid"].(string)
+>>>>>>> Stashed changes
 
 	if !ok {
-		return "", errors.New("failed to get storage node from simplyblock api")
+		return "", "", errors.New("failed to get storage node from simplyblock api")
 	}
-	return sn, nil
+	return sn, snid, nil
 }
 
 func (s SimplyBlock) numberOfNodes() (int, error) {
@@ -503,33 +507,6 @@ func (s SimplyBlock) numberOfNodes() (int, error) {
 	sn := len(out.([]interface{}))
 	return sn, nil
 
-}
-func (s SimplyBlock) getStoragenodeId(random int) (string, error) {
-	var rpcClient util.RPCClient
-	rpcClient.ClusterID = s.UUID
-	rpcClient.ClusterIP = s.IP
-	rpcClient.ClusterSecret = s.Secret
-
-	rpcClient.HTTPClient = &http.Client{Timeout: 10 * time.Second}
-
-	// get the list of storage nodes
-	out, err := rpcClient.CallSBCLI("GET", "/storagenode", nil)
-	if err != nil {
-		return "", err
-	}
-
-	// TODO: get a random storage node
-
-	storageNodes, ok := out.([]interface{})[random].(map[string]interface{})
-
-	if !ok {
-		return "", errors.New("failed to get storage node from simplyblock api")
-	}
-	sn, ok := storageNodes["uuid"].(string)
-	if !ok {
-		return "", errors.New("failed to get storage node from simplyblock api")
-	}
-	return sn, nil
 }
 
 func checkNodeStatus(nodeID string, expected string, rpcClient util.RPCClient, retries int, delay time.Duration) error {
@@ -851,38 +828,38 @@ func createstorageClassWithHostID(c kubernetes.Interface, storageClassName, host
 	return err
 }
 
-func getStorageNode(c kubernetes.Interface) (string, error) {
+func getStorageNode(c kubernetes.Interface, random int) (string, string, error) {
 	// get the credentials from the configmap
 	// get the storage node from the simplyblock api
 	// return the storage node
 	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	value := cm.Data["config.json"]
 	var creds simplyblockCreds
 	err = json.Unmarshal([]byte(value), &creds)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// use k8s client go to get the value of the secret spdkcsi-secret
 	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	value = string(secret.Data["secret.json"])
 	err = json.Unmarshal([]byte(value), &creds)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	s := creds.Simplyblock
-	sn, err := s.getStoragenode()
+	sn, snid, err := s.getStoragenode(random)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return sn, nil
+	return sn, snid, nil
 }
 func numberOfNodes(c kubernetes.Interface) (int, error) {
 	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
@@ -912,40 +889,6 @@ func numberOfNodes(c kubernetes.Interface) (int, error) {
 
 	if err != nil {
 		return 0, err
-	}
-	return sn, nil
-}
-func getStorageNodeId(c kubernetes.Interface, random int) (string, error) {
-	// get the credentials from the configmap
-	// get the storage node Id from the simplyblock api
-	// return the storage node Id
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-	value := cm.Data["config.json"]
-	var creds simplyblockCreds
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return "", err
-	}
-
-	// use k8s client go to get the value of the secret s pdkcsi-secret
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-	value = string(secret.Data["secret.json"])
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return "", err
-	}
-
-	s := creds.Simplyblock
-	sn, err := s.getStoragenodeId(random)
-
-	if err != nil {
-		return "", err
 	}
 	return sn, nil
 }
