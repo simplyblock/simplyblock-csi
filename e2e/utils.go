@@ -479,10 +479,7 @@ func (s SimplyBlock) getStoragenode(random int) (string, string, error) {
 		return "", "", errors.New("failed to get storage node from simplyblock api")
 	}
 	sn, ok := storageNodes["hostname"].(string)
-<<<<<<< Updated upstream
-=======
 	snid, ok := storageNodes["uuid"].(string)
->>>>>>> Stashed changes
 
 	if !ok {
 		return "", "", errors.New("failed to get storage node from simplyblock api")
