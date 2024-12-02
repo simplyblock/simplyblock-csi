@@ -3,7 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
     annotations:
         simplybk/secret-name: simplyblock-pvc-keys
-        simplybk/secret-namespace: default
+        simplybk/secret-namespace: spdk-csi
     name: spdkcsi-pvc
 spec:
     accessModes:
