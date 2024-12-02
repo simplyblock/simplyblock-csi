@@ -4,8 +4,7 @@ metadata:
   name: spdkcsi-cache-pvc
   annotations:
     simplybk/secret-name: simplyblock-pvc-keys
-    simplybk/secret-namespace: default
-    simplybk/host-id:
+    simplybk/secret-namespace: spdk-csi
 spec:
   accessModes:
   - ReadWriteOnce
