@@ -248,7 +248,7 @@ func (nvmf *initiatorNVMf) updateConnectionInfo() error {
 	}
 
 	for i := range nvmf.connections {
-		nvmf.connections[i].IP = result[0].IP
+		nvmf.connections[i].IP = result[i].IP
 	}
 	return nil
 }
@@ -264,7 +264,8 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	for _, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", "30",
+			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", "600",
+			"-c", "1",
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 		if err != nil {
