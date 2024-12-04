@@ -248,7 +248,7 @@ func (nvmf *initiatorNVMf) updateConnectionInfo() error {
 	}
 
 	for i := range nvmf.connections {
-		nvmf.connections[i].IP = result[0].IP
+		nvmf.connections[i].IP = result[i].IP
 	}
 	return nil
 }
