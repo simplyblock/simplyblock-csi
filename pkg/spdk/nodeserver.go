@@ -144,14 +144,16 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	stagingParentPath := req.GetStagingTargetPath() // use this directory to persistently store VolumeContext
 	stagingTargetPath := getStagingTargetPath(req)
 
-	isStaged, err := ns.isStaged(stagingTargetPath)
-	if err != nil {
-		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if isStaged {
-		klog.Warning("volume already staged")
-		return &csi.NodeStageVolumeResponse{}, nil
+	if req.GetVolumeCapability().GetMount() != nil {
+		isStaged, err := ns.isStaged(stagingTargetPath)
+		if err != nil {
+			klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if isStaged {
+			klog.Warning("volume already staged")
+			return &csi.NodeStageVolumeResponse{}, nil
+		}
 	}
 
 	var initiator util.SpdkCsiInitiator
@@ -165,7 +167,7 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	// }
 
 	vc["stagingParentPath"] = stagingParentPath
-	initiator, err = util.NewSpdkCsiInitiator(vc, ns.spdkNode)
+	initiator, err := util.NewSpdkCsiInitiator(vc, ns.spdkNode)
 	if err != nil {
 		klog.Errorf("failed to create spdk initiator, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -205,17 +207,19 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingParentPath := req.GetStagingTargetPath()
 	stagingTargetPath := getStagingTargetPath(req)
 
-	isStaged, err := ns.isStaged(stagingTargetPath)
-	if err != nil {
-		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if !isStaged {
-		klog.Warning("volume already unstaged")
-		return &csi.NodeUnstageVolumeResponse{}, nil
+	if req.GetVolumeCapability().GetMount() != nil {
+		isStaged, err := ns.isStaged(stagingTargetPath)
+		if err != nil {
+			klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if !isStaged {
+			klog.Warning("volume already unstaged")
+			return &csi.NodeUnstageVolumeResponse{}, nil
+		}
 	}
 
-	err = ns.deleteMountPoint(stagingTargetPath) // idempotent
+	err := ns.deleteMountPoint(stagingTargetPath) // idempotent
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
