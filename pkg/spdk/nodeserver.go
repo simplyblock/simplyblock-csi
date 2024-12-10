@@ -426,7 +426,24 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 
 	if req.GetVolumeCapability().GetBlock() != nil {
+		volumeContext, err := util.LookupVolumeContext(stagingPath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
+		}
+
+		devicePath, ok := volumeContext["devicePath"]
+		if !ok || devicePath == "" {
+			return nil, status.Errorf(codes.Internal, "could not find device path for volume %s", req.GetVolumeId())
+		}
+		stagingPath = devicePath
+
 		fsType = ""
+		if err = ns.mounter.MakeFile(targetPath); err != nil {
+			if removeErr := os.Remove(targetPath); removeErr != nil {
+				return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, removeErr)
+			}
+			return status.Errorf(codes.Internal, "Could not create file %q: %v", targetPath, err)
+		}
 	}
 
 	mntFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
