@@ -492,14 +492,13 @@ func (ns *nodeServer) deleteMountPoint(path string) error {
 }
 
 func (ns *nodeServer) MakeFile(path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE, os.FileMode(0644))
+	// Create file
+	newFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0750)
 	if err != nil {
-		if !os.IsExist(err) {
-			return err
-		}
+		return fmt.Errorf("failed to open file %s: %w", path, err)
 	}
-	if err = f.Close(); err != nil {
-		return err
+	if err := newFile.Close(); err != nil {
+		return fmt.Errorf("failed to close file %s: %w", path, err)
 	}
 	return nil
 }
