@@ -415,13 +415,6 @@ func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 // must be idempotent
 func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolumeRequest) error {
 	targetPath := req.GetTargetPath()
-	mounted, err := ns.createMountPoint(targetPath)
-	if err != nil {
-		return err
-	}
-	if mounted {
-		return nil
-	}
 
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 
@@ -444,6 +437,14 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 				return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, removeErr)
 			}
 			return status.Errorf(codes.Internal, "Could not create file %q: %v", targetPath, err)
+		}
+	} else if req.GetVolumeCapability().GetMount() != nil {
+		mounted, err := ns.createMountPoint(targetPath)
+		if err != nil {
+			return err
+		}
+		if mounted {
+			return nil
 		}
 	}
 
