@@ -426,7 +426,8 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 
 	if req.GetVolumeCapability().GetBlock() != nil {
-		volumeContext, err := util.LookupVolumeContext(stagingPath)
+		stagingParentPath := req.GetStagingTargetPath()
+		volumeContext, err := util.LookupVolumeContext(stagingParentPath)
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
 		}
