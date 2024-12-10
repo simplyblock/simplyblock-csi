@@ -428,12 +428,12 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 	if req.GetVolumeCapability().GetBlock() != nil {
 		volumeContext, err := util.LookupVolumeContext(stagingPath)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
+			return status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
 		}
 
 		devicePath, ok := volumeContext["devicePath"]
 		if !ok || devicePath == "" {
-			return nil, status.Errorf(codes.Internal, "could not find device path for volume %s", req.GetVolumeId())
+			return status.Errorf(codes.Internal, "could not find device path for volume %s", req.GetVolumeId())
 		}
 		stagingPath = devicePath
 
