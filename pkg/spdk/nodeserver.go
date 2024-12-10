@@ -438,7 +438,7 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		stagingPath = devicePath
 
 		fsType = ""
-		if err = ns.mounter.MakeFile(targetPath); err != nil {
+		if err = ns.MakeFile(targetPath); err != nil {
 			if removeErr := os.Remove(targetPath); removeErr != nil {
 				return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, removeErr)
 			}
@@ -488,6 +488,19 @@ func (ns *nodeServer) deleteMountPoint(path string) error {
 		}
 	}
 	return os.RemoveAll(path)
+}
+
+func (ns *nodeServer) MakeFile(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE, os.FileMode(0644))
+	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func getStagingTargetPath(req interface{}) string {
