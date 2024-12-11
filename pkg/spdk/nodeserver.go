@@ -205,17 +205,17 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingParentPath := req.GetStagingTargetPath()
 	stagingTargetPath := getStagingTargetPath(req)
 
-	// isStaged, err := ns.isStaged(stagingTargetPath)
-	// if err != nil {
-	// 	klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
-	// 	return nil, status.Error(codes.Internal, err.Error())
-	// }
-	// if !isStaged {
-	// 	klog.Warning("volume already unstaged")
-	// 	return &csi.NodeUnstageVolumeResponse{}, nil
-	// }
+	isStaged, err := ns.isStaged(stagingTargetPath)
+	if err != nil {
+		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if !isStaged {
+		klog.Warning("volume already unstaged")
+		return &csi.NodeUnstageVolumeResponse{}, nil
+	}
 
-	err := ns.deleteMountPoint(stagingTargetPath) // idempotent
+	err = ns.deleteMountPoint(stagingTargetPath) // idempotent
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
@@ -409,7 +409,23 @@ func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 		klog.Warningf("check is stage error: %v", err)
 		return false, err
 	}
-	return isMount, nil
+	if isMount {
+		return true, nil
+	}
+
+	fi, err := os.Stat(stagingPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		klog.Warningf("failed to stat staging path: %s, error: %v", stagingPath, err)
+		return false, err
+	}
+
+	if fi.Mode()&os.ModeDevice != 0 {
+		return true, nil
+	}
+	return false, nil
 }
 
 // must be idempotent
