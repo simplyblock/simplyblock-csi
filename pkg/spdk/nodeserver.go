@@ -205,17 +205,17 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingParentPath := req.GetStagingTargetPath()
 	stagingTargetPath := getStagingTargetPath(req)
 
-	isStaged, err := ns.isStaged(stagingTargetPath)
-	if err != nil {
-		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if !isStaged {
-		klog.Warning("volume already unstaged")
-		return &csi.NodeUnstageVolumeResponse{}, nil
-	}
+	// isStaged, err := ns.isStaged(stagingTargetPath)
+	// if err != nil {
+	// 	klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
+	// 	return nil, status.Error(codes.Internal, err.Error())
+	// }
+	// if !isStaged {
+	// 	klog.Warning("volume already unstaged")
+	// 	return &csi.NodeUnstageVolumeResponse{}, nil
+	// }
 
-	err = ns.deleteMountPoint(stagingTargetPath) // idempotent
+	err := ns.deleteMountPoint(stagingTargetPath) // idempotent
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
@@ -351,7 +351,6 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	if mounted {
 		return nil
 	}
-
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 	// if fsType is not specified, use ext4 as default
 	if fsType == "" {
@@ -399,44 +398,32 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 
 // isStaged if stagingPath is a mount point, it means it is already staged, and vice versa
 func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
-	klog.Infof("Checking if staging path is staged: %s", stagingPath)
-
 	isMount, err := ns.mounter.IsMountPoint(stagingPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			klog.Infof("Staging path does not exist: %s", stagingPath)
 			return false, nil
 		} else if mount.IsCorruptedMnt(err) {
-			klog.Warningf("Staging path is a corrupted mount: %s", stagingPath)
 			return true, nil
 		}
-		klog.Errorf("Error checking mount point for staging path %s: %v", stagingPath, err)
+		klog.Warningf("check is stage error: %v", err)
 		return false, err
 	}
-
 	if isMount {
-		klog.Infof("Staging path %s is a valid mount point", stagingPath)
 		return true, nil
 	}
-
-	klog.Infof("Staging path %s is not a mount point, checking if it's a raw block device", stagingPath)
 
 	fi, err := os.Stat(stagingPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			klog.Infof("Staging path does not exist: %s", stagingPath)
 			return false, nil
 		}
-		klog.Errorf("Failed to stat staging path %s: %v", stagingPath, err)
+		klog.Warningf("failed to stat staging path: %s, error: %v", stagingPath, err)
 		return false, err
 	}
 
 	if fi.Mode()&os.ModeDevice != 0 {
-		klog.Infof("Staging path %s is a block device", stagingPath)
 		return true, nil
 	}
-
-	klog.Infof("Staging path %s is neither a mount point nor a block device", stagingPath)
 	return false, nil
 }
 
