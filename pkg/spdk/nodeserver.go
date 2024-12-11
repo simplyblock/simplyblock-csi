@@ -340,7 +340,7 @@ func (ns *nodeServer) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVol
 //nolint:cyclop // many cases in switch increases complexity
 func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeStageVolumeRequest, volumeContext map[string]string) error {
 	if req.GetVolumeCapability().GetBlock() != nil {
-		klog.Infof("Using Raw Block device")
+		klog.Infof("NodeStageVolume: called for volume %s. Skipping staging since it is a block device.", req.GetVolumeId())
 		return nil
 	}
 
