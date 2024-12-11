@@ -205,16 +205,6 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingParentPath := req.GetStagingTargetPath()
 	stagingTargetPath := getStagingTargetPath(req)
 
-	// isStaged, err := ns.isStaged(stagingTargetPath)
-	// if err != nil {
-	// 	klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
-	// 	return nil, status.Error(codes.Internal, err.Error())
-	// }
-	// if !isStaged {
-	// 	klog.Warning("volume already unstaged")
-	// 	return &csi.NodeUnstageVolumeResponse{}, nil
-	// }
-
 	err := ns.deleteMountPoint(stagingTargetPath) // idempotent
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
