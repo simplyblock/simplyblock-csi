@@ -399,32 +399,44 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 
 // isStaged if stagingPath is a mount point, it means it is already staged, and vice versa
 func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
+	klog.Infof("Checking if staging path is staged: %s", stagingPath)
+
 	isMount, err := ns.mounter.IsMountPoint(stagingPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			klog.Infof("Staging path does not exist: %s", stagingPath)
 			return false, nil
 		} else if mount.IsCorruptedMnt(err) {
+			klog.Warningf("Staging path is a corrupted mount: %s", stagingPath)
 			return true, nil
 		}
-		klog.Warningf("check is stage error: %v", err)
+		klog.Errorf("Error checking mount point for staging path %s: %v", stagingPath, err)
 		return false, err
 	}
+
 	if isMount {
+		klog.Infof("Staging path %s is a valid mount point", stagingPath)
 		return true, nil
 	}
+
+	klog.Infof("Staging path %s is not a mount point, checking if it's a raw block device", stagingPath)
 
 	fi, err := os.Stat(stagingPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			klog.Infof("Staging path does not exist: %s", stagingPath)
 			return false, nil
 		}
-		klog.Warningf("failed to stat staging path: %s, error: %v", stagingPath, err)
+		klog.Errorf("Failed to stat staging path %s: %v", stagingPath, err)
 		return false, err
 	}
 
 	if fi.Mode()&os.ModeDevice != 0 {
+		klog.Infof("Staging path %s is a block device", stagingPath)
 		return true, nil
 	}
+
+	klog.Infof("Staging path %s is neither a mount point nor a block device", stagingPath)
 	return false, nil
 }
 
