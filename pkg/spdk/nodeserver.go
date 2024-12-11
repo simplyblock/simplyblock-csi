@@ -205,17 +205,7 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	stagingParentPath := req.GetStagingTargetPath()
 	stagingTargetPath := getStagingTargetPath(req)
 
-	isStaged, err := ns.isStaged(stagingTargetPath)
-	if err != nil {
-		klog.Errorf("failed to check isStaged, targetPath: %s err: %v", stagingTargetPath, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if !isStaged {
-		klog.Warning("volume already unstaged")
-		return &csi.NodeUnstageVolumeResponse{}, nil
-	}
-
-	err = ns.deleteMountPoint(stagingTargetPath) // idempotent
+	err := ns.deleteMountPoint(stagingTargetPath) // idempotent
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
@@ -339,6 +329,11 @@ func (ns *nodeServer) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVol
 //
 //nolint:cyclop // many cases in switch increases complexity
 func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeStageVolumeRequest, volumeContext map[string]string) error {
+	if req.GetVolumeCapability().GetBlock() != nil {
+		klog.Infof("NodeStageVolume: called for volume %s. Skipping staging since it is a block device.", req.GetVolumeId())
+		return nil
+	}
+
 	mounted, err := ns.createMountPoint(stagingPath)
 	if err != nil {
 		return err
@@ -346,7 +341,6 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	if mounted {
 		return nil
 	}
-
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 	// if fsType is not specified, use ext4 as default
 	if fsType == "" {
@@ -410,15 +404,39 @@ func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 // must be idempotent
 func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolumeRequest) error {
 	targetPath := req.GetTargetPath()
-	mounted, err := ns.createMountPoint(targetPath)
-	if err != nil {
-		return err
-	}
-	if mounted {
-		return nil
-	}
 
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
+
+	if req.GetVolumeCapability().GetBlock() != nil {
+		stagingParentPath := req.GetStagingTargetPath()
+		volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
+		}
+
+		devicePath, ok := volumeContext["devicePath"]
+		if !ok || devicePath == "" {
+			return status.Errorf(codes.Internal, "could not find device path for volume %s", req.GetVolumeId())
+		}
+		stagingPath = devicePath
+
+		fsType = ""
+		if err = ns.MakeFile(targetPath); err != nil {
+			if removeErr := os.Remove(targetPath); removeErr != nil {
+				return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, removeErr)
+			}
+			return status.Errorf(codes.Internal, "Could not create file %q: %v", targetPath, err)
+		}
+	} else if req.GetVolumeCapability().GetMount() != nil {
+		mounted, err := ns.createMountPoint(targetPath)
+		if err != nil {
+			return err
+		}
+		if mounted {
+			return nil
+		}
+	}
+
 	mntFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 	mntFlags = append(mntFlags, "bind")
 	klog.Infof("mount %s to %s, fstype: %s, flags: %v", stagingPath, targetPath, fsType, mntFlags)
@@ -461,6 +479,18 @@ func (ns *nodeServer) deleteMountPoint(path string) error {
 		}
 	}
 	return os.RemoveAll(path)
+}
+
+func (ns *nodeServer) MakeFile(path string) error {
+	// Create file
+	newFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0750)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	if err := newFile.Close(); err != nil {
+		return fmt.Errorf("failed to close file %s: %w", path, err)
+	}
+	return nil
 }
 
 func getStagingTargetPath(req interface{}) string {
