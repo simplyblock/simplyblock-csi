@@ -144,7 +144,10 @@ storagenode:
   jmPercent: 3
   numPartitions: 0
   numDevices: 1
+  numDistribs: 2
   disableHAJM: false
+  enableTestDevice: false
+  dataNics:
   iobufSmallPoolCount: 
   iobufLargePoolCount:
   daemonsets:

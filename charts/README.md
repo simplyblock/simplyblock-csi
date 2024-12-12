@@ -149,9 +149,12 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.jmPercent`                | the number in percent to use for JM from each device	                                                                    | `3`                                                                        |  |
 | `storagenode.numPartitions`            | the number of partitions to create per device                                                                            | `0`                                                                        |  |
 | `storagenode.numDevices`               | the number of devices per storage node	                                                                                  | `1`                                                                        |  |
+| `storagenode.numDistribs`              | the number of distribs per storage node	                                                                                  | `2`                                                                        |  |
 | `storagenode.iobufSmallPoolCount`      | bdev_set_options param	                                                                                                  | `<empty>`                                                                  |  |
 | `storagenode.iobufLargePoolCount`      | bdev_set_options param	                                                                                                  | `<empty>`                                                                  |  |
-| `storagenode.disableHAJM`              | Disbable ha Journal Manager	                                                                                                  | `<empty>`                                                                  |  |
+| `storagenode.disableHAJM`              | Disable ha Journal Manager	                                                                                                  | `false`                                                                  |  |
+| `storagenode.enableTestDevice`         | Enable creation of test device                                                                                                  | `false`                                                                  |  |
+| `storagenode.dataNics`                 | Data interface names                                                                                                  | `<empty>`                                                                |  |
 
 
 ## troubleshooting
