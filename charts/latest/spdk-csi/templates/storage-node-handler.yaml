@@ -54,8 +54,14 @@ spec:
           value: "{{ .Values.storagenode.numPartitions }}"
         - name: NUMDEVICES
           value: "{{ .Values.storagenode.numDevices }}"
+        - name: NUMDISTRIBS
+          value: "{{ .Values.storagenode.numDistribs }}"
         - name: DISABLEHAJM
           value: "{{ .Values.storagenode.disableHAJM }}"
+        - name: ENABLETESTDEVICE
+          value: "{{ .Values.storagenode.enableTestDevice }}"
+        - name: DATANICS
+          value: "{{ .Values.storagenode.dataNics }}"
         - name: IOBUFSMALLPOOLCOUNT
           value: "{{ .Values.storagenode.iobufSmallPoolCount }}"
         - name: IOBUFLARGEPOOLCOUNT
