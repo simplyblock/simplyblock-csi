@@ -55,11 +55,13 @@ func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (S
 		}
 		return &initiatorNVMf{
 			// see util/nvmf.go VolumeInfo()
-			targetType:  volumeContext["targetType"],
-			connections: connections,
-			nqn:         volumeContext["nqn"],
-			model:       volumeContext["model"],
-			client:      *spdkNode.client,
+			targetType:     volumeContext["targetType"],
+			connections:    connections,
+			nqn:            volumeContext["nqn"],
+			reconnectDelay: volumeContext["reconnectDelay"],
+			ctrlLossTmo:    volumeContext["ctrlLossTmo"],
+			model:          volumeContext["model"],
+			client:         *spdkNode.client,
 		}, nil
 	case "cache":
 		return &initiatorCache{
@@ -74,11 +76,13 @@ func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (S
 
 // NVMf initiator implementation
 type initiatorNVMf struct {
-	targetType  string
-	connections []connectionInfo
-	nqn         string
-	model       string
-	client      RPCClient
+	targetType     string
+	connections    []connectionInfo
+	nqn            string
+	reconnectDelay string
+	ctrlLossTmo    string
+	model          string
+	client         RPCClient
 }
 
 type initiatorCache struct {
@@ -264,8 +268,8 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	for _, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", "600",
-			"-c", "1",
+			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", nvmf.ctrlLossTmo,
+			"-c", nvmf.reconnectDelay,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 		if err != nil {
