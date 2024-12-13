@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"k8s.io/klog"
@@ -106,10 +107,12 @@ type LvStore struct {
 }
 
 type LvolConnectResp struct {
-	Nqn     string `json:"nqn"`
-	Port    int    `json:"port"`
-	IP      string `json:"ip"`
-	Connect string `json:"connect"`
+	Nqn            string `json:"nqn"`
+	ReconnectDelay int    `json:"reconnect-delay"`
+	CtrlLossTmo    int    `json:"ctrl-loss-tmo"`
+	Port           int    `json:"port"`
+	IP             string `json:"ip"`
+	Connect        string `json:"connect"`
 }
 
 type connectionInfo struct {
@@ -282,12 +285,14 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 	}
 
 	return map[string]string{
-		"name":        lvolID,
-		"uuid":        lvolID,
-		"nqn":         result[0].Nqn,
-		"model":       lvolID,
-		"targetType":  "tcp",
-		"connections": string(connectionsData),
+		"name":           lvolID,
+		"uuid":           lvolID,
+		"nqn":            result[0].Nqn,
+		"reconnectDelay": strconv.Itoa(result[0].ReconnectDelay),
+		"ctrlLossTmo":    strconv.Itoa(result[0].CtrlLossTmo),
+		"model":          lvolID,
+		"targetType":     "tcp",
+		"connections":    string(connectionsData),
 	}, nil
 }
 
