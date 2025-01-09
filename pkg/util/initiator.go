@@ -21,11 +21,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/klog"
@@ -83,6 +85,8 @@ type initiatorNVMf struct {
 	ctrlLossTmo    string
 	model          string
 	client         RPCClient
+	monitorMutex   sync.Mutex
+	monitorCancel  chan struct{}
 }
 
 type initiatorCache struct {
@@ -279,6 +283,18 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 	}
 
+	nvmf.monitorMutex.Lock()
+	defer nvmf.monitorMutex.Unlock()
+
+	// If a monitor goroutine is already running, cancel it before starting a new one
+	if nvmf.monitorCancel != nil {
+		close(nvmf.monitorCancel) // Cancel any existing monitoring goroutine
+	}
+
+	// Start a new monitor goroutine
+	nvmf.monitorCancel = make(chan struct{})
+	go nvmf.monitorConnection()
+
 	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
@@ -349,4 +365,118 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 		klog.Infof("command returned: %s", output)
 	}
 	return err
+}
+
+func (nvmf *initiatorNVMf) updateConnectionInfoFromDir(dir string) error {
+	volumeContextPath := filepath.Join(dir, "globalmount", "volume-context.json")
+
+	// Check if volume-context.json exists
+	if _, err := os.Stat(volumeContextPath); os.IsNotExist(err) {
+		return fmt.Errorf("volume-context.json not found at %s", volumeContextPath)
+	}
+
+	// Read volume-context.json
+	data, err := ioutil.ReadFile(volumeContextPath)
+	if err != nil {
+		return fmt.Errorf("failed to read volume-context.json: %v", err)
+	}
+
+	// Parse JSON
+	var volumeContext map[string]interface{}
+	if err := json.Unmarshal(data, &volumeContext); err != nil {
+		return fmt.Errorf("failed to unmarshal volume-context.json: %v", err)
+	}
+
+	// Get NQN
+	nqn, ok := volumeContext["nqn"].(string)
+	if !ok || nqn == "" {
+		return fmt.Errorf("nqn key not found or empty in volume-context.json")
+	}
+	nvmf.nqn = nqn
+
+	// Parse NQN for lvol ID
+	parts := strings.Split(nqn, ":")
+	if len(parts) < 4 || parts[2] != "lvol" {
+		return fmt.Errorf("invalid NQN format, lvol_id not found: %s", nqn)
+	}
+	lvolID := parts[3]
+
+	// API call to fetch connection details
+	resp, err := nvmf.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+	if err != nil {
+		klog.Errorf("failed to fetch connection details for lvol_id %s: %v", lvolID, err)
+		return err
+	}
+
+	var result []*LvolConnectResp
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("failed to marshal response: %v", err)
+	}
+
+	if err := json.Unmarshal(respBytes, &result); err != nil {
+		return fmt.Errorf("failed to unmarshal connection details: %v", err)
+	}
+
+	// Update connections
+	for i := range nvmf.connections {
+		nvmf.connections[i].IP = result[i].IP
+	}
+
+	return nil
+}
+
+func (nvmf *initiatorNVMf) monitorConnection() {
+	basePath := "/var/lib/kubelet/plugins/kubernetes.io/csi/csi.simplyblock.io"
+	var lastIP string
+
+	for {
+		// Check if cancel is requested
+		select {
+		case <-nvmf.monitorCancel:
+			klog.Info("Stopping the connection monitor...")
+			return
+		default:
+		}
+		// List all subdirectories under the base path
+		dirs, err := ioutil.ReadDir(basePath)
+		if err != nil {
+			klog.Errorf("failed to read base directory %s: %v", basePath, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		for _, dir := range dirs {
+			if dir.IsDir() {
+				dirPath := filepath.Join(basePath, dir.Name())
+
+				if err := nvmf.updateConnectionInfoFromDir(dirPath); err != nil {
+					klog.Errorf("failed to update connection info from directory %s: %v", dirPath, err)
+					continue
+				}
+
+				// Check the first connection (nvmf.connections[0])
+				if len(nvmf.connections) > 0 {
+					conn := nvmf.connections[0]
+					if conn.IP != lastIP {
+						klog.Infof("IP address changed. Old IP: %s, New IP: %s. Reconnecting...", lastIP, conn.IP)
+
+						// Reconnect using the new IP
+						cmdLine := []string{
+							"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
+							"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", nvmf.ctrlLossTmo,
+							"-c", nvmf.reconnectDelay,
+						}
+						if err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections)); err != nil {
+							klog.Errorf("nvme connect failed: %v", err)
+						}
+
+						lastIP = conn.IP
+					}
+				}
+			}
+		}
+
+		time.Sleep(10 * time.Second) // Adjust the interval as needed
+	}
 }
