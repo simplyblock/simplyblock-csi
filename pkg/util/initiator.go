@@ -59,6 +59,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (S
 			connections:    connections,
 			nqn:            volumeContext["nqn"],
 			reconnectDelay: volumeContext["reconnectDelay"],
+			nrIoQueues:     volumeContext["nrIoQueues"],
 			ctrlLossTmo:    volumeContext["ctrlLossTmo"],
 			model:          volumeContext["model"],
 			client:         *spdkNode.client,
@@ -80,6 +81,7 @@ type initiatorNVMf struct {
 	connections    []connectionInfo
 	nqn            string
 	reconnectDelay string
+	nrIoQueues     string
 	ctrlLossTmo    string
 	model          string
 	client         RPCClient
@@ -286,7 +288,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
 			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", nvmf.ctrlLossTmo,
-			"-c", nvmf.reconnectDelay,
+			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 		if err != nil {
@@ -437,6 +439,7 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 					port := lvolResp[0].Port
 					ctrlLossTmo := lvolResp[0].CtrlLossTmo
 					reconnectDelay := lvolResp[0].ReconnectDelay
+					nrIoQueues := lvolResp[0].NrIoQueues
 
 					if currentIP != updatedIP {
 						klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
@@ -444,7 +447,7 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 						cmdLine := []string{
 							"nvme", "connect", "-t", "tcp",
 							"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
-							"-c", strconv.Itoa(reconnectDelay),
+							"-c", strconv.Itoa(reconnectDelay), "-i", strconv.Itoa(nrIoQueues),
 						}
 						err := execWithTimeoutRetry(cmdLine, 40, 1)
 						if err != nil {
