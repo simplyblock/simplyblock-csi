@@ -26,7 +26,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"k8s.io/klog"
@@ -84,8 +83,6 @@ type initiatorNVMf struct {
 	ctrlLossTmo    string
 	model          string
 	client         RPCClient
-	monitorMutex   sync.Mutex
-	monitorCancel  chan struct{}
 }
 
 type initiatorCache struct {
@@ -302,18 +299,6 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 	}
 
-	// nvmf.monitorMutex.Lock()
-	// defer nvmf.monitorMutex.Unlock()
-
-	// // If a monitor goroutine is already running, cancel it before starting a new one
-	// if nvmf.monitorCancel != nil {
-	// 	close(nvmf.monitorCancel) // Cancel any existing monitoring goroutine
-	// }
-
-	// // Start a new monitor goroutine
-	// nvmf.monitorCancel = make(chan struct{})
-	// // go nvmf.monitorConnection()
-
 	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
@@ -491,13 +476,6 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 func MonitorConnection(spdkNode *NodeNVMf) {
 
 	for {
-		// Check if cancel is requested
-		// select {
-		// case <-nvmf.monitorCancel:
-		// 	klog.Info("Stopping the connection monitor...")
-		// 	return
-		// default:
-		// }
 		if spdkNode.client == nil {
 			klog.Errorf("RPC client is not initialized")
 			continue
