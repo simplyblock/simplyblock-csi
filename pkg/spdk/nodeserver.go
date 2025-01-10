@@ -130,7 +130,7 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		return nil, err
 	}
 
-	go monitorConnection(ns.spdkNode)
+	go util.monitorConnection(ns.spdkNode)
 
 	return ns, nil
 }
