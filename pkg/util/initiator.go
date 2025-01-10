@@ -123,18 +123,6 @@ type SubsystemResponse struct {
 	Subsystems []Subsystem `json:"Subsystems"`
 }
 
-type LvolReconnectResp struct {
-	Results []struct {
-		IP             string `json:"ip"`
-		Port           int    `json:"port"`
-		CtrlLossTmo    int    `json:"ctrl-loss-tmo"`
-		ReconnectDelay int    `json:"reconnect-delay"`
-		Transport      string `json:"transport"`
-		NQN            string `json:"nqn"`
-	} `json:"results"`
-	Status bool `json:"status"`
-}
-
 func (cache *initiatorCache) Connect() (string, error) {
 	// get the hostname
 	hostname, err := os.Hostname()
@@ -448,7 +436,7 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 
 					klog.Infof("lvol connect resp: %+v", resp)
 
-					var lvolResp []*LvolReconnectResp
+					var lvolResp []*LvolConnectResp
 
 					respBytes, err := json.Marshal(resp)
 					if err != nil {
@@ -466,18 +454,17 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 						continue
 					}
 
-					updatedIP := lvolResp[0].Results[0].IP
-					nqn := lvolResp[0].Results[0].NQN
-					port := lvolResp[0].Results[0].Port
-					ctrlLossTmo := lvolResp[0].Results[0].CtrlLossTmo
-					reconnectDelay := lvolResp[0].Results[0].ReconnectDelay
-					transport := lvolResp[0].Results[0].Transport
+					updatedIP := lvolResp[0].IP
+					nqn := lvolResp[0].Nqn
+					port := lvolResp[0].Port
+					ctrlLossTmo := lvolResp[0].CtrlLossTmo
+					reconnectDelay := lvolResp[0].ReconnectDelay
 
 					if currentIP != updatedIP {
 						klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
 
 						cmdLine := []string{
-							"nvme", "connect", "-t", transport,
+							"nvme", "connect", "-t", "tcp",
 							"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
 							"-c", strconv.Itoa(reconnectDelay),
 						}
