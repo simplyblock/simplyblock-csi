@@ -508,6 +508,6 @@ func (nvmf *initiatorNVMf) monitorConnection() {
 			continue
 		}
 
-		time.Sleep(3 * time.Second) // Adjust the interval as needed
+		time.Sleep(3 * time.Second)
 	}
 }
