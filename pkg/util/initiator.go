@@ -488,7 +488,7 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 	return nil
 }
 
-func monitorConnection(spdkNode *NodeNVMf) {
+func MonitorConnection(spdkNode *NodeNVMf) {
 
 	for {
 		// Check if cancel is requested
