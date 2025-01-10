@@ -446,18 +446,23 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 						continue
 					}
 
-					lvolResp := resp.(*LvolReconnectResp)
-					if !lvolResp.Status || len(lvolResp.Results) == 0 {
-						fmt.Printf("no valid results for lvol_id %s\n", lvolID)
-						continue
+					var lvolResp []*LvolReconnectResp
+
+					respBytes, err := json.Marshal(resp)
+					if err != nil {
+						return fmt.Errorf("failed to marshal response: %v", err)
 					}
 
-					updatedIP := lvolResp.Results[0].IP
-					nqn := lvolResp.Results[0].NQN
-					port := lvolResp.Results[0].Port
-					ctrlLossTmo := lvolResp.Results[0].CtrlLossTmo
-					reconnectDelay := lvolResp.Results[0].ReconnectDelay
-					transport := lvolResp.Results[0].Transport
+					if err := json.Unmarshal(respBytes, &lvolResp); err != nil {
+						return fmt.Errorf("failed to unmarshal connection details: %v", err)
+					}
+
+					updatedIP := lvolResp[0].Results[0].IP
+					nqn := lvolResp[0].Results[0].NQN
+					port := lvolResp[0].Results[0].Port
+					ctrlLossTmo := lvolResp[0].Results[0].CtrlLossTmo
+					reconnectDelay := lvolResp[0].Results[0].ReconnectDelay
+					transport := lvolResp[0].Results[0].Transport
 
 					if currentIP != updatedIP {
 						fmt.Printf("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
