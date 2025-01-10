@@ -459,6 +459,8 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 						return fmt.Errorf("failed to unmarshal connection details: %v", err)
 					}
 
+					klog.Infof("lvol unmarshal response: %+v", lvolResp)
+
 					if len(lvolResp) == 0 && lvolResp[0] == nil {
 						klog.Errorf("unexpected response format or empty results")
 						continue
