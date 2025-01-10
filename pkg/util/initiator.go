@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,6 +101,38 @@ type cachingNodeList struct {
 
 type LVolCachingNodeConnect struct {
 	LvolID string `json:"lvol_id"`
+}
+
+type Subsystem struct {
+	Name     string `json:"Name"`
+	NQN      string `json:"NQN"`
+	IOPolicy string `json:"IOPolicy"`
+	Paths    []Path `json:"Paths"`
+}
+
+type Path struct {
+	Name      string `json:"Name"`
+	Transport string `json:"Transport"`
+	Address   string `json:"Address"`
+	State     string `json:"State"`
+}
+
+type SubsystemResponse struct {
+	HostNQN    string      `json:"HostNQN"`
+	HostID     string      `json:"HostID"`
+	Subsystems []Subsystem `json:"Subsystems"`
+}
+
+type LvolReconnectResp struct {
+	Results []struct {
+		IP             string `json:"ip"`
+		Port           int    `json:"port"`
+		CtrlLossTmo    int    `json:"ctrl-loss-tmo"`
+		ReconnectDelay int    `json:"reconnect-delay"`
+		Transport      string `json:"transport"`
+		NQN            string `json:"nqn"`
+	} `json:"results"`
+	Status bool `json:"status"`
 }
 
 func (cache *initiatorCache) Connect() (string, error) {
@@ -367,68 +398,101 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 	return err
 }
 
-func (nvmf *initiatorNVMf) updateConnectionInfoFromDir(dir string) error {
-	volumeContextPath := filepath.Join(dir, "globalmount", "volume-context.json")
-
-	// Check if volume-context.json exists
-	if _, err := os.Stat(volumeContextPath); os.IsNotExist(err) {
-		return fmt.Errorf("volume-context.json not found at %s", volumeContextPath)
+func getLvolIDFromNQN(nqn string) string {
+	parts := strings.Split(nqn, ":lvol:")
+	if len(parts) > 1 {
+		return parts[1]
 	}
+	return ""
+}
 
-	// Read volume-context.json
-	data, err := ioutil.ReadFile(volumeContextPath)
+func parseAddress(address string) string {
+	parts := strings.Split(address, ",")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "traddr=") {
+			return strings.TrimPrefix(part, "traddr=")
+		}
+	}
+	return ""
+}
+
+func (nvmf *initiatorNVMf) reconnectSubsystems() error {
+	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
+	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to read volume-context.json: %v", err)
+		return fmt.Errorf("failed to execute nvme list-subsys: %v", err)
 	}
 
-	// Parse JSON
-	var volumeContext map[string]interface{}
-	if err := json.Unmarshal(data, &volumeContext); err != nil {
-		return fmt.Errorf("failed to unmarshal volume-context.json: %v", err)
+	var subsystems []SubsystemResponse
+	if err := json.Unmarshal(output, &subsystems); err != nil {
+		return fmt.Errorf("failed to unmarshal nvme list-subsys output: %v", err)
 	}
 
-	// Get NQN
-	nqn, ok := volumeContext["nqn"].(string)
-	if !ok || nqn == "" {
-		return fmt.Errorf("nqn key not found or empty in volume-context.json")
-	}
-	nvmf.nqn = nqn
+	for _, host := range subsystems {
+		for _, subsystem := range host.Subsystems {
+			lvolID := getLvolIDFromNQN(subsystem.NQN)
+			if lvolID == "" {
+				continue
+			}
 
-	// Parse NQN for lvol ID
-	parts := strings.Split(nqn, ":")
-	if len(parts) < 4 || parts[2] != "lvol" {
-		return fmt.Errorf("invalid NQN format, lvol_id not found: %s", nqn)
-	}
-	lvolID := parts[3]
+			for _, path := range subsystem.Paths {
+				if path.State == "connecting" {
+					currentIP := parseAddress(path.Address)
 
-	// API call to fetch connection details
-	resp, err := nvmf.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
-	if err != nil {
-		klog.Errorf("failed to fetch connection details for lvol_id %s: %v", lvolID, err)
-		return err
-	}
+					// Call the API for connection details
+					resp, err := nvmf.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+					if err != nil {
+						fmt.Printf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
+						continue
+					}
 
-	var result []*LvolConnectResp
-	respBytes, err := json.Marshal(resp)
-	if err != nil {
-		return fmt.Errorf("failed to marshal response: %v", err)
-	}
+					lvolResp := resp.(*LvolReconnectResp)
+					if !lvolResp.Status || len(lvolResp.Results) == 0 {
+						fmt.Printf("no valid results for lvol_id %s\n", lvolID)
+						continue
+					}
 
-	if err := json.Unmarshal(respBytes, &result); err != nil {
-		return fmt.Errorf("failed to unmarshal connection details: %v", err)
-	}
+					updatedIP := lvolResp.Results[0].IP
+					nqn := lvolResp.Results[0].NQN
+					port := lvolResp.Results[0].Port
+					ctrlLossTmo := lvolResp.Results[0].CtrlLossTmo
+					reconnectDelay := lvolResp.Results[0].ReconnectDelay
+					transport := lvolResp.Results[0].Transport
 
-	// Update connections
-	for i := range nvmf.connections {
-		nvmf.connections[i].IP = result[i].IP
+					if currentIP != updatedIP {
+						fmt.Printf("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
+
+						cmdLine := []string{
+							"nvme", "connect", "-t", transport,
+							"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
+							"-c", strconv.Itoa(reconnectDelay),
+						}
+						err := execWithTimeoutRetry(cmdLine, 40, 1)
+						if err != nil {
+							// go on checking device status in case caused by duplicated request
+							klog.Errorf("command %v failed: %s", cmdLine, err)
+							return err
+						}
+
+						// Disconnect the old path
+						disconnectCmd := []string{
+							"nvme", "disconnect", "-d", path.Name,
+						}
+						err = execWithTimeoutRetry(disconnectCmd, 40, 1)
+						if err != nil {
+							klog.Errorf("command %v failed: %s", disconnectCmd, err)
+							return err
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return nil
 }
 
 func (nvmf *initiatorNVMf) monitorConnection() {
-	basePath := "/var/lib/kubelet/plugins/kubernetes.io/csi/csi.simplyblock.io"
-	var lastIP string
 
 	for {
 		// Check if cancel is requested
@@ -438,45 +502,12 @@ func (nvmf *initiatorNVMf) monitorConnection() {
 			return
 		default:
 		}
-		// List all subdirectories under the base path
-		dirs, err := ioutil.ReadDir(basePath)
-		if err != nil {
-			klog.Errorf("failed to read base directory %s: %v", basePath, err)
-			time.Sleep(5 * time.Second)
+
+		if err := nvmf.reconnectSubsystems(); err != nil {
+			klog.Errorf("Error: %v\n", err)
 			continue
 		}
 
-		for _, dir := range dirs {
-			if dir.IsDir() {
-				dirPath := filepath.Join(basePath, dir.Name())
-
-				if err := nvmf.updateConnectionInfoFromDir(dirPath); err != nil {
-					klog.Errorf("failed to update connection info from directory %s: %v", dirPath, err)
-					continue
-				}
-
-				// Check the first connection (nvmf.connections[0])
-				if len(nvmf.connections) > 0 {
-					conn := nvmf.connections[0]
-					if conn.IP != lastIP {
-						klog.Infof("IP address changed. Old IP: %s, New IP: %s. Reconnecting...", lastIP, conn.IP)
-
-						// Reconnect using the new IP
-						cmdLine := []string{
-							"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-							"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", nvmf.ctrlLossTmo,
-							"-c", nvmf.reconnectDelay,
-						}
-						if err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections)); err != nil {
-							klog.Errorf("nvme connect failed: %v", err)
-						}
-
-						lastIP = conn.IP
-					}
-				}
-			}
-		}
-
-		time.Sleep(10 * time.Second) // Adjust the interval as needed
+		time.Sleep(3 * time.Second) // Adjust the interval as needed
 	}
 }
