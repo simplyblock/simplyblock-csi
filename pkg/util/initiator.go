@@ -101,10 +101,9 @@ type LVolCachingNodeConnect struct {
 }
 
 type Subsystem struct {
-	Name     string `json:"Name"`
-	NQN      string `json:"NQN"`
-	IOPolicy string `json:"IOPolicy"`
-	Paths    []Path `json:"Paths"`
+	Name  string `json:"Name"`
+	NQN   string `json:"NQN"`
+	Paths []Path `json:"Paths"`
 }
 
 type Path struct {
@@ -115,8 +114,6 @@ type Path struct {
 }
 
 type SubsystemResponse struct {
-	HostNQN    string      `json:"HostNQN"`
-	HostID     string      `json:"HostID"`
 	Subsystems []Subsystem `json:"Subsystems"`
 }
 
