@@ -129,6 +129,9 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		klog.Error("failed to create simplyblock client", err)
 		return nil, err
 	}
+
+	go monitorConnection(ns.spdkNode)
+
 	return ns, nil
 }
 

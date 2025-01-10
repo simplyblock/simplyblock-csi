@@ -302,17 +302,17 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 	}
 
-	nvmf.monitorMutex.Lock()
-	defer nvmf.monitorMutex.Unlock()
+	// nvmf.monitorMutex.Lock()
+	// defer nvmf.monitorMutex.Unlock()
 
-	// If a monitor goroutine is already running, cancel it before starting a new one
-	if nvmf.monitorCancel != nil {
-		close(nvmf.monitorCancel) // Cancel any existing monitoring goroutine
-	}
+	// // If a monitor goroutine is already running, cancel it before starting a new one
+	// if nvmf.monitorCancel != nil {
+	// 	close(nvmf.monitorCancel) // Cancel any existing monitoring goroutine
+	// }
 
-	// Start a new monitor goroutine
-	nvmf.monitorCancel = make(chan struct{})
-	go nvmf.monitorConnection()
+	// // Start a new monitor goroutine
+	// nvmf.monitorCancel = make(chan struct{})
+	// // go nvmf.monitorConnection()
 
 	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
@@ -404,7 +404,7 @@ func parseAddress(address string) string {
 	return ""
 }
 
-func (nvmf *initiatorNVMf) reconnectSubsystems() error {
+func reconnectSubsystems(spdkNode *NodeNVMf) error {
 	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
 	output, err := cmd.Output()
 	if err != nil {
@@ -428,13 +428,11 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 					currentIP := parseAddress(path.Address)
 
 					// Call the API for connection details
-					resp, err := nvmf.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+					resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
 					if err != nil {
 						klog.Errorf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
 						continue
 					}
-
-					klog.Infof("lvol connect resp: %+v", resp)
 
 					var lvolResp []*LvolConnectResp
 
@@ -446,8 +444,6 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 					if err := json.Unmarshal(respBytes, &lvolResp); err != nil {
 						return fmt.Errorf("failed to unmarshal connection details: %v", err)
 					}
-
-					klog.Infof("lvol unmarshal response: %+v", lvolResp)
 
 					if len(lvolResp) == 0 && lvolResp[0] == nil {
 						klog.Errorf("unexpected response format or empty results")
@@ -470,7 +466,6 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 						}
 						err := execWithTimeoutRetry(cmdLine, 40, 1)
 						if err != nil {
-							// go on checking device status in case caused by duplicated request
 							klog.Errorf("command %s failed: %v", cmdLine, err)
 							return err
 						}
@@ -493,18 +488,22 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 	return nil
 }
 
-func (nvmf *initiatorNVMf) monitorConnection() {
+func monitorConnection(spdkNode *NodeNVMf) {
 
 	for {
 		// Check if cancel is requested
-		select {
-		case <-nvmf.monitorCancel:
-			klog.Info("Stopping the connection monitor...")
-			return
-		default:
+		// select {
+		// case <-nvmf.monitorCancel:
+		// 	klog.Info("Stopping the connection monitor...")
+		// 	return
+		// default:
+		// }
+		if spdkNode.client == nil {
+			klog.Errorf("RPC client is not initialized")
+			continue
 		}
 
-		if err := nvmf.reconnectSubsystems(); err != nil {
+		if err := reconnectSubsystems(spdkNode); err != nil {
 			klog.Errorf("Error: %v\n", err)
 			continue
 		}
