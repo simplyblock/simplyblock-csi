@@ -442,9 +442,11 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 					// Call the API for connection details
 					resp, err := nvmf.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
 					if err != nil {
-						fmt.Printf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
+						klog.Errorf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
 						continue
 					}
+
+					klog.Infof("lvol connect resp: %+v", resp)
 
 					var lvolResp []*LvolReconnectResp
 
@@ -457,6 +459,11 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 						return fmt.Errorf("failed to unmarshal connection details: %v", err)
 					}
 
+					if len(lvolResp) == 0 && lvolResp[0] == nil {
+						klog.Errorf("unexpected response format or empty results")
+						continue
+					}
+
 					updatedIP := lvolResp[0].Results[0].IP
 					nqn := lvolResp[0].Results[0].NQN
 					port := lvolResp[0].Results[0].Port
@@ -465,7 +472,7 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 					transport := lvolResp[0].Results[0].Transport
 
 					if currentIP != updatedIP {
-						fmt.Printf("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
+						klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
 
 						cmdLine := []string{
 							"nvme", "connect", "-t", transport,
@@ -475,7 +482,7 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 						err := execWithTimeoutRetry(cmdLine, 40, 1)
 						if err != nil {
 							// go on checking device status in case caused by duplicated request
-							klog.Errorf("command %v failed: %s", cmdLine, err)
+							klog.Errorf("command %s failed: %v", cmdLine, err)
 							return err
 						}
 
@@ -485,7 +492,7 @@ func (nvmf *initiatorNVMf) reconnectSubsystems() error {
 						}
 						err = execWithTimeoutRetry(disconnectCmd, 40, 1)
 						if err != nil {
-							klog.Errorf("command %v failed: %s", disconnectCmd, err)
+							klog.Errorf("command %s failed: %v", disconnectCmd, err)
 							return err
 						}
 					}
