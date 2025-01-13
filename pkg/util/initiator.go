@@ -444,6 +444,17 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 					if currentIP != updatedIP {
 						klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
 
+						// Disconnect the old path
+						disconnectCmd := []string{
+							"nvme", "disconnect", "-d", path.Name,
+						}
+						err = execWithTimeoutRetry(disconnectCmd, 40, 1)
+						if err != nil {
+							klog.Errorf("command %s failed: %v", disconnectCmd, err)
+							return err
+						}
+
+						// Connect the new path
 						cmdLine := []string{
 							"nvme", "connect", "-t", "tcp",
 							"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
@@ -455,15 +466,6 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 							return err
 						}
 
-						// Disconnect the old path
-						disconnectCmd := []string{
-							"nvme", "disconnect", "-d", path.Name,
-						}
-						err = execWithTimeoutRetry(disconnectCmd, 40, 1)
-						if err != nil {
-							klog.Errorf("command %s failed: %v", disconnectCmd, err)
-							return err
-						}
 					}
 				}
 			}
