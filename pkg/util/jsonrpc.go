@@ -109,6 +109,7 @@ type LvStore struct {
 type LvolConnectResp struct {
 	Nqn            string `json:"nqn"`
 	ReconnectDelay int    `json:"reconnect-delay"`
+	NrIoQueues     int    `json:"nr-io-queues"`
 	CtrlLossTmo    int    `json:"ctrl-loss-tmo"`
 	Port           int    `json:"port"`
 	IP             string `json:"ip"`
@@ -289,6 +290,7 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 		"uuid":           lvolID,
 		"nqn":            result[0].Nqn,
 		"reconnectDelay": strconv.Itoa(result[0].ReconnectDelay),
+		"nrIoQueues":     strconv.Itoa(result[0].NrIoQueues),
 		"ctrlLossTmo":    strconv.Itoa(result[0].CtrlLossTmo),
 		"model":          lvolID,
 		"targetType":     "tcp",

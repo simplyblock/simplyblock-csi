@@ -59,6 +59,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (S
 			connections:    connections,
 			nqn:            volumeContext["nqn"],
 			reconnectDelay: volumeContext["reconnectDelay"],
+			nrIoQueues:     volumeContext["nrIoQueues"],
 			ctrlLossTmo:    volumeContext["ctrlLossTmo"],
 			model:          volumeContext["model"],
 			client:         *spdkNode.client,
@@ -80,6 +81,7 @@ type initiatorNVMf struct {
 	connections    []connectionInfo
 	nqn            string
 	reconnectDelay string
+	nrIoQueues     string
 	ctrlLossTmo    string
 	model          string
 	client         RPCClient
@@ -98,6 +100,23 @@ type cachingNodeList struct {
 
 type LVolCachingNodeConnect struct {
 	LvolID string `json:"lvol_id"`
+}
+
+type Subsystem struct {
+	Name  string `json:"Name"`
+	NQN   string `json:"NQN"`
+	Paths []Path `json:"Paths"`
+}
+
+type Path struct {
+	Name      string `json:"Name"`
+	Transport string `json:"Transport"`
+	Address   string `json:"Address"`
+	State     string `json:"State"`
+}
+
+type SubsystemResponse struct {
+	Subsystems []Subsystem `json:"Subsystems"`
 }
 
 func (cache *initiatorCache) Connect() (string, error) {
@@ -269,7 +288,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
 			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", nvmf.ctrlLossTmo,
-			"-c", nvmf.reconnectDelay,
+			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 		if err != nil {
@@ -349,4 +368,126 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 		klog.Infof("command returned: %s", output)
 	}
 	return err
+}
+
+func getLvolIDFromNQN(nqn string) string {
+	parts := strings.Split(nqn, ":lvol:")
+	if len(parts) > 1 {
+		return parts[1]
+	}
+	return ""
+}
+
+func parseAddress(address string) string {
+	parts := strings.Split(address, ",")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "traddr=") {
+			return strings.TrimPrefix(part, "traddr=")
+		}
+	}
+	return ""
+}
+
+func reconnectSubsystems(spdkNode *NodeNVMf) error {
+	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to execute nvme list-subsys: %v", err)
+	}
+
+	var subsystems []SubsystemResponse
+	if err := json.Unmarshal(output, &subsystems); err != nil {
+		return fmt.Errorf("failed to unmarshal nvme list-subsys output: %v", err)
+	}
+
+	for _, host := range subsystems {
+		for _, subsystem := range host.Subsystems {
+			lvolID := getLvolIDFromNQN(subsystem.NQN)
+			if lvolID == "" {
+				continue
+			}
+
+			for _, path := range subsystem.Paths {
+				if path.State == "connecting" {
+					currentIP := parseAddress(path.Address)
+
+					// Call the API for connection details
+					resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+					if err != nil {
+						klog.Errorf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
+						continue
+					}
+
+					var lvolResp []*LvolConnectResp
+
+					respBytes, err := json.Marshal(resp)
+					if err != nil {
+						return fmt.Errorf("failed to marshal response: %v", err)
+					}
+
+					if err := json.Unmarshal(respBytes, &lvolResp); err != nil {
+						return fmt.Errorf("failed to unmarshal connection details: %v", err)
+					}
+
+					if len(lvolResp) == 0 && lvolResp[0] == nil {
+						klog.Errorf("unexpected response format or empty results")
+						continue
+					}
+
+					updatedIP := lvolResp[0].IP
+					nqn := lvolResp[0].Nqn
+					port := lvolResp[0].Port
+					ctrlLossTmo := lvolResp[0].CtrlLossTmo
+					reconnectDelay := lvolResp[0].ReconnectDelay
+					nrIoQueues := lvolResp[0].NrIoQueues
+
+					if currentIP != updatedIP {
+						klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
+
+						// Disconnect the old path
+						disconnectCmd := []string{
+							"nvme", "disconnect", "-d", path.Name,
+						}
+						err = execWithTimeoutRetry(disconnectCmd, 40, 1)
+						if err != nil {
+							klog.Errorf("command %s failed: %v", disconnectCmd, err)
+							return err
+						}
+
+						// Connect the new path
+						cmdLine := []string{
+							"nvme", "connect", "-t", "tcp",
+							"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
+							"-c", strconv.Itoa(reconnectDelay), "-i", strconv.Itoa(nrIoQueues),
+						}
+						err := execWithTimeoutRetry(cmdLine, 40, 1)
+						if err != nil {
+							klog.Errorf("command %s failed: %v", cmdLine, err)
+							return err
+						}
+
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func MonitorConnection(spdkNode *NodeNVMf) {
+
+	for {
+		if spdkNode.client == nil {
+			klog.Errorf("RPC client is not initialized")
+			continue
+		}
+
+		if err := reconnectSubsystems(spdkNode); err != nil {
+			klog.Errorf("Error: %v\n", err)
+			continue
+		}
+
+		time.Sleep(3 * time.Second)
+	}
 }
