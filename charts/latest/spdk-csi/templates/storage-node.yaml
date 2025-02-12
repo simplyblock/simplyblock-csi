@@ -59,6 +59,9 @@ spec:
         - name: etc-simplyblock
           hostPath:
             path: /etc/simplyblock
+        - name: host-root
+          hostPath:
+            path: /
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -73,6 +76,24 @@ spec:
         value: {{ .tolerations.value }}
         {{- end }}
       {{- end }}
+      initContainers:
+      - name: init-snode
+        image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
+        imagePullPolicy: "{{ $.Values.image.simplyblock.pullPolicy }}"
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: host-root
+          mountPath: /host
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          chroot /host /bin/sh -c '
+          modprobe nbd
+          sysctl -w vm.nr_hugepages={{ $.Values.storagenode.numhugepages }}
+          systemctl restart kubelet
+          yum install -y pciutils'
       containers:
       - name: s-node-api-container
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
@@ -90,6 +111,7 @@ spec:
           mountPath: /dev
         - name: etc-simplyblock
           mountPath: /etc/simplyblock
+
 {{- end }}
 
 {{- end -}}

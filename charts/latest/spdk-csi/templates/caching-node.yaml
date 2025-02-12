@@ -55,6 +55,10 @@ spec:
         - name: dev-vol
           hostPath:
             path: /dev
+        - name: host-root
+          hostPath:
+            path: /
+
       hostNetwork: true
       {{- if .Values.cachingnode.tolerations.create }}
       tolerations:
@@ -69,6 +73,24 @@ spec:
         value: {{ .Values.cachingnode.tolerations.value }}
         {{- end }}
       {{- end }}
+      initContainers:
+      - name: init-cnode
+        image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+        imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: host-root
+          mountPath: /host
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          chroot /host /bin/sh -c '
+          modprobe nbd
+          sysctl -w vm.nr_hugepages={{ .Values.cachingnode.numhugepages }}
+          systemctl restart kubelet
+          yum install -y pciutils'
       containers:
       - name: c-node-api-container
         image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
