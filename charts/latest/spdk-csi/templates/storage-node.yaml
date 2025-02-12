@@ -59,6 +59,9 @@ spec:
         - name: etc-simplyblock
           hostPath:
             path: /etc/simplyblock
+        - name: host-root
+          hostPath:
+            path: /
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -108,9 +111,7 @@ spec:
           mountPath: /dev
         - name: etc-simplyblock
           mountPath: /etc/simplyblock
-        - name: host-root
-          hostPath:
-            path: /
+
 {{- end }}
 
 {{- end -}}

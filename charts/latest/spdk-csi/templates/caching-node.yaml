@@ -55,6 +55,10 @@ spec:
         - name: dev-vol
           hostPath:
             path: /dev
+        - name: host-root
+          hostPath:
+            path: /
+            
       hostNetwork: true
       {{- if .Values.cachingnode.tolerations.create }}
       tolerations:
@@ -102,8 +106,5 @@ spec:
         volumeMounts:
         - name: dev-vol
           mountPath: /dev
-        - name: host-root
-          hostPath:
-            path: /
 
 {{- end -}}

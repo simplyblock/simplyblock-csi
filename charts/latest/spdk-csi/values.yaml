@@ -126,7 +126,7 @@ cachingnode:
   spdkMem:
   spdkImage: 
   multipathing: true
-  numhugepages: 2048
+  numhugepages: 4096
   tolerations:
     create: false
     operator: Exists
