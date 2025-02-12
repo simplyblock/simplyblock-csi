@@ -46,18 +46,33 @@ spec:
         - "-c"
         - |
           chroot /host /bin/sh -c '
-          if command -v apt-get &> /dev/null; then
-            apt-get update && apt-get install -y nvme-cli;
-          elif command -v dnf &> /dev/null; then
-            dnf install -y nvme-cli;
-          elif command -v yum &> /dev/null; then
-            yum install -y nvme-cli;
-          elif command -v zypper &> /dev/null; then
-            zypper install -y nvme-cli;
-          else
-            echo "Unsupported package manager"; exit 1;
+          . /etc/os-release
+          case "$ID" in
+            ubuntu|debian)
+              INSTALL_CMD="apt-get update && apt-get install -y"
+              ;;
+            centos|rhel|fedora|almalinux|rocky)
+              INSTALL_CMD="dnf install -y"
+              ;;
+            suse|opensuse-leap)
+              INSTALL_CMD="zypper install -y"
+              ;;
+            *)
+              echo "Unsupported Linux distribution: $ID"
+              exit 1
+              ;;
+          esac
+
+          if ! command -v nvme &> /dev/null; then
+            $INSTALL_CMD nvme-cli
           fi
-          modprobe nvme-tcp'
+          
+          if ! lsmod | grep -q nvme_tcp; then
+            echo "Loading nvme-tcp module..."
+            modprobe nvme-tcp || echo "Failed to load nvme-tcp"
+          else
+            echo "nvme-tcp module is already loaded"
+          fi'
       containers:
       - name: spdkcsi-registrar
         securityContext:
