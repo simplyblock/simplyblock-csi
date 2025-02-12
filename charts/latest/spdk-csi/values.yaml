@@ -126,6 +126,7 @@ cachingnode:
   spdkMem:
   spdkImage: 
   multipathing: true
+  numhugepages: 2048
   tolerations:
     create: false
     operator: Exists
@@ -145,6 +146,7 @@ storagenode:
   numPartitions: 0
   numDevices: 1
   numDistribs: 2
+  numhugepages: 2048
   disableHAJM: false
   enableTestDevice: false
   dataNics:

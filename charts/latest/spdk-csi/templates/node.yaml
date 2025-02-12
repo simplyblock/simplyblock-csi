@@ -32,6 +32,32 @@ spec:
         value: {{ .Values.node.tolerations.value }}
         {{- end }}
       {{- end }}
+      initContainers:
+      - name: init-nvme
+        image: "{{ .Values.image.spdkcsi.repository }}:{{ .Values.image.spdkcsi.tag }}"
+        imagePullPolicy: {{ .Values.image.spdkcsi.pullPolicy }}
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: host-root
+          mountPath: /host
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          chroot /host /bin/sh -c '
+          if command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y nvme-cli;
+          elif command -v dnf &> /dev/null; then
+            dnf install -y nvme-cli;
+          elif command -v yum &> /dev/null; then
+            yum install -y nvme-cli;
+          elif command -v zypper &> /dev/null; then
+            zypper install -y nvme-cli;
+          else
+            echo "Unsupported package manager"; exit 1;
+          fi
+          modprobe nvme-tcp'
       containers:
       - name: spdkcsi-registrar
         securityContext:
@@ -114,6 +140,9 @@ spec:
       - name: host-sys
         hostPath:
           path: /sys
+      - name: host-root
+        hostPath:
+          path: /
       - name: spdkcsi-nodeserver-config
         configMap:
           name: spdkcsi-nodeservercm
