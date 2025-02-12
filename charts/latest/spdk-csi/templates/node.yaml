@@ -66,8 +66,8 @@ spec:
           if ! command -v nvme &> /dev/null; then
             $INSTALL_CMD nvme-cli
           fi
-          
-          if ! lsmod | grep -q nvme_tcp; then
+
+          if ! lsmod | grep nvme_tcp; then
             echo "Loading nvme-tcp module..."
             modprobe nvme-tcp || echo "Failed to load nvme-tcp"
           else
