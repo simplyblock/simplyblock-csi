@@ -93,7 +93,7 @@ spec:
           modprobe nbd
           sysctl -w vm.nr_hugepages={{ $.Values.storagenode.numhugepages }}
           systemctl restart kubelet
-          yum install pciutils'
+          yum install -y pciutils'
       containers:
       - name: s-node-api-container
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"

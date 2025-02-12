@@ -58,7 +58,7 @@ spec:
         - name: host-root
           hostPath:
             path: /
-            
+
       hostNetwork: true
       {{- if .Values.cachingnode.tolerations.create }}
       tolerations:
@@ -90,7 +90,7 @@ spec:
           modprobe nbd
           sysctl -w vm.nr_hugepages={{ .Values.cachingnode.numhugepages }}
           systemctl restart kubelet
-          yum install pciutils'
+          yum install -y pciutils'
       containers:
       - name: c-node-api-container
         image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
