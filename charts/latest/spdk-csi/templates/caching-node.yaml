@@ -88,8 +88,6 @@ spec:
         - |
           chroot /host /bin/sh -c '
           modprobe nbd
-          sysctl -w vm.nr_hugepages={{ .Values.cachingnode.numhugepages }}
-          systemctl restart kubelet
           yum install -y pciutils'
       containers:
       - name: c-node-api-container
