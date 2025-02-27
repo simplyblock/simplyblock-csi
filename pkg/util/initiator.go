@@ -284,7 +284,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 
 	// nvme connect -t tcp -a 192.168.1.100 -s 4420 -n "nqn"
 	klog.Info("connections", nvmf.connections)
-	for _, conn := range nvmf.connections {
+	for i, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
 			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", nvmf.ctrlLossTmo,
@@ -294,6 +294,20 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		if err != nil {
 			// go on checking device status in case caused by duplicated request
 			klog.Errorf("command %v failed: %s", cmdLine, err)
+
+			// disconnect the primary connection if secondary connection fails 
+			if i == 1 {
+				klog.Warning("Secondary connection failed, disconnecting primary...")
+
+				disconnectCmd := []string{"nvme", "disconnect", "-n", nvmf.nqn}
+				disconnectErr := execWithTimeoutRetry(disconnectCmd, 40, 1)
+				if disconnectErr != nil {
+					klog.Errorf("Failed to disconnect primary: %v", disconnectErr)
+				} else {
+					klog.Infof("Primary connection disconnected due to secondary failure")
+				}
+			}
+
 			return "", err
 		}
 	}
