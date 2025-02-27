@@ -295,7 +295,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			// go on checking device status in case caused by duplicated request
 			klog.Errorf("command %v failed: %s", cmdLine, err)
 
-			// If secondary connection (i == 1) fails, disconnect the primary (i == 0)
+			// disconnect the primary connection if secondary connection fails 
 			if i == 1 {
 				klog.Warning("Secondary connection failed, disconnecting primary...")
 
