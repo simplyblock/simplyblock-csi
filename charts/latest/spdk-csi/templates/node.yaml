@@ -51,7 +51,7 @@ spec:
             ubuntu|debian)
               INSTALL_CMD="apt-get update && apt-get install -y"
               ;;
-            centos|rhel|fedora|almalinux|rocky)
+            centos|rhel|fedora|almalinux|rocky|amzn)
               INSTALL_CMD="dnf install -y"
               ;;
             suse|opensuse-leap)
