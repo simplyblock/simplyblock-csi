@@ -59,9 +59,11 @@ spec:
         - name: etc-simplyblock
           hostPath:
             path: /etc/simplyblock
+        {{- if .Values.storagenode.initContainers.enabled }}
         - name: host-root
           hostPath:
             path: /
+        {{- end }}
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -76,6 +78,8 @@ spec:
         value: {{ .tolerations.value }}
         {{- end }}
       {{- end }}
+
+      {{- if .Values.storagenode.initContainers.enabled }}
       initContainers:
       - name: init-snode
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
@@ -92,6 +96,7 @@ spec:
           chroot /host /bin/sh -c '
           modprobe nbd
           yum install -y pciutils'
+      {{- end }}
       containers:
       - name: s-node-api-container
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"

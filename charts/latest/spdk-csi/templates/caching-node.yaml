@@ -55,9 +55,11 @@ spec:
         - name: dev-vol
           hostPath:
             path: /dev
+        {{- if .Values.storagenode.initContainers.enabled }}
         - name: host-root
           hostPath:
             path: /
+        {{- end }}
 
       hostNetwork: true
       {{- if .Values.cachingnode.tolerations.create }}
@@ -73,6 +75,7 @@ spec:
         value: {{ .Values.cachingnode.tolerations.value }}
         {{- end }}
       {{- end }}
+      {{- if .Values.storagenode.initContainers.enabled }}
       initContainers:
       - name: init-cnode
         image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
@@ -89,6 +92,7 @@ spec:
           chroot /host /bin/sh -c '
           modprobe nbd
           yum install -y pciutils'
+      {{- end }}
       containers:
       - name: c-node-api-container
         image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
