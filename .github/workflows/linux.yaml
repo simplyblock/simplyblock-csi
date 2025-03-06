@@ -65,16 +65,30 @@ jobs:
         SHORT_SHA=$(echo ${{ env.SHA }} | head -c 8)
         make image
        
+        # Docker Hub Tags
         docker tag simplyblock/spdkcsi:latest-amd64 simplyblock/spdkcsi:$TAG-amd64
         docker tag simplyblock/spdkcsi:latest-arm64 simplyblock/spdkcsi:$TAG-arm64
 
+
+        # ECR Tags
+        docker tag simplyblock/spdkcsi:latest-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-amd64
+        docker tag simplyblock/spdkcsi:latest-arm64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
+
+        # Push to Docker Hub
         docker push simplyblock/spdkcsi:$TAG-amd64
         docker push simplyblock/spdkcsi:$TAG-arm64
 
         docker buildx imagetools create -t simplyblock/spdkcsi:$TAG simplyblock/spdkcsi:$TAG-amd64 simplyblock/spdkcsi:$TAG-arm64
-
         docker buildx imagetools create -t simplyblock/spdkcsi:$TAG-$SHORT_SHA simplyblock/spdkcsi:$TAG-amd64 simplyblock/spdkcsi:$TAG-arm64
-    
+
+        # Push to Amazon ECR
+        docker push public.ecr.aws/simply-block/spdkcsi:$TAG-amd64
+        docker push public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
+
+        docker buildx imagetools create -t public.ecr.aws/simply-block/spdkcsi:$TAG public.ecr.aws/simply-block/spdkcsi:$TAG-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
+        docker buildx imagetools create -t public.ecr.aws/simply-block/spdkcsi:$TAG-$SHORT_SHA public.ecr.aws/simply-block/spdkcsi:$TAG-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
+
         if [ "${{ github.ref }}" = "refs/heads/master" ]; then
           docker buildx imagetools create -t simplyblock/spdkcsi:latest simplyblock/spdkcsi:$TAG-amd64 simplyblock/spdkcsi:$TAG-arm64
+          docker buildx imagetools create -t public.ecr.aws/simply-block/spdkcsi:latest public.ecr.aws/simply-block/spdkcsi:$TAG-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
         fi
