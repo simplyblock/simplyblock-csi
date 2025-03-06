@@ -112,6 +112,8 @@ benchmarks: 0
 # AL2023_x86_64_STANDARD: ens5
 
 node:
+  initContainers:
+    enabled: false
   tolerations:
     create: false
     operator: Exists
@@ -127,6 +129,8 @@ cachingnode:
   spdkMem:
   spdkImage: 
   multipathing: true
+  initContainers:
+    enabled: false
   tolerations:
     create: false
     operator: Exists
@@ -151,6 +155,8 @@ storagenode:
   dataNics:
   iobufSmallPoolCount: 
   iobufLargePoolCount:
+  initContainers:
+    enabled: false
   daemonsets:
   - name: storage-node-ds
     appLabel: storage-node

@@ -32,6 +32,7 @@ spec:
         value: {{ .Values.node.tolerations.value }}
         {{- end }}
       {{- end }}
+      {{- if .Values.node.initContainers.enabled }}
       initContainers:
       - name: init-nvme
         image: "{{ .Values.image.spdkcsi.repository }}:{{ .Values.image.spdkcsi.tag }}"
@@ -73,6 +74,7 @@ spec:
           else
             echo "nvme-tcp module is already loaded"
           fi'
+      {{- end }}
       containers:
       - name: spdkcsi-registrar
         securityContext:
@@ -155,9 +157,11 @@ spec:
       - name: host-sys
         hostPath:
           path: /sys
+      {{- if .Values.node.initContainers.enabled }}
       - name: host-root
         hostPath:
           path: /
+      {{- end }}
       - name: spdkcsi-nodeserver-config
         configMap:
           name: spdkcsi-nodeservercm
