@@ -13,8 +13,9 @@ spec:
             name: mgmt-api-script-cm
       containers:
       - name: mgmt-api
-        image: python:3.10
+        image: "{{ $.Values.image.mgmtAPI.repository }}:{{ $.Values.image.mgmtAPI.tag }}"
         command: ["/bin/sh", "-c"]
+        imagePullPolicy: "{{ $.Values.image.mgmtAPI.pullPolicy }}"
         args:
           - "pip install requests && python3 /config/action.py"
         env:
