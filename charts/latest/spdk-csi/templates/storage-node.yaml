@@ -59,7 +59,7 @@ spec:
         - name: etc-simplyblock
           hostPath:
             path: /etc/simplyblock
-        {{- if .Values.storagenode.initContainers.enabled }}
+        {{- if $.Values.storagenode.initContainers.enabled }}
         - name: host-root
           hostPath:
             path: /
@@ -79,7 +79,7 @@ spec:
         {{- end }}
       {{- end }}
 
-      {{- if .Values.storagenode.initContainers.enabled }}
+      {{- if $.Values.storagenode.initContainers.enabled }}
       initContainers:
       - name: init-snode
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
