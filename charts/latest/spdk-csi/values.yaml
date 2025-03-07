@@ -34,8 +34,7 @@ image:
     tag: v0.11.0
     pullPolicy: Always
   simplyblock:
-    repository: public.ecr.aws/simply-block/simplyblock
-    #simplyblock/simplyblock
+    repository: simplyblock/simplyblock
     tag: main
     pullPolicy: Always
   storageNode:
@@ -45,6 +44,10 @@ image:
   cachingNode:
     repository: simplyblock/caching-node-handler
     tag: latest
+    pullPolicy: Always
+  mgmtAPI:
+    repository: python
+    tag: 3.10
     pullPolicy: Always
 serviceAccount:
   # Specifies whether a serviceAccount should be created
