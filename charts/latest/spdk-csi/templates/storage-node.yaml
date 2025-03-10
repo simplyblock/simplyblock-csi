@@ -58,7 +58,7 @@ spec:
             path: /dev
         - name: etc-simplyblock
           hostPath:
-            path: /etc/simplyblock
+            path: /var/simplyblock
         {{- if $.Values.storagenode.initContainers.enabled }}
         - name: host-root
           hostPath:
