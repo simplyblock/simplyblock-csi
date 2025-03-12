@@ -40,8 +40,6 @@ spec:
               key: config.json
         - name: IFNAME
           value: "{{ .Values.storagenode.ifname }}"
-        - name: CPUMASK
-          value: "{{ .Values.storagenode.cpuMask }}"
         - name: MAXLVOL
           value: "{{ .Values.storagenode.maxLvol }}"
         - name: MAXSNAP
