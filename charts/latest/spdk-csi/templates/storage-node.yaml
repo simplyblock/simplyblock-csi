@@ -107,6 +107,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: CPUMASK
+          value: "{{ $.Values.storagenode.cpuMask }}"
         securityContext:
           privileged: true
         volumeMounts:
