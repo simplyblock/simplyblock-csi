@@ -42,6 +42,8 @@ spec:
           value: "{{ .Values.storagenode.ifname }}"
         - name: MAXLVOL
           value: "{{ .Values.storagenode.maxLvol }}"
+        - name: CPUMASK
+          value: "{{ .Values.storagenode.cpuMask }}"
         - name: MAXSNAP
           value: "{{ .Values.storagenode.maxSnap }}"
         - name: MAXPROV
