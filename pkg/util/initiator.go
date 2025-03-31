@@ -44,6 +44,8 @@ type SpdkCsiInitiator interface {
 
 const DevDiskByID = "/dev/disk/by-id/*%s*"
 
+var deviceStates = make(map[string]string)
+
 func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
 	switch targetType {
@@ -402,7 +404,7 @@ func parseAddress(address string) string {
 	return ""
 }
 
-func getPathANAState(pathName string) (string, error) {
+func storePathANAState(pathName string) (string, error) {
 	cmd := exec.Command("nvme", "ana-log", fmt.Sprintf("/dev/%s", pathName), "-o", "json")
 	output, err := cmd.Output()
 	if err != nil {
@@ -423,7 +425,13 @@ func getPathANAState(pathName string) (string, error) {
 		return "", fmt.Errorf("no ANA state found for %s", pathName)
 	}
 
-	return anaData.Descriptors[0].State, nil
+	anaState := anaData.Descriptors[0].State
+
+	if _, exists := deviceStates[pathName]; !exists {
+		deviceStates[pathName] = anaState
+	}
+
+	return anaState, nil
 }
 
 func reconnectSubsystems(spdkNode *NodeNVMf) error {
@@ -446,10 +454,17 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 			}
 
 			for _, path := range subsystem.Paths {
-				anaState, err := getPathANAState(path.Name)
+
+				_, err := storePathANAState(path.Name)
 				if err != nil {
-					klog.Errorf("failed to get ANA state for path %s: %v", path.Name, err)
+					klog.Errorf("failed to store ANA state for path %s: %v", path.Name, err)
 					continue
+				}
+
+				anaState, exists := deviceStates[path.Name]
+				if !exists {
+					klog.Errorf("ANA state for path %s not Found!", path.Name)
+					continue		
 				}
 
 				if path.State == "connecting" && anaState == "optimized" {
