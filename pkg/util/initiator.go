@@ -44,8 +44,6 @@ type SpdkCsiInitiator interface {
 
 const DevDiskByID = "/dev/disk/by-id/*%s*"
 
-var deviceStates = make(map[string]string)
-
 func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
 	switch targetType {
@@ -297,7 +295,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			// go on checking device status in case caused by duplicated request
 			klog.Errorf("command %v failed: %s", cmdLine, err)
 
-			// disconnect the primary connection if secondary connection fails
+			// disconnect the primary connection if secondary connection fails 
 			if i == 1 {
 				klog.Warning("Secondary connection failed, disconnecting primary...")
 
@@ -404,36 +402,6 @@ func parseAddress(address string) string {
 	return ""
 }
 
-func storePathANAState(pathName string) (string, error) {
-	cmd := exec.Command("nvme", "ana-log", fmt.Sprintf("/dev/%s", pathName), "-o", "json")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to execute nvme ana-log for %s: %v", pathName, err)
-	}
-
-	var anaData struct {
-		Descriptors []struct {
-			State string `json:"state"`
-		} `json:"ANA DESC LIST "`
-	}
-
-	if err := json.Unmarshal(output, &anaData); err != nil {
-		return "", fmt.Errorf("failed to parse ANA log output for %s: %v", pathName, err)
-	}
-
-	if len(anaData.Descriptors) == 0 {
-		return "", fmt.Errorf("no ANA state found for %s", pathName)
-	}
-
-	anaState := anaData.Descriptors[0].State
-
-	if _, exists := deviceStates[pathName]; !exists {
-		deviceStates[pathName] = anaState
-	}
-
-	return anaState, nil
-}
-
 func reconnectSubsystems(spdkNode *NodeNVMf) error {
 	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
 	output, err := cmd.Output()
@@ -454,21 +422,12 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 			}
 
 			for _, path := range subsystem.Paths {
-
-				_, err := storePathANAState(path.Name)
-				if err != nil {
-					klog.Errorf("failed to store ANA state for path %s: %v", path.Name, err)
-					continue
-				}
-
-				anaState, exists := deviceStates[path.Name]
-				if !exists {
-					klog.Errorf("ANA state for path %s not Found!", path.Name)
-					continue		
-				}
-
-				if path.State == "connecting" && anaState == "optimized" {
+				
+				if path.State == "connecting" {
 					currentIP := parseAddress(path.Address)
+					if len(subsystem.Paths) > 0 {
+						currentIP = parseAddress(subsystem.Paths[1].Address)
+					}
 
 					// Call the API for connection details
 					resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
