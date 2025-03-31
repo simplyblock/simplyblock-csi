@@ -295,7 +295,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			// go on checking device status in case caused by duplicated request
 			klog.Errorf("command %v failed: %s", cmdLine, err)
 
-			// disconnect the primary connection if secondary connection fails 
+			// disconnect the primary connection if secondary connection fails
 			if i == 1 {
 				klog.Warning("Secondary connection failed, disconnecting primary...")
 
@@ -410,23 +410,21 @@ func getPathANAState(pathName string) (string, error) {
 	}
 
 	var anaData struct {
-		ANAList []struct {
+		Descriptors []struct {
 			State string `json:"state"`
 		} `json:"ANA DESC LIST "`
 	}
-
 
 	if err := json.Unmarshal(output, &anaData); err != nil {
 		return "", fmt.Errorf("failed to parse ANA log output for %s: %v", pathName, err)
 	}
 
-	if len(anaData.ANAList) == 0 {
+	if len(anaData.Descriptors) == 0 {
 		return "", fmt.Errorf("no ANA state found for %s", pathName)
 	}
 
-	return anaData.ANAList[0].State, nil
+	return anaData.Descriptors[0].State, nil
 }
-
 
 func reconnectSubsystems(spdkNode *NodeNVMf) error {
 	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
