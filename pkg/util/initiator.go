@@ -402,6 +402,32 @@ func parseAddress(address string) string {
 	return ""
 }
 
+func getPathANAState(pathName string) (string, error) {
+	cmd := exec.Command("nvme", "ana-log", fmt.Sprintf("/dev/%s", pathName), "-o", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to execute nvme ana-log for %s: %v", pathName, err)
+	}
+
+	var anaData struct {
+		ANAList []struct {
+			State string `json:"state"`
+		} `json:"ANA DESC LIST "`
+	}
+
+
+	if err := json.Unmarshal(output, &anaData); err != nil {
+		return "", fmt.Errorf("failed to parse ANA log output for %s: %v", pathName, err)
+	}
+
+	if len(anaData.ANAList) == 0 {
+		return "", fmt.Errorf("no ANA state found for %s", pathName)
+	}
+
+	return anaData.ANAList[0].State, nil
+}
+
+
 func reconnectSubsystems(spdkNode *NodeNVMf) error {
 	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
 	output, err := cmd.Output()
@@ -422,7 +448,13 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 			}
 
 			for _, path := range subsystem.Paths {
-				if path.State == "connecting" {
+				anaState, err := getPathANAState(path.Name)
+				if err != nil {
+					klog.Errorf("failed to get ANA state for path %s: %v", path.Name, err)
+					continue
+				}
+
+				if path.State == "connecting" && anaState == "optimized" {
 					currentIP := parseAddress(path.Address)
 
 					// Call the API for connection details
