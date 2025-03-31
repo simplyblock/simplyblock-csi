@@ -113,6 +113,7 @@ type Path struct {
 	Transport string `json:"Transport"`
 	Address   string `json:"Address"`
 	State     string `json:"State"`
+	ANAState  string `json:"ANAState"`
 }
 
 type SubsystemResponse struct {
@@ -295,7 +296,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			// go on checking device status in case caused by duplicated request
 			klog.Errorf("command %v failed: %s", cmdLine, err)
 
-			// disconnect the primary connection if secondary connection fails 
+			// disconnect the primary connection if secondary connection fails
 			if i == 1 {
 				klog.Warning("Secondary connection failed, disconnecting primary...")
 
@@ -384,6 +385,46 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 	return err
 }
 
+func getNVMeDevicePaths() ([]string, error) {
+	cmd := exec.Command("nvme", "list", "-o", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute nvme list: %v", err)
+	}
+
+	var response struct {
+		Devices []struct {
+			DevicePath string `json:"DevicePath"`
+		} `json:"Devices"`
+	}
+
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal nvme list output: %v", err)
+	}
+
+	var paths []string
+	for _, device := range response.Devices {
+		paths = append(paths, device.DevicePath)
+	}
+
+	return paths, nil
+}
+
+func getSubsystemsForDevice(devicePath string) ([]SubsystemResponse, error) {
+	cmd := exec.Command("nvme", "list-subsys", "-o", "json", devicePath)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute nvme list-subsys: %v", err)
+	}
+
+	var subsystems []SubsystemResponse
+	if err := json.Unmarshal(output, &subsystems); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal nvme list-subsys output: %v", err)
+	}
+
+	return subsystems, nil
+}
+
 func getLvolIDFromNQN(nqn string) string {
 	parts := strings.Split(nqn, ":lvol:")
 	if len(parts) > 1 {
@@ -403,89 +444,91 @@ func parseAddress(address string) string {
 }
 
 func reconnectSubsystems(spdkNode *NodeNVMf) error {
-	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
-	output, err := cmd.Output()
+
+	devicePaths, err := getNVMeDevicePaths()
 	if err != nil {
-		return fmt.Errorf("failed to execute nvme list-subsys: %v", err)
+		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
+	for _, devicePath := range devicePaths {
+		subsystems, err := getSubsystemsForDevice(devicePath)
+		if err != nil {
+			klog.Errorf("failed to get subsystems for device %s: %v", devicePath, err)
+			continue
+		}
 
-	var subsystems []SubsystemResponse
-	if err := json.Unmarshal(output, &subsystems); err != nil {
-		return fmt.Errorf("failed to unmarshal nvme list-subsys output: %v", err)
-	}
+		for _, host := range subsystems {
+			for _, subsystem := range host.Subsystems {
+				lvolID := getLvolIDFromNQN(subsystem.NQN)
+				if lvolID == "" {
+					continue
+				}
 
-	for _, host := range subsystems {
-		for _, subsystem := range host.Subsystems {
-			lvolID := getLvolIDFromNQN(subsystem.NQN)
-			if lvolID == "" {
-				continue
-			}
+				for _, path := range subsystem.Paths {
 
-			for _, path := range subsystem.Paths {
-				if path.State == "connecting" {
-					currentIP := parseAddress(path.Address)
+					if path.State == "connecting" && path.ANAState == "optimized" {
+						currentIP := parseAddress(path.Address)
 
-					// Call the API for connection details
-					resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
-					if err != nil {
-						klog.Errorf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
-						continue
-					}
-
-					var lvolResp []*LvolConnectResp
-
-					respBytes, err := json.Marshal(resp)
-					if err != nil {
-						return fmt.Errorf("failed to marshal response: %v", err)
-					}
-
-					if err := json.Unmarshal(respBytes, &lvolResp); err != nil {
-						return fmt.Errorf("failed to unmarshal connection details: %v", err)
-					}
-
-					if len(lvolResp) == 0 && lvolResp[0] == nil {
-						klog.Errorf("unexpected response format or empty results")
-						continue
-					}
-
-					updatedIP := lvolResp[0].IP
-					nqn := lvolResp[0].Nqn
-					port := lvolResp[0].Port
-					ctrlLossTmo := lvolResp[0].CtrlLossTmo
-					reconnectDelay := lvolResp[0].ReconnectDelay
-					nrIoQueues := lvolResp[0].NrIoQueues
-
-					if currentIP != updatedIP {
-						klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
-
-						// Disconnect the old path
-						disconnectCmd := []string{
-							"nvme", "disconnect", "-d", path.Name,
-						}
-						err = execWithTimeoutRetry(disconnectCmd, 40, 1)
+						// Call the API for connection details
+						resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
 						if err != nil {
-							klog.Errorf("command %s failed: %v", disconnectCmd, err)
-							return err
+							klog.Errorf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
+							continue
 						}
 
-						// Connect the new path
-						cmdLine := []string{
-							"nvme", "connect", "-t", "tcp",
-							"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
-							"-c", strconv.Itoa(reconnectDelay), "-i", strconv.Itoa(nrIoQueues),
-						}
-						err := execWithTimeoutRetry(cmdLine, 40, 1)
+						var lvolResp []*LvolConnectResp
+
+						respBytes, err := json.Marshal(resp)
 						if err != nil {
-							klog.Errorf("command %s failed: %v", cmdLine, err)
-							return err
+							return fmt.Errorf("failed to marshal response: %v", err)
 						}
 
+						if err := json.Unmarshal(respBytes, &lvolResp); err != nil {
+							return fmt.Errorf("failed to unmarshal connection details: %v", err)
+						}
+
+						if len(lvolResp) == 0 && lvolResp[0] == nil {
+							klog.Errorf("unexpected response format or empty results")
+							continue
+						}
+
+						updatedIP := lvolResp[0].IP
+						nqn := lvolResp[0].Nqn
+						port := lvolResp[0].Port
+						ctrlLossTmo := lvolResp[0].CtrlLossTmo
+						reconnectDelay := lvolResp[0].ReconnectDelay
+						nrIoQueues := lvolResp[0].NrIoQueues
+
+						if currentIP != updatedIP {
+							klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
+
+							// Disconnect the old path
+							disconnectCmd := []string{
+								"nvme", "disconnect", "-d", path.Name,
+							}
+							err = execWithTimeoutRetry(disconnectCmd, 40, 1)
+							if err != nil {
+								klog.Errorf("command %s failed: %v", disconnectCmd, err)
+								return err
+							}
+
+							// Connect the new path
+							cmdLine := []string{
+								"nvme", "connect", "-t", "tcp",
+								"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
+								"-c", strconv.Itoa(reconnectDelay), "-i", strconv.Itoa(nrIoQueues),
+							}
+							err := execWithTimeoutRetry(cmdLine, 40, 1)
+							if err != nil {
+								klog.Errorf("command %s failed: %v", cmdLine, err)
+								return err
+							}
+
+						}
 					}
 				}
 			}
 		}
 	}
-
 	return nil
 }
 
