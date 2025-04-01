@@ -106,7 +106,7 @@ data:
 
         print(f"Cluster not activated: Number of 'online' storage nodes is less than {total_value} after maximum retries.")
 
-    # Load environment variables
+    print("Loaded environment variables")
     action_type = os.getenv("ACTION_TYPE")
     uuid = os.getenv("SNODE_UUID", "")
     distr_ndcs = int(os.getenv("DISTR_NDCS", 1)) if os.getenv("DISTR_NDCS", "").isdigit() else 1
@@ -124,7 +124,7 @@ data:
         "Authorization": f"{cluster_uuid} {cluster_secret}"
     }
 
-    # Check the action type and perform the appropriate action
+    print(f"action type: {action_type}. performing appropriate action")
     if action_type == "cl_activate":
         # Check if we should activate the cluster
         activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, distr_ndcs, distr_npcs)
