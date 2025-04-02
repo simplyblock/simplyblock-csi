@@ -179,3 +179,13 @@ storagenode:
       effect: 
       key: 
       value:
+  - name: storage-node-ds-restart
+    appLabel: storage-node-restart
+    nodeSelector: simplyblock-storage-plane-restart
+    tolerations:
+      create: false
+      operator: Exists
+      effect: 
+      key: 
+      value:
+      
