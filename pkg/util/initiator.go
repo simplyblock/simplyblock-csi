@@ -293,17 +293,19 @@ func (nvmf *initiatorNVMf) Disconnect() error {
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
-	if len(devicePaths) == 0 {
-		klog.Infof("No device found matching %s, maybe already disconnected", deviceGlob)
-		return nil
-	}
+
 
 	var paths []Path
 
 	for _, devicePath := range devicePaths {
-		subsystems, err := getSubsystemsForDevice(devicePath)
+		realPath, err := filepath.EvalSymlinks(devicePath)
 		if err != nil {
-			return fmt.Errorf("Failed to get subsystems for %s: %v", devicePath, err)
+			return fmt.Errorf("Failed to resolve device path from %s: %v", devicePath, err)
+		}
+
+		subsystems, err := getSubsystemsForDevice(realPath)
+		if err != nil {
+			return fmt.Errorf("Failed to get subsystems for %s: %v", realPath, err)
 		}
 
 		for _, host := range subsystems {
