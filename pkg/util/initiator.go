@@ -391,7 +391,7 @@ func disconnectDevicePath(devicePath string) error {
 	})
 
 	for _, p := range paths {
-		klog.Infof("Disconnecting device %s (ANA state: %s)", p.Name, p.ANAState)
+		klog.Infof("Disconnecting device %s", p.Name)
 		disconnectCmd := []string{"nvme", "disconnect", "-d", p.Name}
 		err := execWithTimeoutRetry(disconnectCmd, 40, 1)
 		if err != nil {
