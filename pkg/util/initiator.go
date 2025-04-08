@@ -303,7 +303,7 @@ func (nvmf *initiatorNVMf) Disconnect() error {
 	for _, devicePath := range devicePaths {
 		subsystems, err := getSubsystemsForDevice(devicePath)
 		if err != nil {
-			return klog.Errorf("Failed to get subsystems for %s: %v", devicePath, err)
+			return fmt.Errorf("Failed to get subsystems for %s: %v", devicePath, err)
 		}
 
 		for _, host := range subsystems {
