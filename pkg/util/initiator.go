@@ -266,10 +266,15 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			if i == 1 {
 				klog.Warning("Secondary connection failed, disconnecting primary...")
 
-				disconnectCmd := []string{"nvme", "disconnect", "-n", nvmf.nqn}
-				disconnectErr := execWithTimeoutRetry(disconnectCmd, 40, 1)
-				if disconnectErr != nil {
-					klog.Errorf("Failed to disconnect primary: %v", disconnectErr)
+				deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
+				devicePath, err := waitForDeviceReady(deviceGlob, 20)
+				if err != nil {
+					return "", err
+				}
+				err = disconnectDevicePath(devicePath)
+				if err != nil {
+					klog.Errorf("Failed to disconnect primary: %v", err)
+					return "", err
 				} else {
 					klog.Infof("Primary connection disconnected due to secondary failure")
 				}
@@ -289,51 +294,15 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 
 func (nvmf *initiatorNVMf) Disconnect() error {
 	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
-	devicePaths, err := filepath.Glob(deviceGlob)
+	devicePath, err := filepath.Glob(deviceGlob)
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
 
+	err = disconnectDevicePath(devicePath[0])
 
-	var paths []Path
-
-	for _, devicePath := range devicePaths {
-		realPath, err := filepath.EvalSymlinks(devicePath)
-		if err != nil {
-			return fmt.Errorf("Failed to resolve device path from %s: %v", devicePath, err)
-		}
-
-		subsystems, err := getSubsystemsForDevice(realPath)
-		if err != nil {
-			return fmt.Errorf("Failed to get subsystems for %s: %v", realPath, err)
-		}
-
-		for _, host := range subsystems {
-			for _, subsystem := range host.Subsystems {
-				for _, path := range subsystem.Paths {
-					paths = append(paths, Path{
-						Name:     path.Name,
-						ANAState: path.ANAState,
-					})
-				}
-			}
-		}
-	}
-
-	sort.Slice(paths, func(i, j int) bool {
-		if paths[i].ANAState == "optimized" && paths[j].ANAState != "optimized" {
-			return false
-		}
-		return true
-	})
-
-	for _, p := range paths {
-		klog.Infof("Disconnecting device %s (ANA state: %s)", p.Name, p.ANAState)
-		disconnectCmd := []string{"nvme", "disconnect", "-d", p.Name}
-		err := execWithTimeoutRetry(disconnectCmd, 40, 1)
-		if err != nil {
-			klog.Errorf("Failed to disconnect device %s: %v", p.Name, err)
-		}
+	if err != nil {
+		return err
 	}
 
 	return waitForDeviceGone(deviceGlob)
@@ -388,6 +357,49 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 		klog.Infof("command returned: %s", output)
 	}
 	return err
+}
+
+func disconnectDevicePath(devicePath string) error {
+	var paths []Path
+
+	realPath, err := filepath.EvalSymlinks(devicePath)
+	if err != nil {
+		return fmt.Errorf("Failed to resolve device path from %s: %v", devicePath, err)
+	}
+
+	subsystems, err := getSubsystemsForDevice(realPath)
+	if err != nil {
+		return fmt.Errorf("Failed to get subsystems for %s: %v", realPath, err)
+	}
+
+	for _, host := range subsystems {
+		for _, subsystem := range host.Subsystems {
+			for _, path := range subsystem.Paths {
+				paths = append(paths, Path{
+					Name:     path.Name,
+					ANAState: path.ANAState,
+				})
+			}
+		}
+	}
+
+	sort.Slice(paths, func(i, j int) bool {
+		if paths[i].ANAState == "optimized" && paths[j].ANAState != "optimized" {
+			return false
+		}
+		return true
+	})
+
+	for _, p := range paths {
+		klog.Infof("Disconnecting device %s (ANA state: %s)", p.Name, p.ANAState)
+		disconnectCmd := []string{"nvme", "disconnect", "-d", p.Name}
+		err := execWithTimeoutRetry(disconnectCmd, 40, 1)
+		if err != nil {
+			klog.Errorf("Failed to disconnect device %s: %v", p.Name, err)
+		}
+	}
+
+	return nil
 }
 
 func getNVMeDevicePaths() ([]string, error) {
