@@ -518,6 +518,7 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
 		}
 
 		if !isNodeOnline(spdkNode, nodeId) {
+			klog.Infof("Node %s is not yet online", nodeId)
 			continue
 		}
 
@@ -536,10 +537,11 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
 			return err
 		}
 
+		klog.Infof("Successfully connected to node %s", nodeId)
 		return nil
 	}
 
-	return fmt.Errorf("Failed to check Online Node for lvol_id %s", lvolID)
+	return nil
 }
 
 func shouldConnectToNode(anaState, currentNodeID, targetNodeID string) bool {
