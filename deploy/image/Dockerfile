@@ -13,7 +13,8 @@ COPY spdkcsi /usr/local/bin/spdkcsi
 RUN apk update && \
     apk add nvme-cli open-iscsi e2fsprogs xfsprogs blkid xfsprogs-extra e2fsprogs-extra util-linux
 
-RUN if [ -f /var/lib/nvme/hostid ]; then \
+RUN mkdir -p /var/lib/nvme && \
+    if [ -f /var/lib/nvme/hostid ]; then \
         cp /var/lib/nvme/hostid /etc/nvme/hostid; \
     else \
         uuidgen > /var/lib/nvme/hostid && \
