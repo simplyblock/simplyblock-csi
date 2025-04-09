@@ -528,7 +528,7 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
 		}
 
 		index := 0
-		if anaState != "optimized" {
+		if anaState == "optimized" {
 			index = 1
 		}
 
@@ -544,9 +544,9 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
 
 func shouldConnectToNode(anaState, currentNodeID, targetNodeID string) bool {
 	if anaState == "optimized" {
-		return currentNodeID == targetNodeID
+		return currentNodeID != targetNodeID
 	}
-	return currentNodeID != targetNodeID
+	return currentNodeID == targetNodeID
 }
 
 func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
