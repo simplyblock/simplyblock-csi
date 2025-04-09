@@ -554,12 +554,17 @@ func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch node info: %v", err)
 	}
-	var info NodeInfo
+	var info []NodeInfo
 	respBytes, _ := json.Marshal(resp)
 	if err := json.Unmarshal(respBytes, &info); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal node info: %v", err)
 	}
-	return &info, nil
+
+	if len(info) == 0 {
+		return nil, fmt.Errorf("empty node info response for lvolID %s", lvolID)
+	}
+
+	return &info[0], nil
 }
 
 func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
@@ -568,13 +573,13 @@ func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
 	}
-	var status NodeInfo
+	var status []NodeInfo
 	respBytes, _ := json.Marshal(resp)
 	if err := json.Unmarshal(respBytes, &status); err != nil {
 		klog.Errorf("failed to unmarshal node status for node %s: %v", nodeID, err)
 		return false
 	}
-	return status.Status == "online"
+	return status[0].Status == "online"
 }
 
 func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string) ([]*LvolConnectResp, error) {
