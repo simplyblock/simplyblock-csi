@@ -44,6 +44,7 @@ type SpdkCsiInitiator interface {
 }
 
 const DevDiskByID = "/dev/disk/by-id/*%s*"
+const CtrlLossTmo = 15
 
 func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
@@ -119,6 +120,12 @@ type Path struct {
 
 type SubsystemResponse struct {
 	Subsystems []Subsystem `json:"Subsystems"`
+}
+
+type NodeInfo struct {
+	NodeID string   `json:"node_id"`
+	Nodes  []string `json:"nodes"`
+	Status string   `json:"status"`
 }
 
 func (cache *initiatorCache) Connect() (string, error) {
@@ -254,7 +261,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	for i, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", nvmf.ctrlLossTmo,
+			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(CtrlLossTmo),
 			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
@@ -461,11 +468,11 @@ func parseAddress(address string) string {
 }
 
 func reconnectSubsystems(spdkNode *NodeNVMf) error {
-
 	devicePaths, err := getNVMeDevicePaths()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
+
 	for _, devicePath := range devicePaths {
 		subsystems, err := getSubsystemsForDevice(devicePath)
 		if err != nil {
@@ -480,71 +487,121 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 					continue
 				}
 
-				for _, path := range subsystem.Paths {
-
-					if path.State == "connecting" && path.ANAState == "optimized" {
-						currentIP := parseAddress(path.Address)
-
-						// Call the API for connection details
-						resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
-						if err != nil {
-							klog.Errorf("failed to fetch connection details for lvol_id %s: %v\n", lvolID, err)
-							continue
-						}
-
-						var lvolResp []*LvolConnectResp
-
-						respBytes, err := json.Marshal(resp)
-						if err != nil {
-							return fmt.Errorf("failed to marshal response: %v", err)
-						}
-
-						if err := json.Unmarshal(respBytes, &lvolResp); err != nil {
-							return fmt.Errorf("failed to unmarshal connection details: %v", err)
-						}
-
-						if len(lvolResp) == 0 && lvolResp[0] == nil {
-							klog.Errorf("unexpected response format or empty results")
-							continue
-						}
-
-						updatedIP := lvolResp[0].IP
-						nqn := lvolResp[0].Nqn
-						port := lvolResp[0].Port
-						ctrlLossTmo := lvolResp[0].CtrlLossTmo
-						reconnectDelay := lvolResp[0].ReconnectDelay
-						nrIoQueues := lvolResp[0].NrIoQueues
-
-						if currentIP != updatedIP {
-							klog.Infof("Updating connection for lvol_id %s: disconnecting %s and connecting to %s\n", lvolID, currentIP, updatedIP)
-
-							// Disconnect the old path
-							disconnectCmd := []string{
-								"nvme", "disconnect", "-d", path.Name,
+				if len(subsystem.Paths) == 1 {
+					for _, path := range subsystem.Paths {
+						if path.ANAState == "optimized" {
+							if err := checkOnlineNode(spdkNode, lvolID, path.ANAState); err != nil {
+								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
-							err = execWithTimeoutRetry(disconnectCmd, 40, 1)
-							if err != nil {
-								klog.Errorf("command %s failed: %v", disconnectCmd, err)
-								return err
+						} else if path.ANAState == "non-optimized" {
+							if err := checkOnlineNode(spdkNode, lvolID, path.ANAState); err != nil {
+								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
-
-							// Connect the new path
-							cmdLine := []string{
-								"nvme", "connect", "-t", "tcp",
-								"-a", updatedIP, "-s", strconv.Itoa(port), "-n", nqn, "-l", strconv.Itoa(ctrlLossTmo),
-								"-c", strconv.Itoa(reconnectDelay), "-i", strconv.Itoa(nrIoQueues),
-							}
-							err := execWithTimeoutRetry(cmdLine, 40, 1)
-							if err != nil {
-								klog.Errorf("command %s failed: %v", cmdLine, err)
-								return err
-							}
-
 						}
 					}
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
+	nodeInfo, err := fetchNodeInfo(spdkNode, lvolID)
+	if err != nil {
+		return err
+	}
+
+	for _, nodeId := range nodeInfo.Nodes {
+		if !shouldConnectToNode(anaState, nodeInfo.NodeID, nodeId) {
+			continue
+		}
+
+		if !isNodeOnline(spdkNode, nodeId) {
+			continue
+		}
+
+		conn, err := fetchLvolConnection(spdkNode, lvolID)
+		if err != nil {
+			klog.Errorf("failed to get lvol connection: %v", err)
+			continue
+		}
+
+		index := 0
+		if anaState != "optimized" {
+			index = 1
+		}
+
+		if err := connectViaNVMe(conn[index]); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("Failed to check Online Node for lvol_id %s", lvolID)
+}
+
+func shouldConnectToNode(anaState, currentNodeID, targetNodeID string) bool {
+	if anaState == "optimized" {
+		return currentNodeID == targetNodeID
+	}
+	return currentNodeID != targetNodeID
+}
+
+func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
+	resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/"+lvolID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch node info: %v", err)
+	}
+	var info NodeInfo
+	respBytes, _ := json.Marshal(resp)
+	if err := json.Unmarshal(respBytes, &info); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal node info: %v", err)
+	}
+	return &info, nil
+}
+
+func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
+	resp, err := spdkNode.client.CallSBCLI("GET", "/storagenode/"+nodeID, nil)
+	if err != nil {
+		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
+		return false
+	}
+	var status NodeInfo
+	respBytes, _ := json.Marshal(resp)
+	if err := json.Unmarshal(respBytes, &status); err != nil {
+		klog.Errorf("failed to unmarshal node status for node %s: %v", nodeID, err)
+		return false
+	}
+	return status.Status == "online"
+}
+
+func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string) ([]*LvolConnectResp, error) {
+	resp, err := spdkNode.client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch connection: %v", err)
+	}
+	var connections []*LvolConnectResp
+	respBytes, _ := json.Marshal(resp)
+	if err := json.Unmarshal(respBytes, &connections); err != nil || len(connections) == 0 {
+		return nil, fmt.Errorf("invalid or empty connection response")
+	}
+	return connections, nil
+}
+
+func connectViaNVMe(conn *LvolConnectResp) error {
+	cmd := []string{
+		"nvme", "connect", "-t", "tcp",
+		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
+		"-n", conn.Nqn,
+		"-l", strconv.Itoa(CtrlLossTmo),
+		"-c", strconv.Itoa(conn.ReconnectDelay),
+		"-i", strconv.Itoa(conn.NrIoQueues),
+	}
+	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
+		klog.Errorf("nvme connect failed: %v", err)
+		return err
 	}
 	return nil
 }
