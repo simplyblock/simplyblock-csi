@@ -108,10 +108,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        lifecycle:
-          postStart:
-            exec:
-              command: ["/bin/sh", "-c", "sudo modprobe nvme-tcp || echo failed to modprobe nvme-tcp"]
+        # lifecycle:
+        #   postStart:
+        #     exec:
+        #       command: ["/bin/sh", "-c", "sudo modprobe nvme-tcp || echo failed to modprobe nvme-tcp"]
         volumeMounts:
         - name: socket-dir
           mountPath: /csi

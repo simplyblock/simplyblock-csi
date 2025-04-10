@@ -137,6 +137,8 @@ image: spdkcsi
 	@if [ -n $(HTTP_PROXY) ]; then \
 		proxy_opt="--build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTP_PROXY)"; \
 	fi; \
+
+	sudo cp deploy/image/entrypoint.sh $(OUT_DIR)/entrypoint.sh
 	sudo docker build --no-cache -t $(CSI_IMAGE)-amd64 $$proxy_opt \
 	-f deploy/image/Dockerfile $(OUT_DIR); \
 
@@ -150,6 +152,7 @@ image: spdkcsi
 .PHONY: clean
 clean:
 	rm -f $(OUT_DIR)/spdkcsi
+	rm -f $(OUT_DIR)/entrypoint.sh
 	go clean -testcache
 
 sanity-test: spdkcsi
