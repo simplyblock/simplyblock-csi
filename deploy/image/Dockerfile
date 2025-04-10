@@ -13,13 +13,6 @@ COPY spdkcsi /usr/local/bin/spdkcsi
 RUN apk update && \
     apk add nvme-cli open-iscsi e2fsprogs xfsprogs blkid xfsprogs-extra e2fsprogs-extra util-linux
 
-RUN mkdir -p /var/lib/nvme && \
-    if [ -f /var/lib/nvme/hostid ]; then \
-        cp /var/lib/nvme/hostid /etc/nvme/hostid; \
-    else \
-        uuidgen > /var/lib/nvme/hostid && \
-        cp /var/lib/nvme/hostid /etc/nvme/hostid; \
-    fi && \
-    echo "nqn.2014-08.org.nvmexpress:uuid:$(cat /etc/nvme/hostid)" > /etc/nvme/hostnqn
-
-ENTRYPOINT ["/usr/local/bin/spdkcsi"]
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
