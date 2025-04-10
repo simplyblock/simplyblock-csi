@@ -161,5 +161,5 @@ entries:
     digest: 33ef4568e8fc1c17c5eb946bde0ce55003f0fa1ab511854efd2e402ff478ab66
     name: spdk-csi
     urls:
-    - https://github.com/simplyblock-io/spdk-csi/raw/master/charts/v0.3.13/spdk-csi-v0.3.14.tgz
+    - https://github.com/simplyblock-io/spdk-csi/raw/master/charts/v0.3.14/spdk-csi-v0.3.14.tgz
     version: v0.3.14
