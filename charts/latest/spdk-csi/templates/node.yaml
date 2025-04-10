@@ -115,7 +115,6 @@ spec:
                 [
                   "/bin/sh", "-c",
                   "sudo modprobe nvme-tcp || echo failed to modprobe nvme-tcp && \
-                  mkdir -p /etc/nvme /var/lib/nvme && \
                   if [ ! -f /var/lib/nvme/hostid ]; then uuidgen > /var/lib/nvme/hostid; fi && \
                   cp /var/lib/nvme/hostid /etc/nvme/hostid && \
                   echo \"nqn.2014-08.org.nvmexpress:uuid:$(cat /etc/nvme/hostid)\" > /etc/nvme/hostnqn"
@@ -129,9 +128,9 @@ spec:
         - name: pod-dir
           mountPath: /var/lib/kubelet/pods
           mountPropagation: "Bidirectional"
-        # - name: nvme-hostid-dir
-        #   mountPath: /var/lib/nvme
-        #   mountPropagation: "Bidirectional"
+        - name: nvme-hostid-dir
+          mountPath: /var/lib/nvme
+          mountPropagation: "Bidirectional"
         - name: host-dev
           mountPath: /dev
         - name: host-sys
@@ -162,10 +161,10 @@ spec:
         hostPath:
           path: /var/lib/kubelet/pods
           type: Directory
-      # - name: nvme-hostid-dir
-      #   hostPath:
-      #     path: /var/lib/nvme
-      #     type: Directory
+      - name: nvme-hostid-dir
+        hostPath:
+          path: /var/lib/nvme
+          type: DirectoryOrCreate
       - name: host-dev
         hostPath:
           path: /dev
