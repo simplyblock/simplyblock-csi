@@ -16,4 +16,6 @@ RUN apk update && \
 COPY entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
+##ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/spdkcsi"]
+
