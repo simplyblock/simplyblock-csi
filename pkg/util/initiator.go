@@ -622,7 +622,7 @@ func connectViaNVMe(conn *LvolConnectResp) error {
 func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bool {
 
 	klog.Infof("DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 10; i++ {
 		klog.Infof(">>>> DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 		recheck, err := getSubsystemsForDevice(devicePath)
 		if err != nil {
