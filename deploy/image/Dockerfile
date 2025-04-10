@@ -13,9 +13,5 @@ COPY spdkcsi /usr/local/bin/spdkcsi
 RUN apk update && \
     apk add nvme-cli open-iscsi e2fsprogs xfsprogs blkid xfsprogs-extra e2fsprogs-extra util-linux
 
-COPY entrypoint.sh /entrypoint.sh
-
-RUN chmod +x /entrypoint.sh
-##ENTRYPOINT ["/entrypoint.sh"]
 ENTRYPOINT ["/usr/local/bin/spdkcsi"]
 
