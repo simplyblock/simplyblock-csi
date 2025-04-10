@@ -623,7 +623,6 @@ func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bo
 
 	klog.Infof("DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 	for i := 0; i < 3; i++ {
-		time.Sleep(1 * time.Second)
 		klog.Infof(">>>> DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 		recheck, err := getSubsystemsForDevice(devicePath)
 		if err != nil {
@@ -643,6 +642,8 @@ func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bo
 				}
 			}
 		}
+
+		time.Sleep(1 * time.Second)
 	}
 	return true
 }
