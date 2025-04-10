@@ -622,8 +622,6 @@ func connectViaNVMe(conn *LvolConnectResp) error {
 }
 
 func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bool {
-
-	klog.Infof("DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 	for i := 0; i < 5; i++ {
 		klog.Infof(">>>> DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 		recheck, err := getSubsystemsForDevice(devicePath)
@@ -632,17 +630,22 @@ func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bo
 			continue
 		}
 
+		found := false
 		for _, h := range recheck {
 			for _, s := range h.Subsystems {
 				if s.NQN == subsystem.NQN {
-					if len(s.Paths) == 1 {
-						continue
-					} else {
+					found = true
+					if len(s.Paths) != 1 {
 						klog.Infof("Subsystem %s path count changed to %d, skipping reconnect", s.NQN, len(s.Paths))
 						return false
 					}
 				}
 			}
+		}
+
+		if !found {
+			klog.Warningf("Subsystem %s not found during recheck, assuming it's gone", subsystem.NQN)
+			return false
 		}
 
 		time.Sleep(1 * time.Second)
