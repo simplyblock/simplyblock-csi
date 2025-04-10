@@ -490,7 +490,7 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 				if len(subsystem.Paths) == 1 {
 					confirm := confirmSubsystemStillSinglePath(&subsystem, devicePath)
 
-					klog.Infof("Confirm: %d", confirm)
+					klog.Infof("Confirm: %t", confirm)
 					if !confirm {
 						continue
 					}
