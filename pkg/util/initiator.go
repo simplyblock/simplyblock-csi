@@ -488,6 +488,10 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 				}
 
 				if len(subsystem.Paths) == 1 {
+					confirm := confirmSubsystemStillSinglePath(&subsystem, devicePath)
+					if !confirm {
+						continue
+					}
 					for _, path := range subsystem.Paths {
 						if path.ANAState == "optimized" {
 							if err := checkOnlineNode(spdkNode, lvolID, path.ANAState); err != nil {
@@ -611,6 +615,32 @@ func connectViaNVMe(conn *LvolConnectResp) error {
 		return err
 	}
 	return nil
+}
+
+func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bool {
+	for i := 0; i < 3; i++ {
+		time.Sleep(1 * time.Second)
+
+		recheck, err := getSubsystemsForDevice(devicePath)
+		if err != nil {
+			klog.Errorf("failed to recheck subsystems for device %s: %v", devicePath, err)
+			continue
+		}
+
+		for _, h := range recheck {
+			for _, s := range h.Subsystems {
+				if s.NQN == subsystem.NQN {
+					if len(s.Paths) == 1 {
+						continue
+					} else {
+						klog.Infof("Subsystem %s path count changed to %d, skipping reconnect", s.NQN, len(s.Paths))
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
 }
 
 func MonitorConnection(spdkNode *NodeNVMf) {
