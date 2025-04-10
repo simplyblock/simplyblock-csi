@@ -44,7 +44,7 @@ type SpdkCsiInitiator interface {
 }
 
 const DevDiskByID = "/dev/disk/by-id/*%s*"
-const CtrlLossTmo = 15
+const CtrlLossTmo = 60
 
 func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
