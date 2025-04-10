@@ -306,10 +306,12 @@ func (nvmf *initiatorNVMf) Disconnect() error {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
 
-	err = disconnectDevicePath(devicePath[0])
+	if len(devicePath) > 0 {
+		err = disconnectDevicePath(devicePath[0])
 
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
 	return waitForDeviceGone(deviceGlob)
@@ -622,7 +624,7 @@ func connectViaNVMe(conn *LvolConnectResp) error {
 func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bool {
 
 	klog.Infof("DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		klog.Infof(">>>> DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 		recheck, err := getSubsystemsForDevice(devicePath)
 		if err != nil {
