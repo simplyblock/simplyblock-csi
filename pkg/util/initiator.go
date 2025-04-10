@@ -489,6 +489,8 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 
 				if len(subsystem.Paths) == 1 {
 					confirm := confirmSubsystemStillSinglePath(&subsystem, devicePath)
+
+					klog.Infof("Confirm: %d", confirm)
 					if !confirm {
 						continue
 					}
@@ -618,9 +620,11 @@ func connectViaNVMe(conn *LvolConnectResp) error {
 }
 
 func confirmSubsystemStillSinglePath(subsystem *Subsystem, devicePath string) bool {
+
+	klog.Infof("DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 	for i := 0; i < 3; i++ {
 		time.Sleep(1 * time.Second)
-
+		klog.Infof(">>>> DevicePath %s length of subsystem %d", devicePath, len(subsystem.Paths))
 		recheck, err := getSubsystemsForDevice(devicePath)
 		if err != nil {
 			klog.Errorf("failed to recheck subsystems for device %s: %v", devicePath, err)
