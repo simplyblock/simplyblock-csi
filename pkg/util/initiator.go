@@ -44,7 +44,8 @@ type SpdkCsiInitiator interface {
 }
 
 const DevDiskByID = "/dev/disk/by-id/*%s*"
-const CtrlLossTmo = 60
+
+var CtrlLossTmo = 60
 
 func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
@@ -258,10 +259,14 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 
 func (nvmf *initiatorNVMf) Connect() (string, error) {
 	klog.Info("connections", nvmf.connections)
+	lossTmo := strconv.Itoa(CtrlLossTmo)
+	if len(nvmf.connections) == 1 {
+		lossTmo = nvmf.ctrlLossTmo
+	}
 	for i, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(CtrlLossTmo),
+			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", lossTmo,
 			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
@@ -542,7 +547,11 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
 			index = 1
 		}
 
-		if err := connectViaNVMe(conn[index]); err != nil {
+		if len(conn) == 1 {
+			CtrlLossTmo = conn[index].CtrlLossTmo
+		}
+
+		if err := connectViaNVMe(conn[index], CtrlLossTmo); err != nil {
 			return err
 		}
 
@@ -605,12 +614,12 @@ func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string) ([]*LvolConnectResp,
 	return connections, nil
 }
 
-func connectViaNVMe(conn *LvolConnectResp) error {
+func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	cmd := []string{
 		"nvme", "connect", "-t", "tcp",
 		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
 		"-n", conn.Nqn,
-		"-l", strconv.Itoa(CtrlLossTmo),
+		"-l", strconv.Itoa(ctrlLossTmo),
 		"-c", strconv.Itoa(conn.ReconnectDelay),
 		"-i", strconv.Itoa(conn.NrIoQueues),
 	}
