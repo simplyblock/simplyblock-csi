@@ -520,8 +520,10 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
 	}
 
 	for _, nodeId := range nodeInfo.Nodes {
-		if !shouldConnectToNode(anaState, nodeInfo.NodeID, nodeId) {
-			continue
+		if len(nodeInfo.NodeID) > 1 {
+			if !shouldConnectToNode(anaState, nodeInfo.NodeID, nodeId) {
+				continue
+			}
 		}
 
 		if !isNodeOnline(spdkNode, nodeId) {
@@ -536,7 +538,7 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
 		}
 
 		index := 0
-		if anaState == "optimized" {
+		if anaState == "optimized" && len(conn) > 1 {
 			index = 1
 		}
 
