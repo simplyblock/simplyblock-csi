@@ -129,6 +129,11 @@ type NodeInfo struct {
 	Status string   `json:"status"`
 }
 
+type NVMeDeviceInfo struct {
+	DevicePath   string
+	SerialNumber string
+}
+
 func (cache *initiatorCache) Connect() (string, error) {
 	// get the hostname
 	hostname, err := os.Hostname()
@@ -416,7 +421,7 @@ func disconnectDevicePath(devicePath string) error {
 	return nil
 }
 
-func getNVMeDevicePaths() ([]string, error) {
+func getNVMeDeviceInfos() ([]NVMeDeviceInfo, error) {
 	cmd := exec.Command("nvme", "list", "-o", "json")
 	output, err := cmd.Output()
 	if err != nil {
@@ -425,7 +430,8 @@ func getNVMeDevicePaths() ([]string, error) {
 
 	var response struct {
 		Devices []struct {
-			DevicePath string `json:"DevicePath"`
+			DevicePath   string `json:"DevicePath"`
+			SerialNumber string `json:"SerialNumber"`
 		} `json:"Devices"`
 	}
 
@@ -433,12 +439,15 @@ func getNVMeDevicePaths() ([]string, error) {
 		return nil, fmt.Errorf("failed to unmarshal nvme list output: %v", err)
 	}
 
-	var paths []string
-	for _, device := range response.Devices {
-		paths = append(paths, device.DevicePath)
+	var devices []NVMeDeviceInfo
+	for _, dev := range response.Devices {
+		devices = append(devices, NVMeDeviceInfo{
+			DevicePath:   dev.DevicePath,
+			SerialNumber: dev.SerialNumber,
+		})
 	}
 
-	return paths, nil
+	return devices, nil
 }
 
 func getSubsystemsForDevice(devicePath string) ([]SubsystemResponse, error) {
@@ -475,15 +484,15 @@ func parseAddress(address string) string {
 }
 
 func reconnectSubsystems(spdkNode *NodeNVMf) error {
-	devicePaths, err := getNVMeDevicePaths()
+	devices, err := getNVMeDeviceInfos()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
 
-	for _, devicePath := range devicePaths {
-		subsystems, err := getSubsystemsForDevice(devicePath)
+	for _, device := range devices {
+		subsystems, err := getSubsystemsForDevice(device.DevicePath)
 		if err != nil {
-			klog.Errorf("failed to get subsystems for device %s: %v", devicePath, err)
+			klog.Errorf("failed to get subsystems for device %s: %v", device.DevicePath, err)
 			continue
 		}
 
@@ -495,18 +504,18 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 				}
 
 				if len(subsystem.Paths) == 1 {
-					confirm := confirmSubsystemStillSinglePath(&subsystem, devicePath)
+					confirm := confirmSubsystemStillSinglePath(&subsystem, device.DevicePath)
 
 					if !confirm {
 						continue
 					}
 					for _, path := range subsystem.Paths {
-						if path.ANAState == "optimized" {
-							if err := checkOnlineNode(spdkNode, lvolID, path.ANAState); err != nil {
+						if path.State == "connecting" && device.SerialNumber == "single" {
+							if err := checkOnlineNode(spdkNode, lvolID, path); err != nil {
 								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
-						} else if path.ANAState == "non-optimized" {
-							if err := checkOnlineNode(spdkNode, lvolID, path.ANAState); err != nil {
+						} else if path.ANAState == "optimized" || path.ANAState == "non-optimized" && device.SerialNumber == "ha" {
+							if err := checkOnlineNode(spdkNode, lvolID, path); err != nil {
 								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
 						}
@@ -518,44 +527,59 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 	return nil
 }
 
-func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, anaState string) error {
+func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, path Path) error {
 	nodeInfo, err := fetchNodeInfo(spdkNode, lvolID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch node info: %w", err)
 	}
 
-	for _, nodeId := range nodeInfo.Nodes {
-		if len(nodeInfo.NodeID) > 1 {
-			if !shouldConnectToNode(anaState, nodeInfo.NodeID, nodeId) {
-				continue
-			}
-		}
-
-		if !isNodeOnline(spdkNode, nodeId) {
-			klog.Infof("Node %s is not yet online", nodeId)
+	for _, nodeID := range nodeInfo.Nodes {
+		if len(nodeInfo.NodeID) > 1 && !shouldConnectToNode(path.ANAState, nodeInfo.NodeID, nodeID) {
 			continue
 		}
 
-		conn, err := fetchLvolConnection(spdkNode, lvolID)
+		if !isNodeOnline(spdkNode, nodeID) {
+			klog.Infof("Node %s is not yet online", nodeID)
+			continue
+		}
+
+		connections, err := fetchLvolConnection(spdkNode, lvolID)
 		if err != nil {
-			klog.Errorf("failed to get lvol connection: %v", err)
+			klog.Errorf("Failed to get lvol connection: %v", err)
 			continue
 		}
 
-		index := 0
-		if anaState == "optimized" && len(conn) > 1 {
-			index = 1
+		connCount := len(connections)
+		if connCount == 0 {
+			klog.Warningf("No NVMe connection found for lvol %s", lvolID)
+			continue
 		}
 
-		if len(conn) == 1 {
-			CtrlLossTmo = conn[index].CtrlLossTmo
+		connIndex := 0
+		if path.ANAState == "optimized" && connCount > 1 {
+			connIndex = 1
+		}
+		conn := connections[connIndex]
+
+		targetIP := parseAddress(path.Address)
+		if connCount == 1 && conn.IP != targetIP {
+			CtrlLossTmo = conn.CtrlLossTmo
+
+			if err := disconnectViaNVMe(path); err != nil {
+				return err
+			}
+			if err := connectViaNVMe(conn, CtrlLossTmo); err != nil {
+				return err
+			}
+			return nil
 		}
 
-		if err := connectViaNVMe(conn[index], CtrlLossTmo); err != nil {
-			return err
+		if connCount > 1 {
+			if err := connectViaNVMe(conn, CtrlLossTmo); err != nil {
+				return err
+			}
+			return nil
 		}
-
-		return nil
 	}
 
 	return nil
@@ -625,6 +649,17 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	}
 	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
 		klog.Errorf("nvme connect failed: %v", err)
+		return err
+	}
+	return nil
+}
+
+func disconnectViaNVMe(path Path) error {
+	cmd := []string{
+		"nvme", "disconnect", "-d", path.Name,
+	}
+	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
+		klog.Errorf("nvme disconnect failed: %v", err)
 		return err
 	}
 	return nil
