@@ -514,7 +514,7 @@ func reconnectSubsystems(spdkNode *NodeNVMf) error {
 							if err := checkOnlineNode(spdkNode, lvolID, path); err != nil {
 								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
-						} else if path.ANAState == "optimized" || path.ANAState == "non-optimized" && device.SerialNumber == "ha" {
+						} else if (path.ANAState == "optimized" || path.ANAState == "non-optimized") && device.SerialNumber == "ha" {
 							if err := checkOnlineNode(spdkNode, lvolID, path); err != nil {
 								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
