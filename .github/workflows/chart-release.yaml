@@ -39,7 +39,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add charts/index.yaml charts/latest/${{ env.VERSION }}/
+          git add charts/index.yaml charts/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
           git push
         env:
