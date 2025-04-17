@@ -15,6 +15,9 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      - name: Setup GitHub CLI
+        uses: cli/cli-action@v2
+        
       - name: Set up Helm
         uses: azure/setup-helm@v3
         with:
@@ -36,12 +39,22 @@ jobs:
           cd charts/
           helm repo index . --url https://github.com/simplyblock-io/spdk-csi/raw/master/charts
 
-      - name: Commit and push changes
+      - name: Commit and create PR
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="release-${{ env.VERSION }}"
+          git checkout -b "$BRANCH"
+
           git add charts/index.yaml charts/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
-          git push
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "Helm release: ${{ env.VERSION }}" \
+            --body "Automated Helm release for simplyblock-csi ${{ env.VERSION}}" \
+            --head "$BRANCH" \
+            --base master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
