@@ -6,7 +6,6 @@ on:
       - master
     paths:
       - 'charts/latest/spdk-csi/Chart.yaml'
-  workflow_dispatch:
   
 jobs:
   package-and-update:
