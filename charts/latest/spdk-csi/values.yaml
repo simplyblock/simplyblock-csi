@@ -23,7 +23,7 @@ image:
     pullPolicy: Always
   csiSnapshotter:
     repository: registry.k8s.io/sig-storage/csi-snapshotter
-    tag: v7.0.2
+    tag: v8.2.0
     pullPolicy: Always
   csiResizer:
     repository: gcr.io/k8s-staging-sig-storage/csi-resizer
