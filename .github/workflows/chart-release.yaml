@@ -14,9 +14,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
-
-      - name: Setup GitHub CLI
-        uses: cli/cli-action@v2
         
       - name: Set up Helm
         uses: azure/setup-helm@v3
