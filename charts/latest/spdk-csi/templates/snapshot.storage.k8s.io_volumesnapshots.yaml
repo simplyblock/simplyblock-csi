@@ -125,8 +125,8 @@ spec:
                   rule: '!has(oldSelf.volumeSnapshotContentName) || has(self.volumeSnapshotContentName)'
                 - message: exactly one of volumeSnapshotContentName and persistentVolumeClaimName
                     must be set
-                  rule: (has(self.volumeSnapshotContentName) && !has(self.persistentVolumeClaimName))
-                    || (!has(self.volumeSnapshotContentName) && has(self.persistentVolumeClaimName))
+                  rule: '(has(self.volumeSnapshotContentName) && !has(self.persistentVolumeClaimName))
+                    || (!has(self.volumeSnapshotContentName) && has(self.persistentVolumeClaimName))'
               volumeSnapshotClassName:
                 description: |-
                   VolumeSnapshotClassName is the name of the VolumeSnapshotClass
