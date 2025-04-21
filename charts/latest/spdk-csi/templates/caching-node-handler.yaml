@@ -3,13 +3,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: caching-node-service-account
+  name: simplyblock-caching-node-service-account
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: caching-node-handler
+  name: simplyblock-caching-node-handler
   labels:
     app: caching-node-handler
 spec:
@@ -22,7 +22,7 @@ spec:
       labels:
         app: caching-node-handler
     spec:
-      serviceAccountName: caching-node-service-account
+      serviceAccountName: simplyblock-caching-node-service-account
       containers:
       - name: caching-node-handler
         image: "{{ .Values.image.cachingNode.repository }}:{{ .Values.image.cachingNode.tag }}"
@@ -31,12 +31,12 @@ spec:
         - name: SPDKCSI_SECRET
           valueFrom:
             secretKeyRef:
-              name: spdkcsi-secret
+              name: simplyblock-spdkcsi-secret
               key: secret.json
         - name: CLUSTER_CONFIG
           valueFrom:
             configMapKeyRef:
-              name: spdkcsi-cm
+              name: simplyblock-spdkcsi-cm
               key: config.json
         - name: IFNAME
           value: "{{ .Values.cachingnode.ifname }}"

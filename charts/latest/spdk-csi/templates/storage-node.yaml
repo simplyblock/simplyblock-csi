@@ -3,13 +3,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: storage-node-sa
+  name: simplyblock-storage-node-sa
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: storage-node-role
+  name: simplyblock-storage-node-role
 rules:
 - apiGroups: [""]
   resources: ["pods", "namespaces", "pods/exec"]
@@ -22,14 +22,14 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: pods-list-sn
+  name: simplyblock-pods-list-sn
 subjects:
 - kind: ServiceAccount
-  name: storage-node-sa
+  name: simplyblock-storage-node-sa
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: storage-node-role
+  name: simplyblock-storage-node-role
   apiGroup: rbac.authorization.k8s.io
 
 {{- range .Values.storagenode.daemonsets }}
@@ -49,7 +49,7 @@ spec:
       labels:
         app: {{ .appLabel }}
     spec:
-      serviceAccountName: storage-node-sa
+      serviceAccountName: simplyblock-storage-node-sa
       nodeSelector:
         type: {{ .nodeSelector }}
       volumes:

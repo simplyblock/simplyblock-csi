@@ -5,7 +5,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: fio-benchmark-job-{{ $i }}
+  name: simplyblock-fio-benchmark-job-{{ $i }}
 spec:
   backoffLimit: 4
   template:
@@ -23,24 +23,24 @@ spec:
       volumes:
         - name: benchmark-volume
           persistentVolumeClaim:
-            claimName: spdkcsi-benchmark-pvc-{{ $i }}
+            claimName: simplyblock-spdkcsi-benchmark-pvc-{{ $i }}
         - name: fio-config
           configMap:
-            name: fio-config
+            name: simplyblock-fio-config
       restartPolicy: Never
 
 ---
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
-  name: spdkcsi-benchmark-pvc-{{ $i }}
+  name: simplyblock-spdkcsi-benchmark-pvc-{{ $i }}
 spec:
   accessModes:
   - ReadWriteOnce
   resources:
     requests:
       storage: 30Gi
-  storageClassName: spdkcsi-sc
+  storageClassName: simplyblock-spdkcsi-sc
 
 {{- end }}
 
@@ -48,7 +48,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fio-config
+  name: simplyblock-fio-config
 data:
     fio.cfg: |
       [test]

@@ -5,19 +5,19 @@
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: spdkcsi-node
+  name: simplyblock-csi-node
   namespace: {{ .Release.Namespace }}
 {{ include "spdk.labels" . | indent 2 }}
 spec:
   selector:
     matchLabels:
-      app: spdkcsi-node
+      app: simplyblock-csi-node
   template:
     metadata:
 {{ include "spdk.labels" . | indent 6 }}
-        app: spdkcsi-node
+        app: simplyblock-csi-node
     spec:
-      serviceAccountName: spdkcsi-node-sa
+      serviceAccountName: simplyblock-csi-node-sa
       hostNetwork: true
       {{- if .Values.node.tolerations.create }}
       tolerations:
@@ -35,8 +35,8 @@ spec:
       {{- if .Values.node.initContainers.enabled }}
       initContainers:
       - name: init-nvme
-        image: "{{ .Values.image.spdkcsi.repository }}:{{ .Values.image.spdkcsi.tag }}"
-        imagePullPolicy: {{ .Values.image.spdkcsi.pullPolicy }}
+        image: "{{ .Values.image.csi.repository }}:{{ .Values.image.csi.tag }}"
+        imagePullPolicy: {{ .Values.image.csi.pullPolicy }}
         securityContext:
           privileged: true
         volumeMounts:
@@ -76,7 +76,7 @@ spec:
           fi'
       {{- end }}
       containers:
-      - name: spdkcsi-registrar
+      - name: csi-registrar
         securityContext:
           privileged: true
         image: "{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
@@ -90,14 +90,14 @@ spec:
           mountPath: /csi
         - name: registration-dir
           mountPath: /registration
-      - name: spdkcsi-node
+      - name: csi-node
         securityContext:
           privileged: true
           capabilities:
             add: ["SYS_ADMIN", "SYS_MODULE"]
           allowPrivilegeEscalation: true
-        image: "{{ .Values.image.spdkcsi.repository }}:{{ .Values.image.spdkcsi.tag }}"
-        imagePullPolicy: {{ .Values.image.spdkcsi.pullPolicy }}
+        image: "{{ .Values.image.csi.repository }}:{{ .Values.image.csi.tag }}"
+        imagePullPolicy: {{ .Values.image.csi.pullPolicy }}
         args:
         - "--v=5"
         - "--endpoint=unix:///csi/csi.sock"
@@ -135,14 +135,14 @@ spec:
           mountPath: /dev
         - name: host-sys
           mountPath: /sys
-        - name: spdkcsi-nodeserver-config
-          mountPath: /etc/spdkcsi-nodeserver-config/
+        - name: csi-nodeserver-config
+          mountPath: /etc/csi-nodeserver-config/
           readOnly: true
-        - name: spdkcsi-config
-          mountPath: /etc/spdkcsi-config/
+        - name: csi-config
+          mountPath: /etc/csi-config/
           readOnly: true
-        - name: spdkcsi-secret
-          mountPath: /etc/spdkcsi-secret/
+        - name: csi-secret
+          mountPath: /etc/csi-secret/
           readOnly: true
       volumes:
       - name: socket-dir
@@ -176,13 +176,13 @@ spec:
         hostPath:
           path: /
       {{- end }}
-      - name: spdkcsi-nodeserver-config
+      - name: csi-nodeserver-config
         configMap:
-          name: spdkcsi-nodeservercm
+          name: simplyblock-csi-nodeservercm
           optional: true
-      - name: spdkcsi-config
+      - name: csi-config
         configMap:
-          name: spdkcsi-cm
-      - name: spdkcsi-secret
+          name: simplyblock-csi-cm
+      - name: csi-secret
         secret:
-          secretName: spdkcsi-secret
+          secretName: simplyblock-csi-secret

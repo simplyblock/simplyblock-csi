@@ -9,7 +9,7 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: snapshot-controller
+  name: simplyblock-snapshot-controller
   namespace: kube-system
 spec:
   replicas: 2
@@ -31,7 +31,7 @@ spec:
       labels:
         app.kubernetes.io/name: snapshot-controller
     spec:
-      serviceAccountName: snapshot-controller
+      serviceAccountName: simplyblock-snapshot-controller
       containers:
         - name: snapshot-controller
           image: registry.k8s.io/sig-storage/snapshot-controller:v8.2.0

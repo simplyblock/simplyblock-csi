@@ -7,7 +7,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: spdkcsi-controller-sa
+  name: simplyblock-csi-controller-sa
 ---
 {{- end -}}
 
@@ -17,7 +17,7 @@ metadata:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-provisioner-role
+  name: simplyblock-csi-provisioner-role
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
@@ -60,14 +60,14 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-provisioner-binding
+  name: simplyblock-csi-provisioner-binding
 subjects:
 - kind: ServiceAccount
-  name: spdkcsi-controller-sa
+  name: simplyblock-csi-controller-sa
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: spdkcsi-provisioner-role
+  name: simplyblock-csi-provisioner-role
   apiGroup: rbac.authorization.k8s.io
 
 # external-attacher sidecar required roles
@@ -75,7 +75,7 @@ roleRef:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-attacher-role
+  name: simplyblock-csi-attacher-role
 rules:
 - apiGroups: [""]
   resources: ["persistentvolumes"]
@@ -97,14 +97,14 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-attacher-binding
+  name: simplyblock-csi-attacher-binding
 subjects:
 - kind: ServiceAccount
-  name: spdkcsi-controller-sa
+  name: simplyblock-csi-controller-sa
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: spdkcsi-attacher-role
+  name: simplyblock-csi-attacher-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
@@ -112,7 +112,7 @@ roleRef:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-resizer-role
+  name: simplyblock-csi-resizer-role
 rules:
   # The following rule should be uncommented for plugins that require secrets
   # for provisioning.
@@ -142,14 +142,14 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-resizer-binding
+  name: simplyblock-csi-resizer-binding
 subjects:
   - kind: ServiceAccount
-    name: spdkcsi-controller-sa
+    name: simplyblock-csi-controller-sa
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: spdkcsi-resizer-role
+  name: simplyblock-csi-resizer-role
   apiGroup: rbac.authorization.k8s.io
 
 # external-health-monitor sidecar required roles
@@ -157,7 +157,7 @@ roleRef:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-health-monitor-role
+  name: simplyblock-csi-health-monitor-role
 rules:
 - apiGroups: [""]
   resources: ["persistentvolumes"]
@@ -179,13 +179,13 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: spdkcsi-health-monitor-binding
+  name: simplyblock-csi-health-monitor-binding
 subjects:
 - kind: ServiceAccount
-  name: spdkcsi-controller-sa
+  name: simplyblock-csi-controller-sa
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: spdkcsi-health-monitor-role
+  name: simplyblock-csi-health-monitor-role
   apiGroup: rbac.authorization.k8s.io
 {{- end -}}

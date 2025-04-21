@@ -52,8 +52,8 @@ const (
 	testPodWithClonePath     = "templates/testpod-clone.yaml"
 
 	// controller statefulset and node daemonset names
-	controllerStsName = "spdkcsi-controller"
-	nodeDsName        = "spdkcsi-node"
+	controllerStsName = "csi-controller"
+	nodeDsName        = "csi-node"
 	testPodName       = "spdkcsi-test"
 	multiTestPodName  = "spdkcsi-test-multi"
 	cachetestPodName  = "spdkcsi-cache-test"
@@ -829,7 +829,7 @@ func getStorageNode(c kubernetes.Interface, random int) (string, string, error) 
 	// get the credentials from the configmap
 	// get the storage node from the simplyblock api
 	// return the storage node
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
+	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
 	if err != nil {
 		return "", "", err
 	}
@@ -841,7 +841,7 @@ func getStorageNode(c kubernetes.Interface, random int) (string, string, error) 
 	}
 
 	// use k8s client go to get the value of the secret spdkcsi-secret
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
+	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
 	if err != nil {
 		return "", "", err
 	}
@@ -859,7 +859,7 @@ func getStorageNode(c kubernetes.Interface, random int) (string, string, error) 
 	return sn, snid, nil
 }
 func numberOfNodes(c kubernetes.Interface) (int, error) {
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
+	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
 	if err != nil {
 		return 0, err
 	}
@@ -871,7 +871,7 @@ func numberOfNodes(c kubernetes.Interface) (int, error) {
 	}
 
 	// use k8s client go to get the value of the secret s pdkcsi-secret
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
+	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
 	if err != nil {
 		return 0, err
 	}
@@ -891,7 +891,7 @@ func numberOfNodes(c kubernetes.Interface) (int, error) {
 }
 
 func restartStorageNode(c kubernetes.Interface, nodeID string) error {
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "spdkcsi-cm", metav1.GetOptions{})
+	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -903,7 +903,7 @@ func restartStorageNode(c kubernetes.Interface, nodeID string) error {
 	}
 
 	// use k8s client go to get the value of the secret spdkcsi-secret
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "spdkcsi-secret", metav1.GetOptions{})
+	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

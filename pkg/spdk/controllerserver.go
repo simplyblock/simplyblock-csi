@@ -463,7 +463,7 @@ func NewsimplyBlockClient() (*util.NodeNVMf, error) {
 			IP   string `json:"ip"`
 		} `json:"simplybk"`
 	}
-	configFile := util.FromEnv("SPDKCSI_CONFIG", "/etc/spdkcsi-config/config.json")
+	configFile := util.FromEnv("SPDKCSI_CONFIG", "/etc/csi-config/config.json")
 	err := util.ParseJSONFile(configFile, &config)
 	if err != nil {
 		return nil, err
@@ -474,7 +474,7 @@ func NewsimplyBlockClient() (*util.NodeNVMf, error) {
 			Secret string `json:"secret"`
 		} `json:"simplybk"`
 	}
-	secretFile := util.FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
+	secretFile := util.FromEnv("SPDKCSI_SECRET", "/etc/csi-secret/secret.json")
 	err = util.ParseJSONFile(secretFile, &secret)
 	if err != nil {
 		return nil, err
