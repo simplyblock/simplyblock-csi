@@ -5,7 +5,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: spdkcsi-cm
+  name: simplyblock-csi-cm
 data:
   config.json: |-
     {
@@ -19,7 +19,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: caching-node-restart-script-cm
+  name: simplyblock-caching-node-restart-script-cm
 data:
   restart_script.py: |
     import json, os, requests

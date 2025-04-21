@@ -6,7 +6,7 @@ metadata:
   labels:
     app: wordpress
 spec:
-  storageClassName: spdkcsi-sc
+  storageClassName: csi-sc
   accessModes:
     - ReadWriteOnce
   resources:
@@ -26,7 +26,6 @@ spec:
     app: wordpress
     tier: mysql
   clusterIP: None
----
 ---
 apiVersion: apps/v1
 kind: Deployment

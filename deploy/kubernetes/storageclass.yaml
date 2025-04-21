@@ -5,7 +5,7 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: spdkcsi-sc
+  name: csi-sc
 provisioner: csi.simplyblock.io
 parameters:
   csi.storage.k8s.io/fstype: ext4

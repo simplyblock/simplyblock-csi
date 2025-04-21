@@ -5,20 +5,20 @@
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: spdkcsi-node
+  name: simplyblock-csi-node
 spec:
   selector:
     matchLabels:
-      app: spdkcsi-node
+      app: csi-node
   template:
     metadata:
       labels:
-        app: spdkcsi-node
+        app: csi-node
     spec:
       serviceAccountName: spdkcsi-node-sa
       hostNetwork: true
       containers:
-      - name: spdkcsi-registrar
+      - name: csi-registrar
         securityContext:
           privileged: true
         image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
@@ -32,7 +32,7 @@ spec:
           mountPath: /csi
         - name: registration-dir
           mountPath: /registration
-      - name: spdkcsi-node
+      - name: csi-node
         securityContext:
           privileged: true
           capabilities:
@@ -67,14 +67,14 @@ spec:
           mountPath: /dev
         - name: host-sys
           mountPath: /sys
-        - name: spdkcsi-nodeserver-config
-          mountPath: /etc/spdkcsi-nodeserver-config/
+        - name: simplyblock-csi-nodeserver-config
+          mountPath: /etc/csi-nodeserver-config/
           readOnly: true
-        - name: spdkcsi-config
-          mountPath: /etc/spdkcsi-config/
+        - name: csi-config
+          mountPath: /etc/csi-config/
           readOnly: true
-        - name: spdkcsi-secret
-          mountPath: /etc/spdkcsi-secret/
+        - name: csi-secret
+          mountPath: /etc/csi-secret/
           readOnly: true
       volumes:
       - name: socket-dir
@@ -99,14 +99,14 @@ spec:
       - name: host-sys
         hostPath:
           path: /sys
-      - name: spdkcsi-nodeserver-config
+      - name: csi-nodeserver-config
         configMap:
-          name: spdkcsi-nodeservercm
+          name: simplyblock-csi-nodeservercm
           optional: true
-      - name: spdkcsi-config
+      - name: csi-config
         configMap:
-          name: spdkcsi-cm
-      - name: spdkcsi-secret
+          name: simplyblock-csi-cm
+      - name: csi-secret
         secret:
-          secretName: spdkcsi-secret
+          secretName: simplyblock-csi-secret
 
