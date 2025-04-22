@@ -28,7 +28,7 @@ spec:
         image: "{{ .Values.image.storageNode.repository }}:{{ .Values.image.storageNode.tag }}"
         imagePullPolicy: "{{ .Values.image.storageNode.pullPolicy }}"
         env:
-        - name: csi_SECRET
+        - name: SPDKCSI_SECRET
           valueFrom:
             secretKeyRef:
               name: simplyblock-csi-secret
