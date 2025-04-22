@@ -16,7 +16,7 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: caching-node-handler
+      app: simplyblock-caching-node-handler
   template:
     metadata:
       labels:
@@ -31,12 +31,12 @@ spec:
         - name: SPDKCSI_SECRET
           valueFrom:
             secretKeyRef:
-              name: simplyblock-spdkcsi-secret
+              name: simplyblock-csi-secret
               key: secret.json
         - name: CLUSTER_CONFIG
           valueFrom:
             configMapKeyRef:
-              name: simplyblock-spdkcsi-cm
+              name: simplyblock-csi-cm
               key: config.json
         - name: IFNAME
           value: "{{ .Values.cachingnode.ifname }}"
