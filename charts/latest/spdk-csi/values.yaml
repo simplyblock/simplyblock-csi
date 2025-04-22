@@ -5,7 +5,7 @@
 driverName: csi.simplyblock.io
 
 image:
-  spdkcsi:
+  csi:
     repository: simplyblock/spdkcsi
     tag: latest
     pullPolicy: Always
