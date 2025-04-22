@@ -32,49 +32,6 @@ spec:
         value: {{ .Values.node.tolerations.value }}
         {{- end }}
       {{- end }}
-      {{- if .Values.node.initContainers.enabled }}
-      initContainers:
-      - name: init-nvme
-        image: "{{ .Values.image.csi.repository }}:{{ .Values.image.csi.tag }}"
-        imagePullPolicy: {{ .Values.image.csi.pullPolicy }}
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: host-root
-          mountPath: /host
-        command:
-        - "/bin/sh"
-        - "-c"
-        - |
-          chroot /host /bin/sh -c '
-          . /etc/os-release
-          case "$ID" in
-            ubuntu|debian)
-              INSTALL_CMD="apt-get update && apt-get install -y"
-              ;;
-            centos|rhel|fedora|almalinux|rocky|amzn)
-              INSTALL_CMD="dnf install -y"
-              ;;
-            suse|opensuse-leap)
-              INSTALL_CMD="zypper install -y"
-              ;;
-            *)
-              echo "Unsupported Linux distribution: $ID"
-              exit 1
-              ;;
-          esac
-
-          if ! command -v nvme &> /dev/null; then
-            $INSTALL_CMD nvme-cli
-          fi
-
-          if ! lsmod | grep nvme_tcp; then
-            echo "Loading nvme-tcp module..."
-            modprobe nvme-tcp || echo "Failed to load nvme-tcp"
-          else
-            echo "nvme-tcp module is already loaded"
-          fi'
-      {{- end }}
       containers:
       - name: csi-registrar
         securityContext:

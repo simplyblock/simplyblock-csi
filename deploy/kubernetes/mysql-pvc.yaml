@@ -6,7 +6,7 @@ metadata:
   labels:
     app: wordpress
 spec:
-  storageClassName: csi-sc
+  storageClassName: simplyblock-csi-sc
   accessModes:
     - ReadWriteOnce
   resources:

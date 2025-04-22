@@ -115,8 +115,6 @@ benchmarks: 0
 # AL2023_x86_64_STANDARD: ens5
 
 node:
-  initContainers:
-    enabled: false
   tolerations:
     create: false
     operator: Exists
