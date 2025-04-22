@@ -159,7 +159,7 @@ storagenode:
   initContainers:
     enabled: false
   daemonsets:
-  - name: storage-node-ds
+  - name: simplyblock-storage-node-ds
     appLabel: storage-node
     nodeSelector: simplyblock-storage-plane
     tolerations:
@@ -168,7 +168,7 @@ storagenode:
       effect: 
       key: 
       value:
-  - name: storage-node-ds-reserve
+  - name: simplyblock-storage-node-ds-reserve
     appLabel: storage-node-reserve
     nodeSelector: simplyblock-storage-plane-reserve
     tolerations:
@@ -177,7 +177,7 @@ storagenode:
       effect: 
       key: 
       value:
-  - name: storage-node-ds-restart
+  - name: simplyblock-storage-node-ds-restart
     appLabel: storage-node-restart
     nodeSelector: simplyblock-storage-plane-restart
     tolerations:

@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: snapshot-controller
+  name: simplyblock-snapshot-controller
   namespace: kube-system
 
 ---

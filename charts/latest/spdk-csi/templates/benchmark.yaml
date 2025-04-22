@@ -23,7 +23,7 @@ spec:
       volumes:
         - name: benchmark-volume
           persistentVolumeClaim:
-            claimName: simplyblock-spdkcsi-benchmark-pvc-{{ $i }}
+            claimName: simplyblock-csi-benchmark-pvc-{{ $i }}
         - name: fio-config
           configMap:
             name: simplyblock-fio-config
@@ -33,14 +33,14 @@ spec:
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
-  name: simplyblock-spdkcsi-benchmark-pvc-{{ $i }}
+  name: simplyblock-csi-benchmark-pvc-{{ $i }}
 spec:
   accessModes:
   - ReadWriteOnce
   resources:
     requests:
       storage: 30Gi
-  storageClassName: simplyblock-spdkcsi-sc
+  storageClassName: simplyblock-csi-sc
 
 {{- end }}
 

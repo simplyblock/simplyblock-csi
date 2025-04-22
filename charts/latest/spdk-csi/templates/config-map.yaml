@@ -7,7 +7,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: simplyblock-spdkcsi-cm
+  name: simplyblock-csi-cm
 data:
   # uuid: the simplyblock cluster UUID
   # ip: the management IP of the simplyblock cluster
