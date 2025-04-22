@@ -128,11 +128,6 @@ spec:
       - name: host-sys
         hostPath:
           path: /sys
-      {{- if .Values.node.initContainers.enabled }}
-      - name: host-root
-        hostPath:
-          path: /
-      {{- end }}
       - name: csi-nodeserver-config
         configMap:
           name: simplyblock-csi-nodeservercm
