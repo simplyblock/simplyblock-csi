@@ -10,7 +10,7 @@ metadata:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: snapshot-controller-runner
+  name: simplyblock-snapshot-controller-runner
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
