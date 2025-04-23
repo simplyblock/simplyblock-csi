@@ -101,10 +101,10 @@ spec:
         - name: socket-dir
           mountPath: /csi
         - name: simplyblock-csi-config
-          mountPath: /etc/csi-config/
+          mountPath: /etc/spdkcsi-config/
           readOnly: true
         - name: simplyblock-csi-secret
-          mountPath: /etc/csi-secret/
+          mountPath: /etc/spdkcsi-secret/
           readOnly: true
       volumes:
       - name: socket-dir

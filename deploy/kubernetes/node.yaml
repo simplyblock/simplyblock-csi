@@ -71,10 +71,10 @@ spec:
           mountPath: /etc/csi-nodeserver-config/
           readOnly: true
         - name: csi-config
-          mountPath: /etc/csi-config/
+          mountPath: /etc/spdkcsi-config/
           readOnly: true
         - name: csi-secret
-          mountPath: /etc/csi-secret/
+          mountPath: /etc/spdkcsi-secret/
           readOnly: true
       volumes:
       - name: socket-dir

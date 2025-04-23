@@ -83,7 +83,7 @@ spec:
             name: http-endpoint
             protocol: TCP
       - name: csi-controller
-        image: simplyblock/csi:latest
+        image: simplyblock/spdkcsi:latest
         imagePullPolicy: "Always"
         args:
         - "--v=5"
@@ -99,10 +99,10 @@ spec:
         - name: socket-dir
           mountPath: /csi
         - name: csi-config
-          mountPath: /etc/csi-config/
+          mountPath: /etc/spdkcsi-config/
           readOnly: true
         - name: csi-secret
-          mountPath: /etc/csi-secret/
+          mountPath: /etc/spdkcsi-secret/
           readOnly: true
       volumes:
       - name: socket-dir
