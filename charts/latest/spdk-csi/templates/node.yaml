@@ -93,7 +93,7 @@ spec:
         - name: host-sys
           mountPath: /sys
         - name: csi-nodeserver-config
-          mountPath: /etc/csi-nodeserver-config/
+          mountPath: /etc/spdkcsi-nodeserver-config/
           readOnly: true
         - name: csi-config
           mountPath: /etc/csi-config/
