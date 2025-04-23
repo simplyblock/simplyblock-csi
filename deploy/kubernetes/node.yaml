@@ -67,8 +67,8 @@ spec:
           mountPath: /dev
         - name: host-sys
           mountPath: /sys
-        - name: simplyblock-csi-nodeserver-config
-          mountPath: /etc/csi-nodeserver-config/
+        - name: csi-nodeserver-config
+          mountPath: /etc/spdkcsi-nodeserver-config/
           readOnly: true
         - name: csi-config
           mountPath: /etc/spdkcsi-config/
