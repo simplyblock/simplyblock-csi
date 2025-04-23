@@ -5,7 +5,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: csi-nodeservercm
+  name: simplyblock-csi-nodeservercm
 data:
   # xpu.targetType:
   #   - SMA: xpu-sma-nvmftcp, xpu-sma-virtioblk, xpu-sma-nvme
