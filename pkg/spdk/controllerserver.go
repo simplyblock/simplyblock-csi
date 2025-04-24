@@ -425,18 +425,14 @@ func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshot
 	}
 	var vca []*csi.ListSnapshotsResponse_Entry
 	for _, entry := range entries {
-		sz, err := strconv.ParseInt(entry.Size, 10, 64)
-		if err != nil {
-			return nil, err
-		}
 		dt, err := strconv.ParseInt(entry.CreatedAt, 10, 64)
 		if err != nil {
 			return nil, err
 		}
 		snapshotData := &csi.Snapshot{
-			SizeBytes:      sz,
-			SnapshotId:     fmt.Sprintf("%s:%s", entry.PoolName, entry.UUID),
-			SourceVolumeId: entry.SourceUUID,
+			SizeBytes:      entry.Size,
+			SnapshotId:     entry.UUID,
+			SourceVolumeId: fmt.Sprintf("%s:%s", entry.PoolName, entry.SourceVolume.UUID),
 			CreationTime: &timestamppb.Timestamp{
 				Seconds: dt,
 			},

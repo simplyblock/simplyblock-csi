@@ -144,13 +144,15 @@ type CSIPoolsResp struct {
 }
 
 type SnapshotResp struct {
-	Name       string `json:"name"`
-	UUID       string `json:"uuid"`
-	Size       string `json:"size"`
-	PoolName   string `json:"pool_name"`
-	PoolID     string `json:"pool_id"`
-	SourceUUID string `json:"source_uuid"`
-	CreatedAt  string `json:"created_at"`
+	Name         string `json:"snapshot_name"`
+	UUID         string `json:"uuid"`
+	Size         int64  `json:"size"`
+	PoolName     string `json:"pool_name"`
+	PoolID       string `json:"pool_uuid"`
+	CreatedAt    string `json:"created_at"`
+	SourceVolume struct {
+		UUID string `json:"id"`
+	} `json:"lvol"`
 }
 
 type CreateVolResp struct {
