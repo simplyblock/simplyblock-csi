@@ -6,12 +6,12 @@ metadata:
 subjects:
 {{- if .Values.cachingnode.create }}
 - kind: ServiceAccount
-  name: caching-node-service-account
+  name: simplyblock-caching-node-service-account
   namespace: {{ .Release.Namespace }}
 {{- end }}
 {{- if .Values.storagenode.create }}
 - kind: ServiceAccount
-  name: storage-node-service-account
+  name: simplyblock-storage-node-service-account
   namespace: {{ .Release.Namespace }}
 {{- end }}
 roleRef:

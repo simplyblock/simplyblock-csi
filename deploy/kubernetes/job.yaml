@@ -4,7 +4,7 @@ metadata:
   name: simplyblock-pod-listing-role-binding
 subjects:
 - kind: ServiceAccount
-  name: caching-node-service-account
+  name: simplyblock-caching-node-service-account
   namespace: default
 roleRef:
   kind: ClusterRole
@@ -25,7 +25,7 @@ rules:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: caching-node-service-account
+  name: simplyblock-caching-node-service-account
 ---
 apiVersion: batch/v1
 kind: Job
@@ -34,7 +34,7 @@ metadata:
 spec:
   template:
     spec:
-      serviceAccountName: caching-node-service-account
+      serviceAccountName: simplyblock-caching-node-service-account
       containers:
       - name: add-caching-node
         image: manoharbrm/add-caching-node-script:latest
@@ -42,12 +42,12 @@ spec:
         - name: SPDKCSI_SECRET
           valueFrom:
             secretKeyRef:
-              name: spdkcsi-secret
+              name: simplyblock-csi-secret
               key: secret.json
         - name: CLUSTER_CONFIG
           valueFrom:
             configMapKeyRef:
-              name: spdkcsi-cm
+              name: simplyblock-csi-cm
               key: config.json
       restartPolicy: Never
   backoffLimit: 4

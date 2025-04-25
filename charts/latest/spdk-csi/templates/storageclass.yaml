@@ -7,7 +7,7 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: spdkcsi-sc
+  name: simplyblock-csi-sc
 provisioner: csi.simplyblock.io
 parameters:
   csi.storage.k8s.io/fstype: ext4
@@ -29,7 +29,7 @@ allowVolumeExpansion: true
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: spdkcsi-sc-cache
+  name: simplyblock-csi-sc-cache
 provisioner: csi.simplyblock.io
 parameters:
   csi.storage.k8s.io/fstype: ext4

@@ -3,13 +3,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: storage-node-sa
+  name: simplyblock-storage-node-sa
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: storage-node-role
+  name: simplyblock-storage-node-role
 rules:
 - apiGroups: [""]
   resources: ["pods", "namespaces", "pods/exec"]
@@ -22,14 +22,14 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: pods-list-sn
+  name: simplyblock-pods-list-sn
 subjects:
 - kind: ServiceAccount
-  name: storage-node-sa
+  name: simplyblock-storage-node-sa
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: storage-node-role
+  name: simplyblock-storage-node-role
   apiGroup: rbac.authorization.k8s.io
 
 {{- range .Values.storagenode.daemonsets }}
@@ -39,7 +39,10 @@ kind: DaemonSet
 metadata:
   name: {{ .name }}
   annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook: pre-rollback
     helm.sh/hook: post-install
+    helm.sh/hook: post-upgrade
 spec:
   selector:
     matchLabels:
@@ -49,7 +52,7 @@ spec:
       labels:
         app: {{ .appLabel }}
     spec:
-      serviceAccountName: storage-node-sa
+      serviceAccountName: simplyblock-storage-node-sa
       nodeSelector:
         type: {{ .nodeSelector }}
       volumes:
@@ -59,11 +62,6 @@ spec:
         - name: etc-simplyblock
           hostPath:
             path: /var/simplyblock
-        {{- if $.Values.storagenode.initContainers.enabled }}
-        - name: host-root
-          hostPath:
-            path: /
-        {{- end }}
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -78,30 +76,11 @@ spec:
         value: {{ .tolerations.value }}
         {{- end }}
       {{- end }}
-
-      {{- if $.Values.storagenode.initContainers.enabled }}
-      initContainers:
-      - name: init-snode
-        image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
-        imagePullPolicy: "{{ $.Values.image.simplyblock.pullPolicy }}"
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: host-root
-          mountPath: /host
-        command:
-        - "/bin/sh"
-        - "-c"
-        - |
-          chroot /host /bin/sh -c '
-          modprobe nbd
-          yum install -y pciutils'
-      {{- end }}
       containers:
       - name: s-node-api-container
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
         imagePullPolicy: "{{ $.Values.image.simplyblock.pullPolicy }}"
-        command: ["python", "simplyblock_web/node_webapp.py", "storage_node_k8s"]
+        command: ["python", "simplyblock_web/snode_app_k8s.py", "storage_node_k8s"]
         env:
         - name: HOSTNAME
           valueFrom:

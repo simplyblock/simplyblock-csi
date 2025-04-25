@@ -3,14 +3,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: mgmt-api-job
+  name: simplyblock-mgmt-api-job
 spec:
   template:
     spec:
       volumes:
         - name: script-config
           configMap:
-            name: mgmt-api-script-cm
+            name: simplyblock-mgmt-api-script-cm
       containers:
       - name: mgmt-api
         image: "{{ .Values.image.mgmtAPI.repository }}:{{ .Values.image.mgmtAPI.tag }}"
@@ -22,12 +22,12 @@ spec:
         - name: SPDKCSI_SECRET
           valueFrom:
             secretKeyRef:
-              name: spdkcsi-secret
+              name: simplyblock-csi-secret
               key: secret.json
         - name: CLUSTER_CONFIG
           valueFrom:
             configMapKeyRef:
-              name: spdkcsi-cm
+              name: simplyblock-csi-cm
               key: config.json
         - name: NAMESPACE
           valueFrom:

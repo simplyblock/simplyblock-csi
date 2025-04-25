@@ -5,22 +5,22 @@
 kind: StatefulSet
 apiVersion: apps/v1
 metadata:
-  name: spdkcsi-controller
+  name: simplyblock-csi-controller
 spec:
-  serviceName: spdkcsi-controller
+  serviceName: simplyblock-csi-controller
   replicas: 1
   selector:
     matchLabels:
-      app: spdkcsi-controller
+      app: csi-controller
   template:
     metadata:
       labels:
-        app: spdkcsi-controller
+        app: csi-controller
     spec:
-      serviceAccountName: spdkcsi-controller-sa
+      serviceAccountName: simplyblock-csi-controller-sa
       hostNetwork: true
       containers:
-      - name: spdkcsi-provisioner
+      - name: csi-provisioner
         image: registry.k8s.io/sig-storage/csi-provisioner:v4.0.1
         imagePullPolicy: "Always"
         args:
@@ -34,7 +34,7 @@ spec:
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
-      - name: spdkcsi-snapshotter
+      - name: csi-snapshotter
         image: registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2
         args:
         - "--csi-address=unix:///csi/csi-provisioner.sock"
@@ -47,7 +47,7 @@ spec:
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
-      - name: spdkcsi-attacher
+      - name: csi-attacher
         image: gcr.io/k8s-staging-sig-storage/csi-attacher:v4.5.1
         imagePullPolicy: "Always"
         args:
@@ -57,7 +57,7 @@ spec:
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
-      - name: spdkcsi-resizer
+      - name: csi-resizer
         image: gcr.io/k8s-staging-sig-storage/csi-resizer:v1.10.1
         imagePullPolicy: "Always"
         args:
@@ -67,7 +67,7 @@ spec:
         volumeMounts:
           - name: socket-dir
             mountPath: /csi
-      - name: spdkcsi-health-monitor
+      - name: csi-health-monitor
         image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:v0.11.0
         imagePullPolicy: "Always"
         args:
@@ -82,7 +82,7 @@ spec:
           - containerPort: 8080
             name: http-endpoint
             protocol: TCP
-      - name: spdkcsi-controller
+      - name: csi-controller
         image: simplyblock/spdkcsi:latest
         imagePullPolicy: "Always"
         args:
@@ -98,19 +98,19 @@ spec:
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
-        - name: spdkcsi-config
+        - name: csi-config
           mountPath: /etc/spdkcsi-config/
           readOnly: true
-        - name: spdkcsi-secret
+        - name: csi-secret
           mountPath: /etc/spdkcsi-secret/
           readOnly: true
       volumes:
       - name: socket-dir
         emptyDir:
           medium: "Memory"
-      - name: spdkcsi-config
+      - name: csi-config
         configMap:
-          name: spdkcsi-cm
-      - name: spdkcsi-secret
+          name: simplyblock-csi-cm
+      - name: csi-secret
         secret:
-          secretName: spdkcsi-secret
+          secretName: simplyblock-csi-secret
