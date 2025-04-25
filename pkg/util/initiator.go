@@ -45,7 +45,6 @@ type SpdkCsiInitiator interface {
 
 const DevDiskByID = "/dev/disk/by-id/*%s*"
 
-var CtrlLossTmo = 60
 
 func NewSpdkCsiInitiator(volumeContext map[string]string, spdkNode *NodeNVMf) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
@@ -264,6 +263,7 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 
 func (nvmf *initiatorNVMf) Connect() (string, error) {
 	klog.Info("connections", nvmf.connections)
+	CtrlLossTmo := 60
 	if len(nvmf.connections) == 1 {
 		CtrlLossTmo *= 15
 	}
@@ -561,6 +561,7 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, path Path) error {
 		conn := connections[connIndex]
 
 		targetIP := parseAddress(path.Address)
+		CtrlLossTmo := 60
 		if connCount == 1 && conn.IP != targetIP {
 			CtrlLossTmo *= 15
 
