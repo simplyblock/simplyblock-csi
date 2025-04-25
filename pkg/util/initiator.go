@@ -264,14 +264,13 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 
 func (nvmf *initiatorNVMf) Connect() (string, error) {
 	klog.Info("connections", nvmf.connections)
-	lossTmo := strconv.Itoa(CtrlLossTmo)
 	if len(nvmf.connections) == 1 {
-		lossTmo = nvmf.ctrlLossTmo
+		CtrlLossTmo *= 15
 	}
 	for i, conn := range nvmf.connections {
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", lossTmo,
+			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(CtrlLossTmo),
 			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
@@ -563,7 +562,7 @@ func checkOnlineNode(spdkNode *NodeNVMf, lvolID string, path Path) error {
 
 		targetIP := parseAddress(path.Address)
 		if connCount == 1 && conn.IP != targetIP {
-			CtrlLossTmo = conn.CtrlLossTmo
+			CtrlLossTmo *= 15
 
 			if err := disconnectViaNVMe(path); err != nil {
 				return err
