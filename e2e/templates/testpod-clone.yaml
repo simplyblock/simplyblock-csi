@@ -4,7 +4,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: spdkcsi-pvc-clone
 spec:
-  storageClassName: spdkcsi-sc
+  storageClassName: simplyblock-csi-sc
   dataSource:
     name: spdkcsi-pvc
     kind: PersistentVolumeClaim

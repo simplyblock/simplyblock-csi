@@ -11,4 +11,4 @@ spec:
   resources:
     requests:
       storage: 256Mi
-  storageClassName: spdkcsi-sc-cache
+  storageClassName: simplyblock-csi-sc-cache

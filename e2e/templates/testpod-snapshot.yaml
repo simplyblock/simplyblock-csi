@@ -4,7 +4,7 @@ kind: VolumeSnapshot
 metadata:
   name: spdk-snapshot
 spec:
-  volumeSnapshotClassName: csi-spdk-snapclass
+  volumeSnapshotClassName: simplyblock-csi-snapshotclass
   source:
     persistentVolumeClaimName: spdkcsi-pvc
 
@@ -14,7 +14,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: spdkcsi-pvc-restore
 spec:
-  storageClassName: spdkcsi-sc
+  storageClassName: simplyblock-csi-sc
   dataSource:
     name: spdk-snapshot
     kind: VolumeSnapshot
