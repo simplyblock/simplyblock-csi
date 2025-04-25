@@ -42,6 +42,16 @@ spec:
         - "--v=5"
         - "--csi-address=unix:///csi/csi.sock"
         - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.simplyblock.io/csi.sock"
+        - "--health-port=9809"
+        ports:
+          - containerPort: 9809
+            name: healthz
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 20
+          timeoutSeconds: 10
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
