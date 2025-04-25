@@ -49,6 +49,41 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 			})
 		})
 
+		ginkgo.It("Test multiple PVCs", func() {
+			multiTestPodName := "spdkcsi-test-multi"
+			ginkgo.By("create multiple pvcs and a pod with multiple pvcs attached, and check data persistence after the pod is removed and recreated", func() {
+				deployMultiPvcs()
+				deployTestPodWithMultiPvcs()
+				defer func() {
+					deleteMultiPvcsAndTestPodWithMultiPvcs()
+					if err := waitForTestPodGone(f.ClientSet, multiTestPodName); err != nil {
+						ginkgo.Fail(err.Error())
+					}
+					for _, pvcName := range []string{"spdkcsi-pvc1", "spdkcsi-pvc2", "spdkcsi-pvc3"} {
+						if err := waitForPvcGone(f.ClientSet, pvcName); err != nil {
+							ginkgo.Fail(err.Error())
+						}
+					}
+				}()
+				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = checkDataPersistForMultiPvcs(f)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+		})
+	})
+})
+
+var _ = ginkgo.Describe("CACHE-NODE-TEST", func() {
+	f := framework.NewDefaultFramework("spdkcsi")
+
+	ginkgo.Context("Test caching node SPDK CSI Dynamic Volume Provisioning", func() {
+
 		ginkgo.It("Test the flow for Caching nodes", func() {
 			testPodName := "spdkcsi-test"
 			ginkgo.By("creating a caching PVC and bind it to a pod", func() {
@@ -72,34 +107,6 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				}
 
 				err = checkDataPersist(f)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-		})
-
-		ginkgo.It("Test multiple PVCs", func() {
-			multiTestPodName := "spdkcsi-test-multi"
-			ginkgo.By("create multiple pvcs and a pod with multiple pvcs attached, and check data persistence after the pod is removed and recreated", func() {
-				deployMultiPvcs()
-				deployTestPodWithMultiPvcs()
-				defer func() {
-					deleteMultiPvcsAndTestPodWithMultiPvcs()
-					if err := waitForTestPodGone(f.ClientSet, multiTestPodName); err != nil {
-						ginkgo.Fail(err.Error())
-					}
-					for _, pvcName := range []string{"spdkcsi-pvc1", "spdkcsi-pvc2", "spdkcsi-pvc3"} {
-						if err := waitForPvcGone(f.ClientSet, pvcName); err != nil {
-							ginkgo.Fail(err.Error())
-						}
-					}
-				}()
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-
-				err = checkDataPersistForMultiPvcs(f)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
