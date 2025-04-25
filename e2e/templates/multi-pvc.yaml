@@ -15,7 +15,7 @@ spec:
   resources:
     requests:
       storage: 128Mi
-  storageClassName: spdkcsi-sc
+  storageClassName: simplyblock-csi-sc
 
 ---
 apiVersion: v1
@@ -31,7 +31,7 @@ spec:
   resources:
     requests:
       storage: 128Mi
-  storageClassName: spdkcsi-sc
+  storageClassName: simplyblock-csi-sc
 
 ---
 apiVersion: v1
@@ -47,4 +47,4 @@ spec:
   resources:
     requests:
       storage: 128Mi
-  storageClassName: spdkcsi-sc
+  storageClassName: simplyblock-csi-sc
