@@ -16,7 +16,7 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: simplyblock-caching-node-handler
+      app: caching-node-handler
   template:
     metadata:
       labels:
