@@ -38,10 +38,7 @@ kind: DaemonSet
 metadata:
   name: simplyblock-caching-node-ds
   annotations:
-    helm.sh/hook: pre-delete
-    helm.sh/hook: pre-rollback
-    helm.sh/hook: post-install
-    helm.sh/hook: post-upgrade
+    helm.sh/hook: pre-delete,pre-rollback,post-install,post-upgrade
 spec:
   selector:
     matchLabels:
