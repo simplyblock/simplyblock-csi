@@ -52,8 +52,8 @@ const (
 	testPodWithClonePath     = "templates/testpod-clone.yaml"
 
 	// controller statefulset and node daemonset names
-	controllerStsName = "csi-controller"
-	nodeDsName        = "csi-node"
+	controllerStsName = "simplyblock-csi-controller"
+	nodeDsName        = "simplyblock-csi-node"
 	testPodName       = "spdkcsi-test"
 	multiTestPodName  = "spdkcsi-test-multi"
 	cachetestPodName  = "spdkcsi-cache-test"
