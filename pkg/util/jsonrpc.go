@@ -443,14 +443,14 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode >= http.StatusBadRequest {
+	if resp.StatusCode >= http.StatusInternalServerError {
 		return nil, fmt.Errorf("%s: HTTP error code: %d", method, resp.StatusCode)
 	}
 
 	var response struct {
 		Result  interface{} `json:"result"`
 		Results interface{} `json:"results"`
-		Error   Error       `json:"error"`
+		Error   string      `json:"error"`
 	}
 
 	err = json.NewDecoder(resp.Body).Decode(&response)
@@ -458,9 +458,10 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %w", method, resp.StatusCode, err)
 	}
 
-	if response.Error.Code > 0 {
-		return nil, errors.New(response.Error.Message)
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %s", method, resp.StatusCode, response.Error)
 	}
+
 	if response.Result != nil {
 		return response.Result, nil
 	}
