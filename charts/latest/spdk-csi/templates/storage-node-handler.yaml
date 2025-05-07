@@ -40,32 +40,18 @@ spec:
               key: config.json
         - name: IFNAME
           value: "{{ .Values.storagenode.ifname }}"
-        - name: MAXLVOL
-          value: "{{ .Values.storagenode.maxLvol }}"
-        - name: CPUMASK
-          value: "{{ .Values.storagenode.cpuMask }}"
         - name: MAXSNAP
           value: "{{ .Values.storagenode.maxSnap }}"
-        - name: MAXPROV
-          value: "{{ .Values.storagenode.maxProv }}"
         - name: JMPERCENT
           value: "{{ .Values.storagenode.jmPercent }}"
         - name: NUMPARTITIONS
           value: "{{ .Values.storagenode.numPartitions }}"
-        - name: NUMDEVICES
-          value: "{{ .Values.storagenode.numDevices }}"
-        - name: NUMDISTRIBS
-          value: "{{ .Values.storagenode.numDistribs }}"
         - name: DISABLEHAJM
           value: "{{ .Values.storagenode.disableHAJM }}"
         - name: ENABLETESTDEVICE
           value: "{{ .Values.storagenode.enableTestDevice }}"
         - name: DATANICS
           value: "{{ .Values.storagenode.dataNics }}"
-        - name: IOBUFSMALLPOOLCOUNT
-          value: "{{ .Values.storagenode.iobufSmallPoolCount }}"
-        - name: IOBUFLARGEPOOLCOUNT
-          value: "{{ .Values.storagenode.iobufLargePoolCount }}"
         - name: SPDKIMAGE
           value: "{{ .Values.storagenode.spdkImage }}"
         - name: NAMESPACE
