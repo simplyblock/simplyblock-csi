@@ -158,8 +158,6 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.disableHAJM`              | Disable ha Journal Manager	                                                                                                  | `false`                                                                  |  |
 | `storagenode.enableTestDevice`         | Enable creation of test device                                                                                                  | `false`                                                                  |  |
 | `storagenode.dataNics`                 | Data interface names                                                                                                  | `<empty>`                                                                |  |
-
-
 | `storagenode.pciAllowed`                 | the list of allowed nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.pciBlocked`                 | the list of blocked nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.socketsToUse`               | the list of sockets to use                                                                                                  | `<empty>`                                                                |  |
