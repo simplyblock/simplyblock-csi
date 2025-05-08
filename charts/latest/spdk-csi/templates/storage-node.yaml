@@ -39,7 +39,7 @@ kind: DaemonSet
 metadata:
   name: {{ .name }}
   annotations:
-    helm.sh/hook: pre-delete,pre-rollback,post-install,post-upgrade
+    helm.sh/hook: post-install,post-upgrade
 spec:
   selector:
     matchLabels:
