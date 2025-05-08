@@ -21,7 +21,7 @@ A node can pre-allocate huge pages for multiple sizes.
 
 ```console
 
-helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi/master/charts
+helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi/master/charts/spdk-csi
 
 helm repo update
 

@@ -1,4 +1,4 @@
-name: SImplyBlock Controoler Release Charts
+name: SImplyBlock Controller Release Charts
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
           VERSION="$(grep '^version:' Chart.yaml | awk '{print $2}' | tr -d '"')"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-          helm package sb-controller
+          helm package .
           mkdir -p "../$VERSION"
 
           mv "sb-controller-$VERSION.tgz" "../$VERSION/"
@@ -34,7 +34,7 @@ jobs:
       - name: Update index.yaml
         run: |
           cd charts/
-          helm repo index . --url https://github.com/simplyblock-io/spdk-csi/raw/master/charts
+          helm repo index . --url https://github.com/simplyblock-io/spdk-csi/raw/master/charts/sb-controller
 
       - name: Commit and create PR
         run: |
@@ -44,7 +44,7 @@ jobs:
           BRANCH="release-${{ env.VERSION }}"
           git checkout -b "$BRANCH"
 
-          git add charts/index.yaml charts/sb-controller/${{ env.VERSION }}/
+          git add charts/sb-controller/index.yaml charts/sb-controller/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
           git push origin "$BRANCH"
 
