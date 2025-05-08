@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-mgmt-api-script-cm
+data:
+  action.py: |
+    import json
+    import os
+    import requests
+    from time import sleep
+
+    def get_node_statuses(cluster_ip, cluster_uuid, cluster_secret):
+        url = f"{cluster_ip}/storagenode"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"{cluster_uuid} {cluster_secret}"
+        }
+
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                results = response.json().get('results', [])
+                return results
+            else:
+                print(f"Failed to get node statuses, Status Code: {response.status_code}")
+        except Exception as e:
+            print(f"Error occurred while getting node statuses: {e}")
+        return []
+
+    def activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, distr_ndcs, distr_npcs):
+        total_value = distr_ndcs + distr_npcs + 1
+        retries = total_value * 60
+        while retries > 0:
+            node_statuses = get_node_statuses(cluster_ip, cluster_uuid, cluster_secret)
+            online_nodes = [node for node in node_statuses if node.get('status') == 'online' and len(node.get('nvme_devices'))>0]
+
+            if len(online_nodes) >= total_value:
+                print("Proceeding with cluster activation.")
+                url = f"{cluster_ip}/cluster/activate/{cluster_uuid}"
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"{cluster_uuid} {cluster_secret}"
+                }
+                try:
+                    response = requests.put(url, headers=headers)
+                    if response.status_code == 200:
+                        print("Successfully activated the cluster.")
+                        return
+                    else:
+                        print(f"Failed to activate the cluster, Status Code: {response.status_code}")
+                except Exception as e:
+                    print(f"Error occurred while activating the cluster: {e}")
+                return
+
+            retries -= 1
+            print(f"Not enough 'online' nodes. Retrying in 5 seconds... Remaining retries: {retries}")
+            sleep(5)
+
+        print(f"Cluster not activated: Number of 'online' storage nodes is less than {total_value} after maximum retries.")
+
+    print("Loaded environment variables")
+    action_type = os.getenv("ACTION_TYPE")
+    uuid = os.getenv("SNODE_UUID", "")
+    distr_ndcs = int(os.getenv("DISTR_NDCS", 1)) if os.getenv("DISTR_NDCS", "").isdigit() else 1
+    distr_npcs = int(os.getenv("DISTR_NPCS", 1)) if os.getenv("DISTR_NPCS", "").isdigit() else 1
+
+    secret = json.loads(os.getenv("SPDKCSI_SECRET"))
+    cluster_secret = secret['simplybk']['secret']
+
+    cluster_config = json.loads(os.getenv("CLUSTER_CONFIG"))
+    namespace = os.getenv("NAMESPACE", "default")
+    cluster_uuid = cluster_config['simplybk']['uuid']
+    cluster_ip = cluster_config['simplybk']['ip']
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"{cluster_uuid} {cluster_secret}"
+    }
+
+    print(f"action type: {action_type}. performing appropriate action")
+    if action_type == "cl_activate":
+        # Check if we should activate the cluster
+        activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, distr_ndcs, distr_npcs)
+    elif action_type in ["sn_restart", "sn_shutdown", "sn_remove", "make_sec_primary"] and uuid:
+        if action_type == "sn_restart":
+            url = f"{cluster_ip}/storagenode/restart/{uuid}"
+        elif action_type == "sn_shutdown":
+            url = f"{cluster_ip}/storagenode/shutdown/{uuid}?force=True"
+        elif action_type == "sn_remove":
+            url = f"{cluster_ip}/storagenode/remove/{uuid}"
+        elif action_type == "make_sec_primary":
+            url = f"{cluster_ip}/storagenode/make-sec-new-primary/{uuid}"
+
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                print(f"Successfully executed action: {action_type} for UUID: {uuid}")
+            else:
+                print(f"Failed to execute action: {action_type} for UUID: {uuid}, Status Code: {response.status_code}")
+        except Exception as e:
+            print(f"Error occurred: {e}")
+    elif action_type == "sn_idle":
+        print("No action needed for 'sn_idle'.")
+    else:
+        print(f"Invalid action type or UUID is missing for action: {action_type}")
+        exit(1)

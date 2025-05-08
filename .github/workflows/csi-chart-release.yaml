@@ -1,11 +1,11 @@
-name: Release Charts
+name: CSI Release Charts
 
 on:
   push:
     branches:
       - master
     paths:
-      - 'charts/latest/spdk-csi/Chart.yaml'
+      - 'charts/spdk-csi/latest/spdk-csi/Chart.yaml'
   
 jobs:
   package-and-update:
@@ -22,7 +22,7 @@ jobs:
 
       - name: Extract version and package chart
         run: |
-          cd charts/latest/
+          cd charts/spdk-csi/latest/
           VERSION="$(grep '^version:' spdk-csi/Chart.yaml | awk '{print $2}' | tr -d '"')"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
@@ -44,7 +44,7 @@ jobs:
           BRANCH="release-${{ env.VERSION }}"
           git checkout -b "$BRANCH"
 
-          git add charts/index.yaml charts/${{ env.VERSION }}/
+          git add charts/index.yaml charts/spdk-csi/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
           git push origin "$BRANCH"
 

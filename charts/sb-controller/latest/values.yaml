@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) Arm Limited and Contributors
+# Copyright (c) Intel Corporation
+---
+
+image:
+  storageNode:
+    repository: simplyblock/storage-node-handler
+    tag: latest
+    pullPolicy: Always
+  cachingNode:
+    repository: simplyblock/caching-node-handler
+    tag: latest
+    pullPolicy: Always
+  mgmtAPI:
+    repository: python
+    tag: 3.10
+    pullPolicy: Always
+serviceAccount:
+  # Specifies whether a serviceAccount should be created
+  create: true
+
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+externallyManagedConfigmap:
+  # Specifies whether a externallyManagedConfigmap should be created
+  create: true
+
+externallyManagedSecret:
+  # Specifies whether a externallyManagedSecret should be created
+  create: true
+
+# FIXME: this will not work if there are group of nodes with different AMI types like: AL2, AL2023
+# AL2_x86_64: eth0
+# AL2023_x86_64_STANDARD: ens5
+
+cachingnode:
+  create: false
+  nodeSelector: simplyblock-cache
+  ifname: eth0
+  cpuMask: 
+  spdkMem:
+  spdkImage: 
+  multipathing: true
+  initContainers:
+    enabled: false
+  tolerations:
+    create: false
+    operator: Exists
+    effect: 
+    key: 
+    value:
+
+storagenode:
+  create: false
+  ifname: eth0
+  distr_ndcs: "1"
+  distr_npcs: "1"
+  cpuMask:
+  spdkImage:
+  maxLvol: 10
+  maxSnap: 10
+  maxProv: 150g
+  jmPercent: 3
+  numPartitions: 0
+  disableHAJM: false
+  enableTestDevice: false
+  dataNics:
+  pciAllowed:
+  pciBlocked: 
+  socketsToUse: 
+  nodesPerSocket:
+
+      
