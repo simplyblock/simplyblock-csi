@@ -34,6 +34,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: DISTR_NDCS
+          value: "{{ .Values.storagenode.distr_ndcs }}"
+        - name: DISTR_NPCS
+          value: "{{ .Values.storagenode.distr_npcs }}"  
         - name: ACTION_TYPE
           value: "cl_activate" #options: "sn_idle", "sn_restart", "sn_shutdown", "sn_remove", "cl_activate", "make_sec_primary"
         - name: SNODE_UUID
