@@ -35,8 +35,6 @@ cachingnode:
 storagenode:
   create: false
   ifname: eth0
-  distr_ndcs: "1"
-  distr_npcs: "1"
   spdkImage:
   maxSnap: 10
   jmPercent: 3

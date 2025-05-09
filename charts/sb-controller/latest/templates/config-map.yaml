@@ -8,6 +8,10 @@ data:
     import os
     import requests
     from time import sleep
+    from kubernetes import client, config
+
+    config.load_incluster_config() 
+    v1 = client.CoreV1Api()
 
     def get_node_statuses(cluster_ip, cluster_uuid, cluster_secret):
         url = f"{cluster_ip}/storagenode"
@@ -27,8 +31,10 @@ data:
             print(f"Error occurred while getting node statuses: {e}")
         return []
 
-    def activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, distr_ndcs, distr_npcs):
-        total_value = distr_ndcs + distr_npcs + 1
+    def activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, label_selector):
+        nodes = v1.list_node(label_selector=label_selector)
+        
+        total_value = int(len(nodes.items))
         retries = total_value * 60
         while retries > 0:
             node_statuses = get_node_statuses(cluster_ip, cluster_uuid, cluster_secret)
@@ -61,8 +67,8 @@ data:
     print("Loaded environment variables")
     action_type = os.getenv("ACTION_TYPE")
     uuid = os.getenv("SNODE_UUID", "")
-    distr_ndcs = int(os.getenv("DISTR_NDCS", 1)) if os.getenv("DISTR_NDCS", "").isdigit() else 1
-    distr_npcs = int(os.getenv("DISTR_NPCS", 1)) if os.getenv("DISTR_NPCS", "").isdigit() else 1
+
+    label_selector = "type=simplyblock-storage-plane"
 
     secret = json.loads(os.getenv("SPDKCSI_SECRET"))
     cluster_secret = secret['simplybk']['secret']
@@ -79,7 +85,7 @@ data:
     print(f"action type: {action_type}. performing appropriate action")
     if action_type == "cl_activate":
         # Check if we should activate the cluster
-        activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, distr_ndcs, distr_npcs)
+        activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, label_selector)
     elif action_type in ["sn_restart", "sn_shutdown", "sn_remove", "make_sec_primary"] and uuid:
         if action_type == "sn_restart":
             url = f"{cluster_ip}/storagenode/restart/{uuid}"
