@@ -25,7 +25,7 @@ helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi
 
 helm repo update
 
-helm install -n simplyblk --create-namespace simplyblk spdk-csi/spdk-csi \
+helm install -n simplyblk --create-namespace spdk-csi spdk-csi/spdk-csi \
   --set csiConfig.simplybk.uuid=ace14718-81eb-441f-9d4c-d71ce6904196 \
   --set csiConfig.simplybk.ip=https://96xdzb9ne7.execute-api.us-east-1.amazonaws.com \
   --set csiSecret.simplybk.secret=k6U5moyrY5vCVtSiCcKo \
@@ -172,7 +172,7 @@ helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi
 
 helm repo update
 
-helm install -n simplyblk --create-namespace simplyblk sb-controller/sb-controller \
+helm install -n simplyblk --create-namespace sb-controller sb-controller/sb-controller \
   --set storagenode.create=true \
   --set cachingnode.create=false 
 ```
