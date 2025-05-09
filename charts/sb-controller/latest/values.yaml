@@ -26,18 +26,11 @@ rbac:
 
 cachingnode:
   create: false
-  nodeSelector: simplyblock-cache
   ifname: eth0
   cpuMask: 
   spdkMem:
   spdkImage: 
   multipathing: true
-  tolerations:
-    create: false
-    operator: Exists
-    effect: 
-    key: 
-    value:
 
 storagenode:
   create: false
@@ -54,9 +47,4 @@ storagenode:
   disableHAJM: false
   enableTestDevice: false
   dataNics:
-  pciAllowed:
-  pciBlocked: 
-  socketsToUse: 
-  nodesPerSocket:
-
       

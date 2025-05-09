@@ -197,6 +197,46 @@ If you want to delete the namespace, use this command
 kubectl delete namespace spdk-csi
 ``
 
+## Controller parameters
+
+The following table lists the configurable parameters of the latest Simplyblock Storage Controller chart and default values.
+
+| Parameter                              | Description                                                                                                              | Default                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `image.storageNode.repository`         | simplyblock storage-node controller docker image                                                                                            | `simplyblock/simplyblock`                                               |
+| `image.storageNode.tag`                | simplyblock storage-node controller docker image tag                                                                                        | `release_v1`                                                            |
+| `image.storageNode.pullPolicy`         | simplyblock storage-node controller image pull policy                                                                                        | `Always`                                                                |
+| `image.cachingNode.repository`         | simplyblock caching-node controller docker image                                                                                            | `simplyblock/simplyblock`                                               |
+| `image.cachingNode.tag`                | simplyblock caching-node controller docker image tag                                                                                        | `release_v1`                                                            |
+| `image.cachingNode.pullPolicy`         | simplyblock caching-node controller image pull policy                                                                                        | `Always`                                                                |
+| `image.mgmtAPI.repository`             | simplyblock mgmt api image                                                                                            | `python`                                               |
+| `image.mgmtAPI.tag`                    | simplyblock mgmt api image tag                                                                                        | `3.10`                                                            |
+| `image.mgmtAPI.pullPolicy`             | simplyblock mgmt api image pull policy                                                                                        | `Always`                                                                |
+| `serviceAccount.create`                | whether to create service account of spdkcsi-controller                                                                  | `true`                                                                  |
+| `rbac.create`                          | whether to create rbac of spdkcsi-controller                                                                                | `true`                                                                  |
+|
+| `cachingnode.create`                   |  Whether to create caching node on kubernetes worker node                                                                              | `false`                                                        |  |
+| `cachingnode.ifname`                   | the default interface to be used for binding the caching node to host interface                                          | `eth0`                                                                     |  |
+| `cachingnode.cpuMask`                  | the cpu mask for the spdk app to use for caching node                                                                    | `<empty>`                                                                  |  |
+| `cachingnode.spdkMem`                  |  the amount of hugepage memory to allocate for caching node                                                                                                                        | `<empty>`                                                                  |  |
+| `cachingnode.spdkImage`                | SPDK image uri for caching node                                                                                                                     | `<empty>`                                                                  |  |
+| `cachingnode.multipathing`             | Enable multipathing for lvol connection                                                                                                                        | `true`                                                                     |  |
+| `storagenode.create`                   |  Whether to create storage node on kubernetes worker node                                                                           | `false`                                                        |  |
+| `storagenode.ifname`                   | the default interface to be used for binding the storage node to host interface                                          | `eth0`                                                                     |  |
+| `storagenode.cpuMask`                  | the cpu mask for the spdk app to use for storage node                                                                    | `<empty>`                                                                  |  |
+| `storagenode.spdkImage`                | SPDK image uri for storage node                                                                                                                        | `<empty>`                                                                  |  |
+| `storagenode.maxLvol`                  | the default max lvol per storage node	                                                                                  | `10`                                                                       |  |
+| `storagenode.maxSnap`                  | the default max snapshot per storage node	                                                                              | `10`                                                                       |  |
+| `storagenode.maxProv`                  | the max provisioning size of all storage nodes	                                                                          | `150g`                                                                     |  |
+| `storagenode.jmPercent`                | the number in percent to use for JM from each device	                                                                    | `3`                                                                        |  |
+| `storagenode.numPartitions`            | the number of partitions to create per device                                                                            | `0`                                                                        |  |
+| `storagenode.numDevices`               | the number of devices per storage node	                                                                                  | `1`                                                                        |  |
+| `storagenode.numDistribs`              | the number of distribs per storage node	                                                                                  | `2`                                                                        |  |
+| `storagenode.disableHAJM`              | Disable ha Journal Manager	                                                                                                  | `false`                                                                  |  |
+| `storagenode.enableTestDevice`         | Enable creation of test device                                                                                                  | `false`                                                                  |  |
+| `storagenode.dataNics`                 | Data interface names                                                                                                  | `<empty>`                                                                |  |
+
+
 ## troubleshooting
  - Add `--wait -v=5 --debug` in `helm install` command to get detailed error
  - Use `kubectl describe` to acquire more info
