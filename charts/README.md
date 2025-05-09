@@ -164,6 +164,39 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.nodesPerSocket`             | The number of nodes to use per socket                                                                                                  | `<empty>`                                                                |  |
 
 
+## Install latest Simplyblock Storage Controller via `helm install`
+
+```console
+
+helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi/master/charts/sb-controller
+
+helm repo update
+
+helm install -n spdk-csi --create-namespace spdk-csi sb-controller/sb-controller \
+  --set storagenode.create=true \
+  --set cachingnode.create=false 
+```
+
+## After installation succeeds, you can get a status of Chart
+
+```console
+helm status "sb-controller" --namespace "spdk-csi"
+```
+
+## Delete Chart
+
+If you want to delete your Chart, use this command
+
+```bash
+helm uninstall "sb-controller" --namespace "spdk-csi"
+```
+
+If you want to delete the namespace, use this command
+
+```bash
+kubectl delete namespace spdk-csi
+``
+
 ## troubleshooting
  - Add `--wait -v=5 --debug` in `helm install` command to get detailed error
  - Use `kubectl describe` to acquire more info
