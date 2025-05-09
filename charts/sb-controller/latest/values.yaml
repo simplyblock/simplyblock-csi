@@ -37,11 +37,8 @@ storagenode:
   ifname: eth0
   distr_ndcs: "1"
   distr_npcs: "1"
-  cpuMask:
   spdkImage:
-  maxLvol: 10
   maxSnap: 10
-  maxProv: 150g
   jmPercent: 3
   numPartitions: 0
   disableHAJM: false
