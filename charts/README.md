@@ -25,7 +25,7 @@ helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi
 
 helm repo update
 
-helm install -n spdk-csi --create-namespace spdk-csi spdk-csi/spdk-csi \
+helm install -n simplyblk --create-namespace simplyblk spdk-csi/spdk-csi \
   --set csiConfig.simplybk.uuid=ace14718-81eb-441f-9d4c-d71ce6904196 \
   --set csiConfig.simplybk.ip=https://96xdzb9ne7.execute-api.us-east-1.amazonaws.com \
   --set csiSecret.simplybk.secret=k6U5moyrY5vCVtSiCcKo \
@@ -35,7 +35,7 @@ helm install -n spdk-csi --create-namespace spdk-csi spdk-csi/spdk-csi \
 ## After installation succeeds, you can get a status of Chart
 
 ```console
-helm status "spdk-csi" --namespace "spdk-csi"
+helm status "spdk-csi" --namespace "simplyblk"
 ```
 
 ## Delete Chart
@@ -43,13 +43,13 @@ helm status "spdk-csi" --namespace "spdk-csi"
 If you want to delete your Chart, use this command
 
 ```bash
-helm uninstall "spdk-csi" --namespace "spdk-csi"
+helm uninstall "spdk-csi" --namespace "simplyblk"
 ```
 
 If you want to delete the namespace, use this command
 
 ```bash
-kubectl delete namespace spdk-csi
+kubectl delete namespace simplyblk
 ```
 
 ## driver parameters
@@ -172,7 +172,7 @@ helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi
 
 helm repo update
 
-helm install -n spdk-csi --create-namespace spdk-csi sb-controller/sb-controller \
+helm install -n simplyblk --create-namespace simplyblk sb-controller/sb-controller \
   --set storagenode.create=true \
   --set cachingnode.create=false 
 ```
@@ -180,7 +180,7 @@ helm install -n spdk-csi --create-namespace spdk-csi sb-controller/sb-controller
 ## After installation succeeds, you can get a status of Chart
 
 ```console
-helm status "sb-controller" --namespace "spdk-csi"
+helm status "sb-controller" --namespace "simplyblk"
 ```
 
 ## Delete Chart
@@ -188,13 +188,13 @@ helm status "sb-controller" --namespace "spdk-csi"
 If you want to delete your Chart, use this command
 
 ```bash
-helm uninstall "sb-controller" --namespace "spdk-csi"
+helm uninstall "sb-controller" --namespace "simplyblk"
 ```
 
 If you want to delete the namespace, use this command
 
 ```bash
-kubectl delete namespace spdk-csi
+kubectl delete namespace simplyblk
 ``
 
 ## Controller parameters

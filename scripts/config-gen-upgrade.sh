@@ -1,17 +1,17 @@
 #!/bin/bash
 
-LABEL_KEY=
-LABEL_VALUE=
-IMAGE_REPO=
-IMAGE_TAG=
-IMAGE_PULL_POLICY=
-NAMESPACE=
-MAX_LVOL=
-MAX_PROV=
-PCI_ALLOWED=
-PCI_BLOCKED=
-SOCKETS_TO_USE=
-NODES_PER_SOCKET=
+LABEL_KEY="type"
+LABEL_VALUE="simplyblock-storage-plane"
+IMAGE_REPO="simplyblock/simplyblock"
+IMAGE_TAG="main"
+IMAGE_PULL_POLICY="Always"
+NAMESPACE="simplyblk"
+MAX_LVOL=<VALUE>
+MAX_PROV=<VALUE>
+PCI_ALLOWED="<COMMA_SAPARATED_LIST>"
+PCI_BLOCKED=""
+SOCKETS_TO_USE=""
+NODES_PER_SOCKET=""
 
 NODES=$(kubectl get nodes -l "${LABEL_KEY}=${LABEL_VALUE}" -o jsonpath='{.items[*].metadata.name}')
 
