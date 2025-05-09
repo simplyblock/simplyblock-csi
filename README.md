@@ -7,9 +7,6 @@ Simplyblock CSI plugin brings high performance block storage to Kubernetes. It p
 
 Most parts of the CSI driver are vey much similar to the original [SPDK CSI Design Document](https://docs.google.com/document/d/1aLi6SkNBp__wjG7YkrZu7DdhoftAquZiWiIOMy3hskY/)
 
-
-### Project status: Beta
-
 ### Supported Features
 - Dynamic Volume Provisioning
 - Dynamic Volume Provisioning for Caching nodes
@@ -18,9 +15,9 @@ Most parts of the CSI driver are vey much similar to the original [SPDK CSI Desi
 ### Container Images & Kubernetes Compatibility:
 | driver version | supported k8s version | status |
 | -------------- | --------------------- | ------ |
-| master branch  | 1.21+                 | Beta   |
+| master branch  | 1.21+                 | Stable |
 | v0.1.0         | 1.21+                 | Beta   |
-| v0.1.1         | 1.21+                 | Beta   |
+| v0.1.1         | 1.21+                 | Stable |
 
 ### Install driver on a Kubernetes cluster
  - install via [helm charts](./charts)
