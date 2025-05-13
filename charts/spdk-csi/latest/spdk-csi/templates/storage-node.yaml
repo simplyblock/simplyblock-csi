@@ -38,8 +38,6 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ .name }}
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
 spec:
   selector:
     matchLabels:
