@@ -37,8 +37,6 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: simplyblock-caching-node-ds
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
 spec:
   selector:
     matchLabels:
