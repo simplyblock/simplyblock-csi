@@ -33,7 +33,7 @@ jobs:
 
       - name: Update index.yaml
         run: |
-          cd charts/
+          cd charts/sb-controller
           helm repo index . --url https://github.com/simplyblock-io/spdk-csi/raw/master/charts/sb-controller
 
       - name: Commit and create PR
