@@ -37,18 +37,6 @@ image:
     repository: simplyblock/simplyblock
     tag: main
     pullPolicy: Always
-  storageNode:
-    repository: simplyblock/storage-node-handler
-    tag: latest
-    pullPolicy: Always
-  cachingNode:
-    repository: simplyblock/caching-node-handler
-    tag: latest
-    pullPolicy: Always
-  mgmtAPI:
-    repository: python
-    tag: 3.10
-    pullPolicy: Always
 serviceAccount:
   # Specifies whether a serviceAccount should be created
   create: true
@@ -130,8 +118,6 @@ cachingnode:
   spdkMem:
   spdkImage: 
   multipathing: true
-  initContainers:
-    enabled: false
   tolerations:
     create: false
     operator: Exists
@@ -149,28 +135,17 @@ storagenode:
   maxProv: 150g
   jmPercent: 3
   numPartitions: 0
-  numDevices: 1
-  numDistribs: 2
   disableHAJM: false
   enableTestDevice: false
   dataNics:
-  iobufSmallPoolCount: 
-  iobufLargePoolCount:
-  initContainers:
-    enabled: false
+  pciAllowed:
+  pciBlocked: 
+  socketsToUse: 
+  nodesPerSocket:
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
     nodeSelector: simplyblock-storage-plane
-    tolerations:
-      create: false
-      operator: Exists
-      effect: 
-      key: 
-      value:
-  - name: simplyblock-storage-node-ds-reserve
-    appLabel: storage-node-reserve
-    nodeSelector: simplyblock-storage-plane-reserve
     tolerations:
       create: false
       operator: Exists
