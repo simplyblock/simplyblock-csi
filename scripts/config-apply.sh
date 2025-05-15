@@ -3,7 +3,7 @@
 LABEL_KEY="type"
 LABEL_VALUE="simplyblock-storage-plane"
 ISOLATE_CORES="true" 
-NAMESPACE="simplyblk"
+NAMESPACE="${1:-simplyblk}" 
 NODES=$(kubectl get nodes -l "${LABEL_KEY}=${LABEL_VALUE}" -o jsonpath='{.items[*].metadata.name}')
 
 for NODE in $NODES; do
