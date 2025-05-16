@@ -190,7 +190,7 @@ If you want to delete the namespace, use this command
 
 ```bash
 kubectl delete namespace simplyblk
-``
+```
 
 ## Controller parameters
 
