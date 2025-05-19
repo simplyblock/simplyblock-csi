@@ -7,7 +7,7 @@ driverName: csi.simplyblock.io
 image:
   csi:
     repository: simplyblock/spdkcsi
-    tag: latest
+    tag: v0.1.0
     pullPolicy: Always
   csiProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
@@ -35,7 +35,7 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: simplyblock/simplyblock
-    tag: main
+    tag: "25.5-hotfix"
     pullPolicy: Always
 serviceAccount:
   # Specifies whether a serviceAccount should be created
