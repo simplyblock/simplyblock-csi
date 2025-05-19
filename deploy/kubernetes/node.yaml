@@ -21,7 +21,7 @@ spec:
       - name: csi-registrar
         securityContext:
           privileged: true
-        image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
+        image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1
         imagePullPolicy: "IfNotPresent"
         args:
         - "--v=5"
@@ -63,7 +63,14 @@ spec:
         lifecycle:
           postStart:
             exec:
-              command: ["/bin/sh", "-c", "sudo modprobe nvme-tcp || echo failed to modprobe nvme-tcp"]
+              command:
+                [
+                  "/bin/sh", "-c",
+                  "sudo modprobe nvme-tcp || echo failed to modprobe nvme-tcp && \
+                  if [ ! -f /var/lib/nvme/hostid ]; then uuidgen > /var/lib/nvme/hostid; fi && \
+                  cp /var/lib/nvme/hostid /etc/nvme/hostid && \
+                  echo \"nqn.2014-08.org.nvmexpress:uuid:$(cat /etc/nvme/hostid)\" > /etc/nvme/hostnqn"
+                ]
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
