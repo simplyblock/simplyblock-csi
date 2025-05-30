@@ -48,7 +48,7 @@ spec:
     spec:
       serviceAccountName: simplyblock-caching-node-sa
       nodeSelector:
-        type: {{ .Values.cachingnode.nodeSelector }}
+        {{ .Values.cachingnode.nodeSelector.key }}: {{ .Values.cachingnode.nodeSelector.value }}
       volumes:
         - name: dev-vol
           hostPath:

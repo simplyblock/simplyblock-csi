@@ -6,11 +6,11 @@
 image:
   storageNode:
     repository: simplyblock/storage-node-handler
-    tag: latest
+    tag: v0.1.1
     pullPolicy: Always
   cachingNode:
     repository: simplyblock/caching-node-handler
-    tag: latest
+    tag: v0.1.0
     pullPolicy: Always
   mgmtAPI:
     repository: python
