@@ -166,7 +166,7 @@ The following table lists the configurable parameters of the latest Simplyblock 
 
 ```console
 
-helm repo add spdk-csi https://raw.githubusercontent.com/simplyblock-io/spdk-csi/master/charts/sb-controller
+helm repo add sb-controller https://raw.githubusercontent.com/simplyblock-io/spdk-csi/master/charts/sb-controller
 
 helm repo update
 
