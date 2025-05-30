@@ -112,7 +112,9 @@ node:
 
 cachingnode:
   create: false
-  nodeSelector: simplyblock-cache
+  nodeSelector:
+    key: type
+    value: simplyblock-cache
   ifname: eth0
   cpuMask: 
   spdkMem:
@@ -145,7 +147,9 @@ storagenode:
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
-    nodeSelector: simplyblock-storage-plane
+    nodeSelector:
+      key: type
+      value: simplyblock-storage-plane
     tolerations:
       create: false
       operator: Exists
@@ -154,7 +158,9 @@ storagenode:
       value:
   - name: simplyblock-storage-node-ds-restart
     appLabel: storage-node-restart
-    nodeSelector: simplyblock-storage-plane-restart
+    nodeSelector:
+      key: type
+      value: simplyblock-storage-plane-restart
     tolerations:
       create: false
       operator: Exists
