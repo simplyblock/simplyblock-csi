@@ -35,7 +35,7 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: simplyblock/simplyblock
-    tag: "25.5-hotfix"
+    tag: "R25.5-Hotfix"
     pullPolicy: Always
 serviceAccount:
   # Specifies whether a serviceAccount should be created
