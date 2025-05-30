@@ -3,9 +3,9 @@ entries:
   sb-controller:
   - apiVersion: v1
     appVersion: latest
-    created: "2025-05-30T10:00:23.774391125Z"
+    created: "2025-05-30T10:50:16.464925568Z"
     description: Simplyblock Storage Controller for Kubernetes
-    digest: 1be511bd204fea57ec0de914c7e94148a2b6f8a13d2e6dd3dba0309ca0f25537
+    digest: 95f2805131c4d71212f375fc68e96e4544fe62cfd5f27734b541f7fc08d2442b
     home: https://github.com/simplyblock-io/spdk-csi
     keywords:
     - spdk
@@ -17,4 +17,4 @@ entries:
     urls:
     - https://github.com/simplyblock-io/spdk-csi/raw/master/charts/sb-controller/v0.1.0/sb-controller-v0.1.0.tgz
     version: v0.1.0
-generated: "2025-05-30T10:00:23.773879019Z"
+generated: "2025-05-30T10:50:16.464472794Z"
