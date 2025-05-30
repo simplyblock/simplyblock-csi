@@ -7,7 +7,7 @@ driverName: csi.simplyblock.io
 image:
   csi:
     repository: simplyblock/spdkcsi
-    tag: latest
+    tag: v0.1.0
     pullPolicy: Always
   csiProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
@@ -35,7 +35,7 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: simplyblock/simplyblock
-    tag: main
+    tag: "25.5-hotfix"
     pullPolicy: Always
 serviceAccount:
   # Specifies whether a serviceAccount should be created
@@ -112,7 +112,9 @@ node:
 
 cachingnode:
   create: false
-  nodeSelector: simplyblock-cache
+  nodeSelector:
+    key: type
+    value: simplyblock-cache
   ifname: eth0
   cpuMask: 
   spdkMem:
@@ -145,7 +147,9 @@ storagenode:
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
-    nodeSelector: simplyblock-storage-plane
+    nodeSelector:
+      key: type
+      value: simplyblock-storage-plane
     tolerations:
       create: false
       operator: Exists
@@ -154,7 +158,9 @@ storagenode:
       value:
   - name: simplyblock-storage-node-ds-restart
     appLabel: storage-node-restart
-    nodeSelector: simplyblock-storage-plane-restart
+    nodeSelector:
+      key: type
+      value: simplyblock-storage-plane-restart
     tolerations:
       create: false
       operator: Exists
