@@ -421,6 +421,8 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", method, err)
 		}
+	} else {
+		data = nil
 	}
 
 	requestURL := fmt.Sprintf("%s/%s", client.ClusterIP, path)
@@ -448,9 +450,9 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 	}
 
 	var response struct {
-		Result  interface{} `json:"result"`
-		Results interface{} `json:"results"`
-		Error   string      `json:"error"`
+		Result  any    `json:"result"`
+		Results any    `json:"results"`
+		Error   string `json:"error"`
 	}
 
 	err = json.NewDecoder(resp.Body).Decode(&response)
