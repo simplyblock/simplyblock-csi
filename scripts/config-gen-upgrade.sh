@@ -8,10 +8,6 @@ IMAGE_PULL_POLICY="Always"
 NAMESPACE="${1:-simplyblk}" 
 MAX_LVOL=<VALUE>
 MAX_PROV=<VALUE>
-PCI_ALLOWED="<COMMA_SAPARATED_LIST>"
-PCI_BLOCKED=""
-SOCKETS_TO_USE=""
-NODES_PER_SOCKET=""
 
 NODES=$(kubectl get nodes -l "${LABEL_KEY}=${LABEL_VALUE}" -o jsonpath='{.items[*].metadata.name}')
 
@@ -47,10 +43,6 @@ spec:
             - "--max-lvol=${MAX_LVOL}"
             - "--max-size=${MAX_PROV}"
             - "--upgrade"
-            $( [ -n "${PCI_ALLOWED}" ] && echo "- --pci-allowed=${PCI_ALLOWED}" )
-            $( [ -n "${PCI_BLOCKED}" ] && echo "- --pci-blocked=${PCI_BLOCKED}" )
-            $( [ -n "${SOCKETS_TO_USE}" ] && echo "- --sockets-to-use=${SOCKETS_TO_USE}" )
-            $( [ -n "${NODES_PER_SOCKET}" ] && echo "- --nodes-per-socket=${NODES_PER_SOCKET}" )
           volumeMounts:
             - name: etc-simplyblock
               mountPath: /etc/simplyblock
