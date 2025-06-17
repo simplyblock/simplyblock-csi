@@ -110,35 +110,45 @@ type nvmeDeviceInfo struct {
 	serialNumber string
 }
 
+// clusterConfig represents the Kubernetes secret structure
+type clusterConfig struct {
+	ClusterID       string `json:"cluster_id"`
+	ClusterEndpoint string `json:"cluster_endpoint"`
+	ClusterSecret   string `json:"cluster_secret"`
+}
+
 // NewsimplyBlockClient create a new Simplyblock client
 // should be called for every CSI driver operation
 func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
-	// get spdk node configs, see deploy/kubernetes/config-map.yaml
-	var config struct {
-		Simplybk struct {
-			IP string `json:"ip"`
-		} `json:"simplybk"`
-	}
-	configFile := FromEnv("SPDKCSI_CONFIG", "/etc/spdkcsi-config/config.json")
-	err := ParseJSONFile(configFile, &config)
-	if err != nil {
-		return nil, err
-	}
-
-	var secrets map[string]string
 	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
-	err = ParseJSONFile(secretFile, &secrets)
+	var clusters []clusterConfig
+	err := ParseJSONFile(secretFile, &clusters)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse secret file: %w", err)
 	}
 
-	secret, ok := secrets[clusterID]
-	if !ok {
+	var clusterConfig *clusterConfig
+	for _, cluster := range clusters {
+		if cluster.ClusterID == clusterID {
+			clusterConfig = &cluster
+			break
+		}
+	}
+	
+	if clusterConfig == nil {
 		return nil, fmt.Errorf("failed to find secret for clusterID %s", clusterID)
 	}
 
-	klog.Infof("Simplyblock client created for ClusterID:%s url=%s", clusterID, config.Simplybk.IP)
-	return NewNVMf(clusterID, config.Simplybk.IP, secret), nil
+	if clusterConfig.ClusterEndpoint == "" || clusterConfig.ClusterSecret == "" {
+		return nil, fmt.Errorf("invalid cluster configuration for clusterID %s", clusterID)
+	}
+
+	// Log and return the newly created Simplyblock client.
+	klog.Infof("Simplyblock client created for ClusterID:%s, Endpoint:%s", 
+	clusterConfig.ClusterID, 
+	clusterConfig.ClusterEndpoint,
+	)
+	return NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret), nil
 }
 
 // NewSpdkCsiInitiator creates a new SpdkCsiInitiator based on the target type

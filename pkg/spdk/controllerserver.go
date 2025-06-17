@@ -60,6 +60,7 @@ type spdkSnapshot struct {
 	snapshotID string
 }
 
+// CreateVolume creates a new volume in the SimplyBlock storage system.
 func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	volumeID := req.GetName()
 	unlock := cs.volumeLocks.Lock(volumeID)
