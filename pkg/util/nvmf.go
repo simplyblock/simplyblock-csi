@@ -144,6 +144,7 @@ func (node *NodeNVMf) CreateSnapshot(lvolID, snapshotName string) (string, error
 	if err != nil {
 		return "", err
 	}
+	snapshotID = fmt.Sprintf("%s:%s", node.Client.ClusterID, snapshotID)
 	klog.V(5).Infof("snapshot created: %s", snapshotID)
 	return snapshotID, nil
 }
