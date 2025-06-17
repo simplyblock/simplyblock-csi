@@ -147,4 +147,4 @@ spec:
           name: simplyblock-csi-cm
       - name: csi-secret
         secret:
-          secretName: simplyblock-csi-secret
+          secretName: simplyblock-csi-secret-v2
