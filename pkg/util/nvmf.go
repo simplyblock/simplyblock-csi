@@ -33,6 +33,9 @@ type NodeNVMf struct {
 func NewNVMf(clusterID, clusterIP, clusterSecret string) *NodeNVMf {
 	client := RPCClient{
 		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second},
+		ClusterID:    clusterID,
+		ClusterIP:    clusterIP,
+		ClusterSecret: clusterSecret,
 	}
 	return &NodeNVMf{
 		Client:        &client,
