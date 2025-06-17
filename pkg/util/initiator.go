@@ -117,18 +117,22 @@ type ClusterConfig struct {
 	ClusterSecret   string `json:"cluster_secret"`
 }
 
+type ClustersInfo struct {
+    Clusters []ClusterConfig `json:"clusters"`
+}
+
 // NewsimplyBlockClient create a new Simplyblock client
 // should be called for every CSI driver operation
 func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
-	var clusters []ClusterConfig
+	var clusters ClustersInfo
 	err := ParseJSONFile(secretFile, &clusters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse secret file: %w", err)
 	}
 
 	var clusterConfig *ClusterConfig
-	for _, cluster := range clusters {
+	for _, cluster := range clusters.Clusters {
 		if cluster.ClusterID == clusterID {
 			clusterConfig = &cluster
 			break

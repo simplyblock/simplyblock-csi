@@ -535,14 +535,14 @@ func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshot
 }
 
 func ListClusters() (clusterIds []string, err error) {
-	var clusters []util.ClusterConfig
+	var clusters util.ClustersInfo
 	secretFile := util.FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
 	err = util.ParseJSONFile(secretFile, &clusters)
 	if err != nil {
 		klog.Errorf("failed to parse secret file: %v", err)
 		return
 	}
-	for _, cluster := range clusters {
+	for _, cluster := range clusters.Clusters {
 		clusterIds = append(clusterIds, cluster.ClusterID)
 	}
 	return
