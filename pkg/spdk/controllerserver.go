@@ -411,7 +411,7 @@ func getSnapshot(csiSnapshotID string) (*spdkSnapshot, error) {
 	if len(ids) == 2 {
 		return &spdkSnapshot{
 			clusterID:  ids[0],
-			snapshotID: ids[2],
+			snapshotID: ids[1],
 		}, nil
 	}
 	return nil, fmt.Errorf("missing clusterID in csiSnapshotID: %s", csiSnapshotID)
