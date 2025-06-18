@@ -710,7 +710,12 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 	}
 	newSize := fmt.Sprintf("%dM", sizeMiB)
 	klog.Infof("CloneSnapshot : snapshotName=%s", snapshotName)
-	volumeID, err := sbclient.CloneSnapshot(snapshotID, snapshotName, newSize)
+	snapshot, err := getSnapshot(snapshotID)
+	if err != nil {
+		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", snapshotID, err)
+		return nil, err
+	}
+	volumeID, err := sbclient.CloneSnapshot(snapshot.snapshotID, snapshotName, newSize)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
