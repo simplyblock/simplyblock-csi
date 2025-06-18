@@ -675,7 +675,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s", poolName, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
 	klog.V(5).Info("successfully Restored Snapshot from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
@@ -715,7 +715,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s", poolName, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
 	klog.V(5).Info("successfully created clonesnapshot volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
