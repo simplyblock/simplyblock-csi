@@ -130,20 +130,15 @@ cachingnode:
 storagenode:
   create: false
   ifname: eth0
-  cpuMask:
   spdkImage:
   maxLvol: 10
   maxSnap: 10
   maxProv: 150g
-  jmPercent: 3
-  numPartitions: 0
   disableHAJM: false
   enableTestDevice: false
   dataNics:
   pciAllowed:
   pciBlocked: 
-  socketsToUse: 
-  nodesPerSocket:
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
