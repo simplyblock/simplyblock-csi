@@ -15,7 +15,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: spdkcsi-sc
+  storageClassName: simplyblock-csi-sc
 
 ---
 kind: Pod
