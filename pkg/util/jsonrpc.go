@@ -449,6 +449,9 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 
 	authHeader := fmt.Sprintf("%s %s", client.ClusterID, client.ClusterSecret)
 
+	klog.Info("cluster", client.ClusterID)
+	klog.Info("secret", client.ClusterID)
+
 	req.Header.Add("Authorization", authHeader)
 	req.Header.Add("cluster", client.ClusterID)
 	req.Header.Add("secret", client.ClusterSecret)
