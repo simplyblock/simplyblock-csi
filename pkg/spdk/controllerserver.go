@@ -671,9 +671,8 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	snapshotName := req.GetName()
 	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
-	pvcNamespace, _ := params[CSIStorageNamespaceKey]
 	newSize := fmt.Sprintf("%dM", sizeMiB)
-	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName, pvcNamespace)
+	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -695,7 +694,6 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 	snapshotName := req.GetName()
 	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
-	pvcNamespace, _ := params[CSIStorageNamespaceKey]
 
 	spdkVol, err := getSPDKVol(srcVolumeID)
 	if err != nil {
@@ -722,7 +720,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", snapshotID, err)
 		return nil, err
 	}
-	volumeID, err := sbclient.CloneSnapshot(snapshot.snapshotID, snapshotName, newSize, pvcName, pvcNamespace)
+	volumeID, err := sbclient.CloneSnapshot(snapshot.snapshotID, snapshotName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
