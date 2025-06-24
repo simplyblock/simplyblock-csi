@@ -33,12 +33,12 @@ type NodeNVMf struct {
 func NewNVMf(clusterID, clusterIP, clusterSecret string) *NodeNVMf {
 	client := RPCClient{
 		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second},
-		ClusterID:    clusterID,
-		ClusterIP:    clusterIP,
+		ClusterID:     clusterID,
+		ClusterIP:     clusterIP,
 		ClusterSecret: clusterSecret,
 	}
 	return &NodeNVMf{
-		Client:        &client,
+		Client: &client,
 	}
 }
 
@@ -63,24 +63,24 @@ func (node *NodeNVMf) VolumeInfo(lvolID string) (map[string]string, error) {
 
 // CreateLVolData is the data structure for creating a logical volume
 type CreateLVolData struct {
-	LvolName     string `json:"name"`
-	Size         string `json:"size"`
-	LvsName      string `json:"pool"`
-	Compression  bool   `json:"comp"`
-	Encryption   bool   `json:"crypto"`
-	MaxRWIOPS    string `json:"max_rw_iops"`
-	MaxRWmBytes  string `json:"max_rw_mbytes"`
-	MaxRmBytes   string `json:"max_r_mbytes"`
-	MaxWmBytes   string `json:"max_w_mbytes"`
-	MaxSize      string `json:"max_size"`
-	DistNdcs     int    `json:"distr_ndcs"`
-	DistNpcs     int    `json:"distr_npcs"`
-	PriorClass   int    `json:"lvol_priority_class"`
-	CryptoKey1   string `json:"crypto_key1"`
-	CryptoKey2   string `json:"crypto_key2"`
-	HostID       string `json:"host_id"`
-	LvolID       string `json:"uid"`
-	PvcName      string `json:"pvc_name"`
+	LvolName    string `json:"name"`
+	Size        string `json:"size"`
+	LvsName     string `json:"pool"`
+	Compression bool   `json:"comp"`
+	Encryption  bool   `json:"crypto"`
+	MaxRWIOPS   string `json:"max_rw_iops"`
+	MaxRWmBytes string `json:"max_rw_mbytes"`
+	MaxRmBytes  string `json:"max_r_mbytes"`
+	MaxWmBytes  string `json:"max_w_mbytes"`
+	MaxSize     string `json:"max_size"`
+	DistNdcs    int    `json:"distr_ndcs"`
+	DistNpcs    int    `json:"distr_npcs"`
+	PriorClass  int    `json:"lvol_priority_class"`
+	CryptoKey1  string `json:"crypto_key1"`
+	CryptoKey2  string `json:"crypto_key2"`
+	HostID      string `json:"host_id"`
+	LvolID      string `json:"uid"`
+	PvcName     string `json:"pvc_name"`
 }
 
 // CreateVolume creates a logical volume and returns volume ID
@@ -129,8 +129,8 @@ func (node *NodeNVMf) ListSnapshots() ([]*SnapshotResp, error) {
 }
 
 // CloneSnapshot clones a snapshot to a new volume
-func (node *NodeNVMf) CloneSnapshot(snapshotID, cloneName, newSize, pvcName, pvcNamespace string) (string, error) {
-	lvolID, err := node.Client.cloneSnapshot(snapshotID, cloneName, newSize, pvcName, pvcNamespace)
+func (node *NodeNVMf) CloneSnapshot(snapshotID, cloneName, newSize, pvcName string) (string, error) {
+	lvolID, err := node.Client.cloneSnapshot(snapshotID, cloneName, newSize, pvcName)
 	if err != nil {
 		return "", err
 	}
