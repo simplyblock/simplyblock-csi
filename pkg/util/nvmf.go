@@ -129,8 +129,8 @@ func (node *NodeNVMf) ListSnapshots() ([]*SnapshotResp, error) {
 }
 
 // CloneSnapshot clones a snapshot to a new volume
-func (node *NodeNVMf) CloneSnapshot(snapshotID, cloneName, newSize string) (string, error) {
-	lvolID, err := node.Client.cloneSnapshot(snapshotID, cloneName, newSize)
+func (node *NodeNVMf) CloneSnapshot(snapshotID, cloneName, newSize, pvcName, pvcNamespace string) (string, error) {
+	lvolID, err := node.Client.cloneSnapshot(snapshotID, cloneName, newSize, pvcName, pvcNamespace)
 	if err != nil {
 		return "", err
 	}

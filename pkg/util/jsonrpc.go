@@ -342,15 +342,17 @@ func (client *RPCClient) resizeVolume(lvolID string, size int64) (bool, error) {
 }
 
 // cloneSnapshot clones a snapshot
-func (client *RPCClient) cloneSnapshot(snapshotID, cloneName, newSize string) (string, error) {
+func (client *RPCClient) cloneSnapshot(snapshotID, cloneName, newSize, pvcName, pvcNamespace string) (string, error) {
 	params := struct {
-		SnapshotID string `json:"snapshot_id"`
-		CloneName  string `json:"clone_name"`
-		//	NewSize    string `json:"new_size"`
+		SnapshotID   string `json:"snapshot_id"`
+		CloneName    string `json:"clone_name"`
+		PVCName      string `json:"pvc_name,omitempty"`
+		PVCNamespace string `json:"pvc_namespace,omitempty"`
 	}{
 		SnapshotID: snapshotID,
 		CloneName:  cloneName,
-		//	NewSize:    newSize,
+		PVCName: 	pvcName,
+		PVCNamespace: pvcNamespace,
 	}
 
 	klog.V(5).Infof("cloned volume size: %s", newSize)
