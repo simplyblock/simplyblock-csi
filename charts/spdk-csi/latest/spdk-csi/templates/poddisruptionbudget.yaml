@@ -1,0 +1,12 @@
+{{- if .Values.storagenode.create -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: simplyblock-storage-pdb
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: storage-node
+      role: simplyblock-storage-node
+{{- end -}}
