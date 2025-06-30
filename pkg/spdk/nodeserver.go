@@ -424,6 +424,16 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		if mounted {
 			return nil
 		}
+
+		if fsType == "ext4" {
+			reserved := req.GetVolumeContext()["tune2fs_reserved_blocks"]
+			cmd := exec.Command("tune2fs", "-m", reserved, stagingPath)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
+			
+			klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)	
 	}
 
 	mntFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
