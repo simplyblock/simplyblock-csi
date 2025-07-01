@@ -378,11 +378,12 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 		reserved := volumeContext["tune2fs_reserved_blocks"]
 		if reserved != "" {
 			cmd := osexec.Command("tune2fs", "-m", reserved, devicePath)
-			_, err := cmd.CombinedOutput()
+			output, err := cmd.CombinedOutput()
 			if err != nil {
-				return err
+				klog.Errorf("Failed to apply tune2fs -m %s on %s: %v\nOutput: %s", reserved, devicePath, err, string(output))
+				return fmt.Errorf("tune2fs failed: %w", err)
 			}
-			klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)
+			klog.Infof("Applied tune2fs -m %s on %s", reserved, devicePath)
 		} else {
 			klog.Infof("No tune2fs_reserved_blocks set; skipping tune2fs adjustment")
 		}
