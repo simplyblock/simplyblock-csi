@@ -378,7 +378,7 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 		reserved := volumeContext["tune2fs_reserved_blocks"]
 		if reserved != "" {
 			cmd := osexec.Command("tune2fs", "-m", reserved, devicePath)
-			output, err := cmd.CombinedOutput()
+			_, err := cmd.CombinedOutput()
 			if err != nil {
 				return err
 			}
