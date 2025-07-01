@@ -426,7 +426,9 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 			return nil
 		}
 
+		klog.Infof("FilesystemType %s on %s", fsType, stagingPath)
 		if fsType == "ext4" {
+			klog.Infof("FilesystemType2222 %s on %s", fsType, stagingPath)
 			reserved, ok := req.GetVolumeContext()["tune2fs_reserved_blocks"]
 			if ok && reserved != "" {
 				cmd := osexec.Command("tune2fs", "-m", reserved, stagingPath)
