@@ -95,6 +95,7 @@ logicalVolume:
   distr_ndcs: "1"
   distr_npcs: "1"
   lvol_priority_class: "0"
+  tune2fs_reserved_blocks: "0"
 
 benchmarks: 0
 

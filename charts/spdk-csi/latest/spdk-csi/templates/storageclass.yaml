@@ -21,6 +21,7 @@ parameters:
   distr_ndcs: "{{ .Values.logicalVolume.distr_ndcs }}"
   distr_npcs: "{{ .Values.logicalVolume.distr_npcs }}"
   lvol_priority_class: "{{ .Values.logicalVolume.lvol_priority_class }}"
+  tune2fs_reserved_blocks: "{{ .Values.logicalVolume.tune2fs_reserved_blocks }}"
   cluster_id: "{{ .Values.csiConfig.simplybk.uuid }}"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
@@ -45,6 +46,7 @@ parameters:
   distr_ndcs: "{{ .Values.logicalVolume.distr_ndcs }}"
   distr_npcs: "{{ .Values.logicalVolume.distr_npcs }}"
   lvol_priority_class: "{{ .Values.logicalVolume.lvol_priority_class }}"
+  tune2fs_reserved_blocks: "{{ .Values.logicalVolume.tune2fs_reserved_blocks }}"
   cluster_id: "{{ .Values.csiConfig.simplybk.uuid }}"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
