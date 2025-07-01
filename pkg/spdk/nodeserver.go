@@ -432,8 +432,9 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 			if err != nil {
 				return err
 			}
-			
-			klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)	
+
+			klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)
+		}
 	}
 
 	mntFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
