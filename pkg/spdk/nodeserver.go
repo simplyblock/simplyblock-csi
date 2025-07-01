@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+	osexec "os/exec"
 	"strconv"
 	"time"
 
@@ -429,7 +429,7 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		if fsType == "ext4" {
 			reserved, ok := req.GetVolumeContext()["tune2fs_reserved_blocks"]
 			if ok && reserved != "" {
-				cmd := exec.Command("tune2fs", "-m", reserved, stagingPath)
+				cmd := osexec.Command("tune2fs", "-m", reserved, stagingPath)
 				output, err := cmd.CombinedOutput()
 				if err != nil {
 					return status.Errorf(codes.Internal, "failed to apply tune2fs -m %s on %s: %v, output: %s", reserved, stagingPath, err, string(output))
