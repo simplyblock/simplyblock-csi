@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"time"
 
@@ -426,14 +427,17 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		}
 
 		if fsType == "ext4" {
-			reserved := req.GetVolumeContext()["tune2fs_reserved_blocks"]
-			cmd := exec.Command("tune2fs", "-m", reserved, stagingPath)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				return err
+			reserved, ok := req.GetVolumeContext()["tune2fs_reserved_blocks"]
+			if ok && reserved != "" {
+				cmd := exec.Command("tune2fs", "-m", reserved, stagingPath)
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					return status.Errorf(codes.Internal, "failed to apply tune2fs -m %s on %s: %v, output: %s", reserved, stagingPath, err, string(output))
+				}
+				klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)
+			} else {
+				klog.Infof("No tune2fs_reserved_blocks set; skipping tune2fs adjustment")
 			}
-
-			klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)
 		}
 	}
 
