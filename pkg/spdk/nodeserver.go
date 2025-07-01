@@ -373,6 +373,21 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	if err != nil {
 		return err
 	}
+
+	if fsType == "ext4" {
+		reserved := volumeContext["tune2fs_reserved_blocks"]
+		if reserved != "" {
+			cmd := osexec.Command("tune2fs", "-m", reserved, devicePath)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
+			klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)
+		} else {
+			klog.Infof("No tune2fs_reserved_blocks set; skipping tune2fs adjustment")
+		}
+	}
+
 	return nil
 }
 
@@ -427,22 +442,6 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		}
 	}
 
-	klog.Infof("FilesystemType %s on %s", fsType, stagingPath)
-	if fsType == "ext4" {
-		klog.Infof("FilesystemType2222 %s on %s", fsType, stagingPath)
-		reserved, ok := req.GetVolumeContext()["tune2fs_reserved_blocks"]
-		if ok && reserved != "" {
-			cmd := osexec.Command("tune2fs", "-m", reserved, stagingPath)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				return status.Errorf(codes.Internal, "failed to apply tune2fs -m %s on %s: %v, output: %s", reserved, stagingPath, err, string(output))
-			}
-			klog.Infof("Applied tune2fs -m %s on %s", reserved, stagingPath)
-		} else {
-			klog.Infof("No tune2fs_reserved_blocks set; skipping tune2fs adjustment")
-		}
-	}
-	
 	mntFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 	mntFlags = append(mntFlags, "bind")
 	klog.Infof("mount %s to %s, fstype: %s, flags: %v", stagingPath, targetPath, fsType, mntFlags)
