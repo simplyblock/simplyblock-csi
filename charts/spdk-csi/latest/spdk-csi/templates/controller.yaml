@@ -8,6 +8,10 @@ metadata:
   name: simplyblock-csi-controller
   namespace: {{ .Release.Namespace }}
 {{ include "spdk.labels" . | indent 2 }}
+  annotations:
+    {{- with .Values.simplyBlkAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   serviceName: simplyblock-csi-controller
   replicas: {{ .Values.controller.replicas }}
@@ -18,6 +22,10 @@ spec:
     metadata:
 {{ include "spdk.labels" . | indent 6 }}
         app: csi-controller
+      annotations:
+        {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
     spec:
       serviceAccountName: simplyblock-csi-controller-sa
       hostNetwork: true

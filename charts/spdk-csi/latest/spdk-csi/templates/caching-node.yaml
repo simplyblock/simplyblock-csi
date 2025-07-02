@@ -37,6 +37,10 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: simplyblock-caching-node-ds
+  annotations:
+    {{- with .Values.simplyBlkAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   selector:
     matchLabels:
@@ -45,6 +49,10 @@ spec:
     metadata:
       labels:
         app: caching-node
+      annotations:
+        {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
     spec:
       serviceAccountName: simplyblock-caching-node-sa
       nodeSelector:

@@ -97,6 +97,11 @@ logicalVolume:
   lvol_priority_class: "0"
   tune2fs_reserved_blocks: "0"
 
+podAnnotations: {}
+
+# SimplyBlock Daemonset, Deployment, Statefulset annotations
+simplyBlkAnnotations: {}
+
 benchmarks: 0
 
 # FIXME: this will not work if there are group of nodes with different AMI types like: AL2, AL2023
