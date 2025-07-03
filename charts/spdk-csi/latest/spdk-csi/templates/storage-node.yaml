@@ -41,6 +41,10 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ .name }}
+  annotations:
+    {{- with $.Values.simplyBlockAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   selector:
     matchLabels:
@@ -49,6 +53,10 @@ spec:
     metadata:
       labels:
         app: {{ .appLabel }}
+      annotations:
+        {{- range $key, $value := $.Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
     spec:
       serviceAccountName: simplyblock-storage-node-sa
       nodeSelector:

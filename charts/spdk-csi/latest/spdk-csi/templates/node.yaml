@@ -8,6 +8,10 @@ metadata:
   name: simplyblock-csi-node
   namespace: {{ .Release.Namespace }}
 {{ include "spdk.labels" . | indent 2 }}
+  annotations:
+    {{- with .Values.simplyBlockAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   selector:
     matchLabels:
@@ -16,6 +20,10 @@ spec:
     metadata:
 {{ include "spdk.labels" . | indent 6 }}
         app: simplyblock-csi-node
+      annotations:
+        {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
     spec:
       serviceAccountName: simplyblock-csi-node-sa
       hostNetwork: true
@@ -81,7 +89,7 @@ spec:
               command:
                 [
                   "/bin/sh", "-c",
-                  "sudo modprobe nvme-tcp || echo failed to modprobe nvme-tcp && \
+                  "modprobe nvme-tcp || echo failed to modprobe nvme-tcp && \
                   if [ ! -f /var/lib/nvme/hostid ]; then uuidgen > /var/lib/nvme/hostid; fi && \
                   cp /var/lib/nvme/hostid /etc/nvme/hostid && \
                   echo \"nqn.2014-08.org.nvmexpress:uuid:$(cat /etc/nvme/hostid)\" > /etc/nvme/hostnqn"
