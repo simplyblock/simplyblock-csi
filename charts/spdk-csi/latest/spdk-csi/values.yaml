@@ -100,7 +100,7 @@ logicalVolume:
 podAnnotations: {}
 
 # SimplyBlock Daemonset, Deployment, Statefulset annotations
-simplyBlkAnnotations: {}
+simplyBlockAnnotations: {}
 
 benchmarks: 0
 

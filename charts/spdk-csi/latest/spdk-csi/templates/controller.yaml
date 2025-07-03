@@ -9,7 +9,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
 {{ include "spdk.labels" . | indent 2 }}
   annotations:
-    {{- with .Values.simplyBlkAnnotations }}
+    {{- with .Values.simplyBlockAnnotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:

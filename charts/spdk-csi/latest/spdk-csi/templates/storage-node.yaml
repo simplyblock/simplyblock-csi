@@ -42,7 +42,7 @@ kind: DaemonSet
 metadata:
   name: {{ .name }}
   annotations:
-    {{- with $.Values.simplyBlkAnnotations }}
+    {{- with $.Values.simplyBlockAnnotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
