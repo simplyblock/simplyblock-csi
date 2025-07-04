@@ -3,7 +3,7 @@
 LABEL_KEY="type"
 LABEL_VALUE="simplyblock-storage-plane"
 IMAGE_REPO="simplyblock/simplyblock"
-IMAGE_TAG="main"
+IMAGE_TAG=<VALUE>
 IMAGE_PULL_POLICY="Always"
 NAMESPACE="${1:-simplyblock}" 
 
