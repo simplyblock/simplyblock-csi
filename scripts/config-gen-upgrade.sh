@@ -6,8 +6,6 @@ IMAGE_REPO="simplyblock/simplyblock"
 IMAGE_TAG="main"
 IMAGE_PULL_POLICY="Always"
 NAMESPACE="${1:-simplyblock}" 
-MAX_LVOL=<VALUE>
-MAX_PROV=<VALUE>
 
 NODES=$(kubectl get nodes -l "${LABEL_KEY}=${LABEL_VALUE}" -o jsonpath='{.items[*].metadata.name}')
 
@@ -40,8 +38,6 @@ spec:
           command:
             - "python"
             - "simplyblock_web/node_configure.py"
-            - "--max-lvol=${MAX_LVOL}"
-            - "--max-size=${MAX_PROV}"
             - "--upgrade"
           volumeMounts:
             - name: etc-simplyblock
