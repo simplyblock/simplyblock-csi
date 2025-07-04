@@ -144,7 +144,9 @@ storagenode:
   enableTestDevice: false
   dataNics:
   pciAllowed:
-  pciBlocked: 
+  pciBlocked:
+  socketsToUse: 
+  nodesPerSocket: 
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node

@@ -157,6 +157,8 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.dataNics`                 | Data interface names                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.pciAllowed`                 | the list of allowed nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.pciBlocked`                 | the list of blocked nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
+| `storagenode.socketsToUse`               | the list of sockets to use                                                                                                  | `<empty>`                                                                |  |
+| `storagenode.nodesPerSocket`             | The number of nodes to use per socket                                                                                                  | `<empty>`                                                                |  |
 
 
 ## Install latest Simplyblock Storage Controller via `helm install`

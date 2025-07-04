@@ -100,6 +100,12 @@ spec:
           {{- if $.Values.storagenode.pciBlocked }}
           - "--pci-blocked={{ $.Values.storagenode.pciBlocked }}"
           {{- end }}
+          {{- if $.Values.storagenode.socketsToUse }}
+          - "--sockets-to-use={{ $.Values.storagenode.socketsToUse }}"
+          {{- end }}
+          {{- if $.Values.storagenode.nodesPerSocket }}
+          - "--nodes-per-socket={{ $.Values.storagenode.nodesPerSocket }}"
+          {{- end }}
         volumeMounts:
           - name: etc-simplyblock
             mountPath: /etc/simplyblock
