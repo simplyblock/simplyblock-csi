@@ -522,7 +522,10 @@ func getSubsystemsForDevice(devicePath string) ([]subsystemResponse, error) {
 func getLvolIDFromNQN(nqn string) (clusterID, lvolID string) {
 	parts := strings.Split(nqn, ":lvol:")
 	if len(parts) > 1 {
-		return parts[0], parts[1]
+		subparts := strings.Split(parts[0], ":")
+		clusterID := subparts[len(subparts)-1]
+		lvolID := parts[1]
+		return clusterID, lvolID
 	}
 	return "", ""
 }
