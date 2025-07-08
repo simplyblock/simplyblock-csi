@@ -117,6 +117,8 @@ spec:
         imagePullPolicy: "{{ $.Values.image.simplyblock.pullPolicy }}"
         command: ["python", "simplyblock_web/node_webapp.py", "storage_node_k8s"]
         env:
+        - name: CORE_ISOLATION
+          value: "{{ $.Values.storagenode.coreIsolate }}"
         - name: HOSTNAME
           valueFrom:
             fieldRef:
