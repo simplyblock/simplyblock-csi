@@ -142,7 +142,7 @@ storagenode:
   maxProv: 150g
   disableHAJM: false
   enableTestDevice: false
-  coreIsolate: false
+  coreIsolate: true
   dataNics:
   pciAllowed:
   pciBlocked:

@@ -126,6 +126,8 @@ spec:
                       apt update && apt install -y grep jq nvme-cli tuned
                       ;;
                   centos|rhel|rocky|almalinux)
+                      export YUM_RELEASEVER=$(awk -F'=' '/^VERSION_ID=/{gsub(/"/,"",$2); print $2}' /etc/os-release)
+                      export DNF_RELEASEVER=$(awk -F'=' '/^VERSION_ID=/{gsub(/"/,"",$2); print $2}' /etc/os-release)
                       dnf --releasever=9 install -y grep jq nvme-cli kernel-modules-extra tuned \
                           --setopt=tsflags=nocontexts,noscripts --setopt=install_weak_deps=False
                       ;;
