@@ -28,7 +28,24 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: simplyblock-csi-controller-sa
+      {{- if .Values.controller.nodeSelector.create }}
+      nodeSelector:
+        {{ .Values.controller.nodeSelector.key }}: {{ .Values.controller.nodeSelector.value }}
+      {{- end }}
       hostNetwork: true
+      {{- if .Values.controller.tolerations.create }}
+      tolerations:
+      - operator: {{ .Values.controller.tolerations.operator }}
+        {{- if .Values.controller.tolerations.effect }}
+        effect: {{ .Values.controller.tolerations.effect }}
+        {{- end }}
+        {{- if .Values.controller.tolerations.key }}
+        key: {{ .Values.controller.tolerations.key }}
+        {{- end }}
+        {{- if .Values.controller.tolerations.value }}
+        value: {{ .Values.controller.tolerations.value }}
+        {{- end }}
+      {{- end }}
       containers:
       - name: csi-provisioner
         image: "{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
