@@ -148,17 +148,16 @@ cachingnode:
 storagenode:
   create: false
   ifname: eth0
-  distr_ndcs: "1"
-  distr_npcs: "1"
+  numDataChunks: "1"
+  numParityChunks: "1"
   spdkImage:
-  maxLvol: 10
-  maxSnap: 10
+  maxLogicalVolumes: 10
+  maxSnapshots: 10
   maxProv: 150g
-  jmPercent: 3
-  numPartitions: 0
+  numPartitions: 1
   disableHAJM: false
   enableTestDevice: false
-  coreIsolate: false
+  isolateCores: false
   dataNics:
   pciAllowed:
   pciBlocked:

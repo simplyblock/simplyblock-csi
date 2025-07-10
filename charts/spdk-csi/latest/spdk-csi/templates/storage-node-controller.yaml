@@ -41,9 +41,9 @@ spec:
         - name: IFNAME
           value: "{{ .Values.storagenode.ifname }}"
         - name: MAXSNAP
-          value: "{{ .Values.storagenode.maxSnap }}"
+          value: "{{ .Values.storagenode.maxSnapshots }}"
         - name: JMPERCENT
-          value: "{{ .Values.storagenode.jmPercent }}"
+          value: "3"
         - name: NUMPARTITIONS
           value: "{{ .Values.storagenode.numPartitions }}"
         - name: DISABLEHAJM
