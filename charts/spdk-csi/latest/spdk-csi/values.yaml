@@ -37,6 +37,18 @@ image:
     repository: simplyblock/simplyblock
     tag: "R25.6-Hotfix"
     pullPolicy: Always
+  storageNode:
+    repository: simplyblock/storage-node-handler
+    tag: v0.1.2
+    pullPolicy: Always
+  cachingNode:
+    repository: simplyblock/caching-node-handler
+    tag: v0.1.0
+    pullPolicy: Always
+  mgmtAPI:
+    repository: python
+    tag: "3.10"
+    pullPolicy: Always
 serviceAccount:
   # Specifies whether a serviceAccount should be created
   create: true
@@ -150,13 +162,14 @@ cachingnode:
 storagenode:
   create: false
   ifname: eth0
+  numDataChunks: "1"
+  numParityChunks: "1"
   spdkImage:
-  maxLvol: 10
-  maxSnap: 10
-  maxProv: 150g
-  disableHAJM: false
-  enableTestDevice: false
-  coreIsolate: false
+  maxLogicalVolumes: 10
+  maxSnapshots: 10
+  maxSize: 150g
+  numPartitions: 1
+  isolateCores: false
   dataNics:
   pciAllowed:
   pciBlocked:

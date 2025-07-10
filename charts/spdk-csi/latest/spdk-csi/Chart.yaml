@@ -11,6 +11,8 @@ keywords:
 - spdk
 - csi
 - spdk-csi
+- simplyblock
+- controller
 home: https://github.com/simplyblock-io/spdk-csi
 sources:
 - https://github.com/simplyblock-io/spdk-csi/tree/master/charts/spdk-csi

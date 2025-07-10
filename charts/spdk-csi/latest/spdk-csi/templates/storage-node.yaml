@@ -92,8 +92,8 @@ spec:
         command:
           - "python"
           - "simplyblock_web/node_configure.py"
-          - "--max-lvol={{ $.Values.storagenode.maxLvol }}"
-          - "--max-size={{ $.Values.storagenode.maxProv }}"
+          - "--max-lvol={{ $.Values.storagenode.maxLogicalVolumes }}"
+          - "--max-size={{ $.Values.storagenode.maxSize }}"
           {{- if $.Values.storagenode.pciAllowed }}
           - "--pci-allowed={{ $.Values.storagenode.pciAllowed }}"
           {{- end }}
@@ -118,7 +118,7 @@ spec:
         command: ["python", "simplyblock_web/node_webapp.py", "storage_node_k8s"]
         env:
         - name: CORE_ISOLATION
-          value: "{{ $.Values.storagenode.coreIsolate }}"
+          value: "{{ $.Values.storagenode.isolateCores }}"
         - name: HOSTNAME
           valueFrom:
             fieldRef:
