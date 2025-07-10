@@ -49,7 +49,7 @@ spec:
         - name: DISABLEHAJM
           value: "false"
         - name: ENABLETESTDEVICE
-          value: "{{ .Values.storagenode.enableTestDevice }}"
+          value: "false"
         - name: DATANICS
           value: "{{ .Values.storagenode.dataNics }}"
         - name: SPDKIMAGE
