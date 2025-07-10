@@ -123,6 +123,9 @@ spec:
         - name: csi-secret
           mountPath: /etc/spdkcsi-secret/
           readOnly: true
+        - name: host-modules
+          mountPath: /lib/modules
+          readOnly: true
       volumes:
       - name: socket-dir
         hostPath:
@@ -150,6 +153,9 @@ spec:
       - name: host-sys
         hostPath:
           path: /sys
+      - name: host-modules
+        hostPath:
+          path: /lib/modules
       - name: csi-nodeserver-config
         configMap:
           name: simplyblock-csi-nodeservercm
