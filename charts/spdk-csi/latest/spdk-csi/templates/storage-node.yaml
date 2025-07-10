@@ -93,7 +93,7 @@ spec:
           - "python"
           - "simplyblock_web/node_configure.py"
           - "--max-lvol={{ $.Values.storagenode.maxLogicalVolumes }}"
-          - "--max-size={{ $.Values.storagenode.maxProv }}"
+          - "--max-size={{ $.Values.storagenode.maxSize }}"
           {{- if $.Values.storagenode.pciAllowed }}
           - "--pci-allowed={{ $.Values.storagenode.pciAllowed }}"
           {{- end }}
