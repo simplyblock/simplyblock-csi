@@ -47,7 +47,7 @@ spec:
         - name: NUMPARTITIONS
           value: "{{ .Values.storagenode.numPartitions }}"
         - name: DISABLEHAJM
-          value: "{{ .Values.storagenode.disableHAJM }}"
+          value: "false"
         - name: ENABLETESTDEVICE
           value: "{{ .Values.storagenode.enableTestDevice }}"
         - name: DATANICS

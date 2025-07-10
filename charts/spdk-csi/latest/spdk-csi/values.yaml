@@ -169,7 +169,6 @@ storagenode:
   maxSnapshots: 10
   maxSize: 150g
   numPartitions: 1
-  disableHAJM: false
   enableTestDevice: false
   isolateCores: false
   dataNics:
