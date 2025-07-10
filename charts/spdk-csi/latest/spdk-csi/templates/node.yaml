@@ -26,6 +26,10 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: simplyblock-csi-node-sa
+      {{- if .Values.node.nodeSelector.create }}
+      nodeSelector:
+        {{ .Values.node.nodeSelector.key }}: {{ .Values.node.nodeSelector.value }}
+      {{- end }}
       hostNetwork: true
       {{- if .Values.node.tolerations.create }}
       tolerations:

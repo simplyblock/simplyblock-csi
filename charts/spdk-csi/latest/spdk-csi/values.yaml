@@ -59,6 +59,16 @@ rbac:
 
 controller:
   replicas: 1
+  tolerations:
+    create: false
+    operator: Exists
+    effect:
+    key: 
+    value:
+  nodeSelector:
+    create: false
+    key: 
+    value:
 
 storageclass:
   create: true
@@ -125,6 +135,10 @@ node:
     create: false
     operator: Exists
     effect:
+    key: 
+    value:
+  nodeSelector:
+    create: false
     key: 
     value:
 
