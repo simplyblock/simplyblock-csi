@@ -170,6 +170,8 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.pciBlocked`                 | the list of blocked nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.socketsToUse`               | the list of sockets to use                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.nodesPerSocket`             | The number of nodes to use per socket                                                                                                  | `<empty>`                                                                |  |
+| `storagenode.numDataChunks`              | the number of Erasure coding schema parameter k (distributed raid)                                                                                  | `1`                                                                        |  |
+| `storagenode.numParityChunks`            | the number of Erasure coding schema parameter n (distributed raid)                                                                                  | `1`                                                                        |  |
 
 
 ## Install latest Simplyblock Storage Controller via `helm install`
