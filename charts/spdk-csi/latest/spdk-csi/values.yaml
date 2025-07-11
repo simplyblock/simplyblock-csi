@@ -114,8 +114,8 @@ logicalVolume:
   max_size: "0"
   compression: "False"
   encryption: "False"
-  distr_ndcs: "1"
-  distr_npcs: "1"
+  numDataChunks: "1"
+  numParityChunks: "1"
   lvol_priority_class: "0"
   tune2fs_reserved_blocks: "0"
 
