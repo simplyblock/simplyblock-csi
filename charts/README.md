@@ -122,8 +122,8 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `logicalVolume.qos_r_mbytes`           | the value of lvol parameter qos_r_mbytes                                                                                 | `0`                                                                     |  |
 | `logicalVolume.qos_w_mbytes`           | the value of lvol parameter qos_w_mbytes                                                                                 | `0`                                                                     |  |
 | `logicalVolume.encryption`             | set to `True` if encryption needs be enabled on lvols.                                                                   | `False`                                                                 |  |
-| `logicalVolume.distr_ndcs`             | the value of distr_ndcs                                                                                                  | `1`                                                                     |  |
-| `logicalVolume.distr_npcs`             | the value of distr_npcs                                                                                                  | `1`                                                                     |  |
+| `logicalVolume.numDataChunks`          | The number of Erasure coding schema parameter k (distributed raid)                                                       | `1`                                                                     |  |
+| `logicalVolume.numParityChunks`        | The number of Erasure coding schema parameter n (distributed raid)                                                                                                 | `1`                                                                     |  |
 | `logicalVolume.lvol_priority_class`     | the value of lvol parameter lvol_priority_class                                                                               | `0`                                                                     |  |
 | `podAnnotations`                           | Annotations to apply to all pods in the chart                                                                   | `{}`                                                                     |  |
 | `simplyBlockAnnotations`                     | Annotations to apply to Simplyblock kubernetes resources like DaemonSets, Deployments, or StatefulSets                                                                                         | `{}`                                                                     |  |
@@ -182,9 +182,6 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.pciBlocked`                 | the list of blocked nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.socketsToUse`               | the list of sockets to use                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.nodesPerSocket`             | The number of nodes to use per socket                                                                                                  | `<empty>`                                                                |  |
-| `storagenode.numDataChunks`              | the number of Erasure coding schema parameter k (distributed raid)                                                                                  | `1`                                                                        |  |
-| `storagenode.numParityChunks`            | the number of Erasure coding schema parameter n (distributed raid)                                                                                  | `1`                                                                        |  |
-
 
 ## Install latest Simplyblock Storage Controller via `helm install`
 
