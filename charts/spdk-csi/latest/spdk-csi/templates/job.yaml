@@ -39,7 +39,7 @@ spec:
         - name: DISTR_NPCS
           value: "{{ .Values.logicalVolume.numParityChunks }}"  
         - name: ACTION_TYPE
-          value: "sn_idle" #options: "sn_idle", "sn_restart", "sn_shutdown", "sn_remove", "cl_activate", "make_sec_primary"
+          value: "cl_activate" #options: "sn_idle", "sn_restart", "sn_shutdown", "sn_remove", "cl_activate", "make_sec_primary"
         - name: SNODE_UUID
           value: "" 
         volumeMounts:
