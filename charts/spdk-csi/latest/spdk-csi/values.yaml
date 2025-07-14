@@ -130,7 +130,10 @@ benchmarks: 0
 # AL2_x86_64: eth0
 # AL2023_x86_64_STANDARD: ens5
 
-autoClusterActivate: false
+# not recommended to use it in production, use it only for testing purposes
+# automatic cluster activate is disabled by default because of core isolation
+# set this to true if you want to activate the cluster automatically after the NDCS + NPCS + 1 storage nodes ares up and running.
+autoClusterActivate: false 
 
 node:
   tolerations:
