@@ -1,4 +1,4 @@
-{{- if .Values.storagenode.create -}}
+{{- if .Values.autoClusterActivate -}}
 ---
 apiVersion: batch/v1
 kind: Job
