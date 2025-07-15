@@ -347,9 +347,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 				if i == 1 {
 					klog.Warning("Secondary connection failed, disconnecting primary...")
 
-					_, model := getLvolIDFromNQN(nvmf.nqn)
-
-					deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", model, nvmf.nsId))
+					deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
 					devicePath, err := waitForDeviceReady(deviceGlob, 20)
 					if err != nil {
 						return "", err
@@ -368,8 +366,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 	}
 
-	_, model := getLvolIDFromNQN(nvmf.nqn)
-	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", model, nvmf.nsId))
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
 		return "", err
@@ -378,8 +375,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 }
 
 func (nvmf *initiatorNVMf) Disconnect() error {
-	_, model := getLvolIDFromNQN(nvmf.nqn)
-	deviceGlob := fmt.Sprintf(DevDiskByID, model)
+	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
 	devicePath, err := filepath.Glob(deviceGlob)
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
