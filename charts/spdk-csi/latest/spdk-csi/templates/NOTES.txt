@@ -1,5 +1,10 @@
 The Simplyblock SPDK Driver is getting deployed to your cluster.
 
-To check CSI SPDK Driver pods status, please run:
+The following components are being installed or updated:
+- Simplyblock CSI Driver
+- Simplyblock Storage Node
+- Simpylblock Control Plane
 
-  kubectl --namespace={{ .Release.Namespace }} get pods --selector="release={{ .Release.Name }}" --watch
+To follow the Simplyblock SPDK's pods status, please run:
+
+  kubectl --namespace={{ .Release.Namespace }} get pods --watch
