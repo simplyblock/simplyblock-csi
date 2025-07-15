@@ -132,24 +132,6 @@ spec:
           mountPath: /etc/simplyblock
         - name: host-sys
           mountPath: /sys
-        livenessProbe:
-          httpGet:
-            path: /snode/get_firewall
-            port: 5000
-            scheme: HTTP
-          initialDelaySeconds: 30
-          periodSeconds: 60
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /snode/get_firewall
-            port: 5000
-            scheme: HTTP
-          initialDelaySeconds: 30
-          periodSeconds: 60
-          timeoutSeconds: 5
-          failureThreshold: 3
 
 {{- end }}
 
