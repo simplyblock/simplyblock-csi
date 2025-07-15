@@ -381,7 +381,10 @@ func (nvmf *initiatorNVMf) Disconnect() error {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
 
-	if len(devicePath) > 0 {
+	if len(devicePath) > 1 {
+		return nil
+
+	} else if len(devicePath) == 1 {
 		err = disconnectDevicePath(devicePath[0])
 
 		if err != nil {
