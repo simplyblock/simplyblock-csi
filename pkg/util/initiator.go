@@ -366,7 +366,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 	}
 
-	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%d", nvmf.model, nvmf.nsId))
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
 		return "", err
@@ -519,11 +519,13 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 }
 
 func isNqnConnected(nqn string) (bool, error) {
-	out, err := exec.Command("nvme", "list-subsys").Output()
+	cmd := exec.Command("nvme", "list-subsys")
+	output, err := cmd.Output()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to execute nvme list-subsys: %v", err)
 	}
-	lines := strings.Split(string(out), "\n")
+
+	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
 		if strings.Contains(line, nqn) {
 			parts := strings.Fields(line)
