@@ -114,6 +114,7 @@ type LvolConnectResp struct {
 	Port           int    `json:"port"`
 	IP             string `json:"ip"`
 	Connect        string `json:"connect"`
+	NSID           int    `json:"ns_id"`
 }
 
 type connectionInfo struct {
@@ -310,6 +311,7 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 		"model":          lvolID,
 		"targetType":     "tcp",
 		"connections":    string(connectionsData),
+		"nsId":           strconv.Itoa(result[0].NSID),
 	}, nil
 }
 
