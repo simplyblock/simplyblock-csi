@@ -347,7 +347,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 				if i == 1 {
 					klog.Warning("Secondary connection failed, disconnecting primary...")
 
-					deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s_%d", nvmf.model, nvmf.nsid))
+					deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%d", nvmf.model, nvmf.nsid))
 					devicePath, err := waitForDeviceReady(deviceGlob, 20)
 					if err != nil {
 						return "", err
@@ -366,7 +366,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 	}
 
-	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s_%d", nvmf.model, nvmf.nsid))
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%d", nvmf.model, nvmf.nsid))
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
 		return "", err
