@@ -325,7 +325,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		ctrlLossTmo *= 15
 	}
 
-	alreadyConnected, controller, err := isNqnConnected(nvmf.nqn)
+	alreadyConnected, err := isNqnConnected(nvmf.nqn)
 	if err != nil {
 		klog.Errorf("Failed to check existing connections: %v", err)
 		return "", err
@@ -518,21 +518,21 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 	return devices, nil
 }
 
-func isNqnConnected(nqn string) (bool, string, error) {
+func isNqnConnected(nqn string) (bool, error) {
 	out, err := exec.Command("nvme", "list-subsys").Output()
 	if err != nil {
-		return false, "", err
+		return false, err
 	}
 	lines := strings.Split(string(out), "\n")
 	for _, line := range lines {
 		if strings.Contains(line, nqn) {
 			parts := strings.Fields(line)
 			if len(parts) > 0 {
-				return true, parts[0], nil
+				return true, nil
 			}
 		}
 	}
-	return false, "", nil
+	return false, nil
 }
 
 func getSubsystemsForDevice(devicePath string) ([]subsystemResponse, error) {
