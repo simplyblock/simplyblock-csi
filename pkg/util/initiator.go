@@ -375,7 +375,8 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 }
 
 func (nvmf *initiatorNVMf) Disconnect() error {
-	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
+	//deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
 	devicePath, err := filepath.Glob(deviceGlob)
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
