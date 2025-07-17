@@ -179,7 +179,8 @@ storagenode:
   pciAllowed:
   pciBlocked:
   socketsToUse: 
-  nodesPerSocket: 
+  nodesPerSocket:
+  coresPercentage:
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node

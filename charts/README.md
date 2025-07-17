@@ -182,6 +182,7 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.pciBlocked`                 | the list of blocked nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.socketsToUse`               | the list of sockets to use                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.nodesPerSocket`             | The number of nodes to use per socket                                                                                                  | `<empty>`                                                                |  |
+| `storagenode.coresPercentage`            | The percentage of cores to be used for spdk                                                                                                 | `<empty>`                                                                |  |
 
 ## Install latest Simplyblock Storage Controller via `helm install`
 
