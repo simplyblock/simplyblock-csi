@@ -106,6 +106,9 @@ spec:
           {{- if $.Values.storagenode.nodesPerSocket }}
           - "--nodes-per-socket={{ $.Values.storagenode.nodesPerSocket }}"
           {{- end }}
+          {{- if $.Values.storagenode.coresPercentage }}
+          - "--cores-percentage={{ $.Values.storagenode.coresPercentage }}"
+          {{- end }}
         volumeMounts:
           - name: etc-simplyblock
             mountPath: /etc/simplyblock
