@@ -33,16 +33,18 @@ spec:
       hostNetwork: true
       {{- if .Values.node.tolerations.create }}
       tolerations:
-      - operator: {{ .Values.node.tolerations.operator }}
-        {{- if .Values.node.tolerations.effect }}
-        effect: {{ .Values.node.tolerations.effect }}
+      {{- range .Values.node.tolerations.list }}
+      - operator: {{ .operator | quote }}
+        {{- if .effect }}
+        effect: {{ .effect | quote }}
         {{- end }}
-        {{- if .Values.node.tolerations.key }}
-        key: {{ .Values.node.tolerations.key }}
+        {{- if .key }}
+        key: {{ .key | quote }}
         {{- end }}
-        {{- if .Values.node.tolerations.value }}
-        value: {{ .Values.node.tolerations.value }}
+        {{- if .value }}
+        value: {{ .value | quote }}
         {{- end }}
+      {{- end }}
       {{- end }}
       containers:
       - name: csi-registrar
