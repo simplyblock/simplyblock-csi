@@ -270,6 +270,11 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		return nil, err
 	}
 
+	maxNamespace, err := getIntParameter(params, "nspv", 1)
+	if err != nil {
+		return nil, err
+	}
+
 	compression := getBoolParameter(params, "compression")
 	encryption := getBoolParameter(params, "encryption")
 
@@ -317,25 +322,26 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 	}
 
 	createVolReq := util.CreateLVolData{
-		LvolName:    req.GetName(),
-		Size:        fmt.Sprintf("%dM", sizeMiB),
-		LvsName:     params["pool_name"],
-		MaxRWIOPS:   params["qos_rw_iops"],
-		MaxRWmBytes: params["qos_rw_mbytes"],
-		MaxRmBytes:  params["qos_r_mbytes"],
-		MaxWmBytes:  params["qos_w_mbytes"],
-		MaxSize:     params["max_size"],
-		PriorClass:  priorClass,
-		Compression: compression,
-		Encryption:  encryption,
-		DistNdcs:    distrNdcs,
-		DistNpcs:    distrNpcs,
-		CryptoKey1:  cryptoKey1,
-		CryptoKey2:  cryptoKey2,
-		HostID:      hostID,
-		LvolID:      lvolID,
+		LvolName:     req.GetName(),
+		Size:         fmt.Sprintf("%dM", sizeMiB),
+		LvsName:      params["pool_name"],
+		MaxRWIOPS:    params["qos_rw_iops"],
+		MaxRWmBytes:  params["qos_rw_mbytes"],
+		MaxRmBytes:   params["qos_r_mbytes"],
+		MaxWmBytes:   params["qos_w_mbytes"],
+		MaxSize:      params["max_size"],
+		MaxNamespace: maxNamespace,
+		PriorClass:   priorClass,
+		Compression:  compression,
+		Encryption:   encryption,
+		DistNdcs:     distrNdcs,
+		DistNpcs:     distrNpcs,
+		CryptoKey1:   cryptoKey1,
+		CryptoKey2:   cryptoKey2,
+		HostID:       hostID,
+		LvolID:       lvolID,
 		ModelID:      modelID,
-		PvcName:     pvcFullName,
+		PvcName:      pvcFullName,
 	}
 	return &createVolReq, nil
 }
