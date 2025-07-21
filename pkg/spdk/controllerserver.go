@@ -270,7 +270,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		return nil, err
 	}
 
-	maxNamespace, err := getIntParameter(params, "nspv", 1)
+	maxNamespace, err := getIntParameter(params, "max_namespace_per_subsys", 1)
 	if err != nil {
 		return nil, err
 	}

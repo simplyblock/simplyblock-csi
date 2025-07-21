@@ -73,7 +73,7 @@ type CreateLVolData struct {
 	MaxRmBytes   string `json:"max_r_mbytes"`
 	MaxWmBytes   string `json:"max_w_mbytes"`
 	MaxSize      string `json:"max_size"`
-	MaxNamespace int    `json:"nspv"`
+	MaxNamespace int    `json:"max_namespace_per_subsys"`
 	DistNdcs     int    `json:"distr_ndcs"`
 	DistNpcs     int    `json:"distr_npcs"`
 	PriorClass   int    `json:"lvol_priority_class"`
