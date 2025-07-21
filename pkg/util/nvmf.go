@@ -79,7 +79,8 @@ type CreateLVolData struct {
 	CryptoKey1  string `json:"crypto_key1"`
 	CryptoKey2  string `json:"crypto_key2"`
 	HostID      string `json:"host_id"`
-	LvolID      string `json:"namespace"`
+	LvolID      string `json:"uid"`
+	ModelID     string `json:"namespace"`
 	PvcName     string `json:"pvc_name"`
 }
 
