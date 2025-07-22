@@ -208,6 +208,15 @@ spec:
 
               echo "[INFO] Applying tuned profile: \$TUNED_PROFILE"
               tuned-adm profile "\$TUNED_PROFILE"
+              case "\$OS_ID" in
+                  centos|rhel|rocky|almalinux)
+                      grubby --update-kernel=ALL --args="isolcpus=\$ISOLATED_CORES nohz_full=\$ISOLATED_CORES rcu_nocbs=\$ISOLATED_CORES"
+                      ;;
+                  *)
+                      echo ""
+                      ;;
+              esac
+
 
               echo "[INFO] Init setup and CPU isolation complete."
               echo "--- Init setup complete ---"
