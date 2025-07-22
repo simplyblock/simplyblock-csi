@@ -183,6 +183,7 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.socketsToUse`               | the list of sockets to use                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.nodesPerSocket`             | The number of nodes to use per socket                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.coresPercentage`            | The percentage of cores to be used for spdk                                                                                                 | `<empty>`                                                                |  |
+| `storagenode.ubuntuHost`                 | Set to true if the worker node runs Ubuntu and needs the nvme-tcp kernel module installed                                                                                                 | `false`                                                                |  |
 
 ## Install latest Simplyblock Storage Controller via `helm install`
 

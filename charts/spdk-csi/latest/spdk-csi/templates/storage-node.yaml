@@ -71,6 +71,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -114,6 +117,9 @@ spec:
         volumeMounts:
           - name: etc-simplyblock
             mountPath: /etc/simplyblock
+          - name: host-modules
+            mountPath: /lib/modules
+            readOnly: true
         securityContext:
           privileged: true
       containers:
@@ -124,6 +130,8 @@ spec:
         env:
         - name: CORE_ISOLATION
           value: "{{ $.Values.storagenode.isolateCores }}"
+        - name: UBUNTU_HOST
+          value: "{{ $.Values.storagenode.ubuntuHost }}"
         - name: HOSTNAME
           valueFrom:
             fieldRef:
