@@ -184,6 +184,7 @@ storagenode:
   socketsToUse: 
   nodesPerSocket:
   coresPercentage:
+  ubuntuHost: false
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
