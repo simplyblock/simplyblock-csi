@@ -99,11 +99,11 @@ spec:
           - "simplyblock_web/node_configure.py"
           - "--max-lvol={{ $.Values.storagenode.maxLogicalVolumes }}"
           - "--max-size={{ $.Values.storagenode.maxSize }}"
-          {{- if $.Values.storagenode.pciAllowed }}
-          - "--pci-allowed={{ $.Values.storagenode.pciAllowed }}"
+          {{- with (default list $.Values.storagenode.pciAllowed) }}
+          - "--pci-allowed={{ join \",\" . }}"
           {{- end }}
-          {{- if $.Values.storagenode.pciBlocked }}
-          - "--pci-blocked={{ $.Values.storagenode.pciBlocked }}"
+          {{- with (default list $.Values.storagenode.pciBlocked) }}
+          - "--pci-blocked={{ join \",\" . }}"
           {{- end }}
           {{- if $.Values.storagenode.socketsToUse }}
           - "--sockets-to-use={{ $.Values.storagenode.socketsToUse }}"
