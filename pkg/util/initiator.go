@@ -338,7 +338,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(connections[i].Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
+			"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
 			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
