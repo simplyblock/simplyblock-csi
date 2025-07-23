@@ -326,7 +326,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
 	sbcClient, err := NewsimplyBlockClient(clusterID)
 	if err != nil {
-		klog.Errorf("failed to create SPDK client: %w", err)
+		klog.Errorf("failed to create SPDK client: %v", err)
 		return "", err
 	}
 	connections, err := fetchLvolConnection(sbcClient, lvolID)
