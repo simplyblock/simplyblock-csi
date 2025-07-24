@@ -100,10 +100,10 @@ spec:
           - "--max-lvol={{ $.Values.storagenode.maxLogicalVolumes }}"
           - "--max-size={{ $.Values.storagenode.maxSize }}"
           {{- with (default list $.Values.storagenode.pciAllowed) }}
-          - "--pci-allowed={{ join \",\" . }}"
+          - "--pci-allowed={{ join "," . }}"
           {{- end }}
           {{- with (default list $.Values.storagenode.pciBlocked) }}
-          - "--pci-blocked={{ join \",\" . }}"
+          - "--pci-blocked={{ join "," . }}"
           {{- end }}
           {{- if $.Values.storagenode.socketsToUse }}
           - "--sockets-to-use={{ $.Values.storagenode.socketsToUse }}"
