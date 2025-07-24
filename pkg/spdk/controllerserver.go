@@ -39,9 +39,13 @@ import (
 
 // var errVolumeInCreation = status.Error(codes.Internal, "volume in creation")
 const (
-	CSIStorageBaseKey      = "csi.storage.k8s.io/pvc"
-	CSIStorageNameKey      = CSIStorageBaseKey + "/name"
-	CSIStorageNamespaceKey = CSIStorageBaseKey + "/namespace"
+	CSIStorageBaseKey         = "csi.storage.k8s.io/pvc"
+	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
+	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
+	annotationNvmfModelID     = "simplybk/nvmf-model-id"
+	annotationLvolID          = "simplybk/lvol-id"
+	annotationSecretName      = "simplybk/secret-name"
+	annotationSecretNamespace = "simplybk/secret-namespace"
 )
 
 type controllerServer struct {
@@ -769,8 +773,8 @@ func GetCryptoKeys(ctx context.Context, pvcName, pvcNamespace string) (cryptoKey
 		return "", "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	secretName := pvc.ObjectMeta.Annotations["simplybk/secret-name"]
-	secretNamespace := pvc.ObjectMeta.Annotations["simplybk/secret-namespace"]
+	secretName := pvc.ObjectMeta.Annotations[annotationSecretName]
+	secretNamespace := pvc.ObjectMeta.Annotations[annotationSecretNamespace]
 
 	secret, err := clientset.CoreV1().Secrets(secretNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
@@ -836,7 +840,7 @@ func getLvolIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (str
 		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	lvolID, ok := pvc.ObjectMeta.Annotations["simplybk/lvol-id"]
+	lvolID, ok := pvc.ObjectMeta.Annotations[annotationLvolID]
 	if !ok {
 		return "", nil
 	}
@@ -863,7 +867,7 @@ func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string)
 		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	modelID, ok := pvc.ObjectMeta.Annotations["simplybk/nvmf-model-id"]
+	modelID, ok := pvc.ObjectMeta.Annotations[annotationNvmfModelID]
 	if !ok {
 		return "", nil
 	}
