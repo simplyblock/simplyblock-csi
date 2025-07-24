@@ -118,7 +118,7 @@ type ClusterConfig struct {
 }
 
 type ClustersInfo struct {
-    Clusters []ClusterConfig `json:"clusters"`
+	Clusters []ClusterConfig `json:"clusters"`
 }
 
 // NewsimplyBlockClient create a new Simplyblock client
@@ -138,7 +138,7 @@ func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 			break
 		}
 	}
-	
+
 	if clusterConfig == nil {
 		return nil, fmt.Errorf("failed to find secret for clusterID %s", clusterID)
 	}
@@ -148,9 +148,9 @@ func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 	}
 
 	// Log and return the newly created Simplyblock client.
-	klog.Infof("Simplyblock client created for ClusterID:%s, Endpoint:%s", 
-	clusterConfig.ClusterID, 
-	clusterConfig.ClusterEndpoint,
+	klog.Infof("Simplyblock client created for ClusterID:%s, Endpoint:%s",
+		clusterConfig.ClusterID,
+		clusterConfig.ClusterEndpoint,
 	)
 	return NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret), nil
 }
@@ -322,10 +322,23 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	if len(nvmf.connections) == 1 {
 		ctrlLossTmo *= 15
 	}
+
+	clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
+	sbcClient, err := NewsimplyBlockClient(clusterID)
+	if err != nil {
+		klog.Errorf("failed to create SPDK client: %v", err)
+		return "", err
+	}
+	connections, err := fetchLvolConnection(sbcClient, lvolID)
+	if err != nil {
+		klog.Errorf("Failed to get lvol connection: %v", err)
+		return "", err
+	}
 	for i, conn := range nvmf.connections {
+
 		cmdLine := []string{
 			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
+			"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
 			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 		}
 		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
@@ -567,8 +580,8 @@ func reconnectSubsystems() error {
 						continue
 					}
 					for _, path := range subsystem.Paths {
-						if path.State == "connecting" && device.serialNumber == "single" || 
-						((path.ANAState == "optimized" || path.ANAState == "non-optimized") && device.serialNumber == "ha") {
+						if path.State == "connecting" && device.serialNumber == "single" ||
+							((path.ANAState == "optimized" || path.ANAState == "non-optimized") && device.serialNumber == "ha") {
 							if err := checkOnlineNode(clusterID, lvolID, path); err != nil {
 								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
