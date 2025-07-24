@@ -332,10 +332,22 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	}
 
 	if !alreadyConnected {
+		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
+		sbcClient, err := NewsimplyBlockClient(clusterID)
+		if err != nil {
+			klog.Errorf("failed to create SPDK client: %v", err)
+			return "", err
+		}
+		connections, err := fetchLvolConnection(sbcClient, lvolID)
+		if err != nil {
+			klog.Errorf("Failed to get lvol connection: %v", err)
+			return "", err
+		}
+
 		for i, conn := range nvmf.connections {
 			cmdLine := []string{
 				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-				"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
+				"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
 				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 			}
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))

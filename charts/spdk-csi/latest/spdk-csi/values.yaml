@@ -61,10 +61,11 @@ controller:
   replicas: 1
   tolerations:
     create: false
-    operator: Exists
-    effect:
-    key: 
-    value:
+    list:
+    - operator: Exists
+      effect:
+      key: 
+      value:
   nodeSelector:
     create: false
     key: 
@@ -139,10 +140,11 @@ autoClusterActivate: false
 node:
   tolerations:
     create: false
-    operator: Exists
-    effect:
-    key: 
-    value:
+    list:
+    - operator: Exists
+      effect:
+      key: 
+      value:
   nodeSelector:
     create: false
     key: 
@@ -160,10 +162,11 @@ cachingnode:
   multipathing: true
   tolerations:
     create: false
-    operator: Exists
-    effect: 
-    key: 
-    value:
+    list:
+    - operator: Exists
+      effect:
+      key: 
+      value:
 
 storagenode:
   create: false
@@ -180,7 +183,9 @@ storagenode:
   pciAllowed:
   pciBlocked:
   socketsToUse: 
-  nodesPerSocket: 
+  nodesPerSocket:
+  coresPercentage:
+  ubuntuHost: false
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
@@ -189,10 +194,11 @@ storagenode:
       value: simplyblock-storage-plane
     tolerations:
       create: false
-      operator: Exists
-      effect: 
-      key: 
-      value:
+      list:
+      - operator: Exists
+        effect:
+        key: 
+        value:
   - name: simplyblock-storage-node-ds-restart
     appLabel: storage-node-restart
     nodeSelector:
@@ -200,8 +206,9 @@ storagenode:
       value: simplyblock-storage-plane-restart
     tolerations:
       create: false
-      operator: Exists
-      effect: 
-      key: 
-      value:
+      list:
+      - operator: Exists
+        effect:
+        key: 
+        value:
       
