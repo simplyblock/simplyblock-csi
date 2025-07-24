@@ -71,7 +71,7 @@ data:
     distr_ndcs = int(os.getenv("DISTR_NDCS", 1)) if os.getenv("DISTR_NDCS", "").isdigit() else 1
     distr_npcs = int(os.getenv("DISTR_NPCS", 1)) if os.getenv("DISTR_NPCS", "").isdigit() else 1
 
-    label_selector = "type=simplyblock-storage-plane"
+    label_selector = "io.simplyblock.node-type=simplyblock-storage-plane"
 
     secret = json.loads(os.getenv("SPDKCSI_SECRET"))
     cluster_secret = secret['simplybk']['secret']
