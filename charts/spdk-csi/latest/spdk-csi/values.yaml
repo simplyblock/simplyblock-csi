@@ -118,6 +118,7 @@ logicalVolume:
   numDataChunks: "1"
   numParityChunks: "1"
   lvol_priority_class: "0"
+  max_namespace_per_subsys: "1"
   tune2fs_reserved_blocks: "0"
 
 podAnnotations: {}

@@ -63,6 +63,7 @@ type initiatorNVMf struct {
 	nrIoQueues     string
 	ctrlLossTmo    string
 	model          string
+	nsId           string
 }
 
 // initiatorCache is an implementation of NVMf cache initiator
@@ -175,6 +176,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			nrIoQueues:     volumeContext["nrIoQueues"],
 			ctrlLossTmo:    volumeContext["ctrlLossTmo"],
 			model:          volumeContext["model"],
+			nsId:           volumeContext["nsId"],
 		}, nil
 
 	case "cache":
@@ -323,52 +325,60 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		ctrlLossTmo *= 15
 	}
 
-	clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
-	sbcClient, err := NewsimplyBlockClient(clusterID)
+	alreadyConnected, err := isNqnConnected(nvmf.nqn)
 	if err != nil {
-		klog.Errorf("failed to create SPDK client: %v", err)
+		klog.Errorf("Failed to check existing connections: %v", err)
 		return "", err
 	}
-	connections, err := fetchLvolConnection(sbcClient, lvolID)
-	if err != nil {
-		klog.Errorf("Failed to get lvol connection: %v", err)
-		return "", err
-	}
-	for i, conn := range nvmf.connections {
 
-		cmdLine := []string{
-			"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-			"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
-			"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
-		}
-		err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
+	if !alreadyConnected {
+		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
+		sbcClient, err := NewsimplyBlockClient(clusterID)
 		if err != nil {
-			// go on checking device status in case caused by duplicated request
-			klog.Errorf("command %v failed: %s", cmdLine, err)
-
-			// disconnect the primary connection if secondary connection fails
-			if i == 1 {
-				klog.Warning("Secondary connection failed, disconnecting primary...")
-
-				deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
-				devicePath, err := waitForDeviceReady(deviceGlob, 20)
-				if err != nil {
-					return "", err
-				}
-				err = disconnectDevicePath(devicePath)
-				if err != nil {
-					klog.Errorf("Failed to disconnect primary: %v", err)
-					return "", err
-				} else {
-					klog.Infof("Primary connection disconnected due to secondary failure")
-				}
-			}
-
+			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
 		}
+		connections, err := fetchLvolConnection(sbcClient, lvolID)
+		if err != nil {
+			klog.Errorf("Failed to get lvol connection: %v", err)
+			return "", err
+		}
+
+		for i, conn := range nvmf.connections {
+			cmdLine := []string{
+				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
+				"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
+				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
+			}
+			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
+			if err != nil {
+				// go on checking device status in case caused by duplicated request
+				klog.Errorf("command %v failed: %s", cmdLine, err)
+
+				// disconnect the primary connection if secondary connection fails
+				if i == 1 {
+					klog.Warning("Secondary connection failed, disconnecting primary...")
+
+					deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
+					devicePath, err := waitForDeviceReady(deviceGlob, 20)
+					if err != nil {
+						return "", err
+					}
+					err = disconnectDevicePath(devicePath)
+					if err != nil {
+						klog.Errorf("Failed to disconnect primary: %v", err)
+						return "", err
+					} else {
+						klog.Infof("Primary connection disconnected due to secondary failure")
+					}
+				}
+
+				return "", err
+			}
+		}
 	}
 
-	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
 		return "", err
@@ -377,13 +387,17 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 }
 
 func (nvmf *initiatorNVMf) Disconnect() error {
-	deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
+	//deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
 	devicePath, err := filepath.Glob(deviceGlob)
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
 
-	if len(devicePath) > 0 {
+	if len(devicePath) > 1 {
+		return nil
+
+	} else if len(devicePath) == 1 {
 		err = disconnectDevicePath(devicePath[0])
 
 		if err != nil {
@@ -515,6 +529,25 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 	}
 
 	return devices, nil
+}
+
+func isNqnConnected(nqn string) (bool, error) {
+	cmd := exec.Command("nvme", "list-subsys")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to execute nvme list-subsys: %v", err)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, nqn) {
+			parts := strings.Fields(line)
+			if len(parts) > 0 {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func getSubsystemsForDevice(devicePath string) ([]subsystemResponse, error) {
