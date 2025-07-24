@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LABEL_KEY="type"
+LABEL_KEY="io.simplyblock.node-type"
 LABEL_VALUE="simplyblock-storage-plane"
 IMAGE_REPO="simplyblock/simplyblock"
 IMAGE_TAG=<VALUE>

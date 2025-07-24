@@ -190,7 +190,7 @@ storagenode:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
     nodeSelector:
-      key: type
+      key: io.simplyblock.node-type
       value: simplyblock-storage-plane
     tolerations:
       create: false
@@ -202,7 +202,7 @@ storagenode:
   - name: simplyblock-storage-node-ds-restart
     appLabel: storage-node-restart
     nodeSelector:
-      key: type
+      key: io.simplyblock.node-type
       value: simplyblock-storage-plane-restart
     tolerations:
       create: false

@@ -61,6 +61,6 @@ lspci
 
 After the nodes are prepared, label the kubernetes nodes
 ```
-kubectl label nodes ip-10-0-4-118.us-east-2.compute.internal ip-10-0-4-176.us-east-2.compute.internal type=simplyblock-storage-plane
+kubectl label nodes ip-10-0-4-118.us-east-2.compute.internal ip-10-0-4-176.us-east-2.compute.internal io.simplyblock.node-type=simplyblock-storage-plane
 ```
 Now the nodes are ready to deploy storage nodes.

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LABEL_KEY="type"
+LABEL_KEY="io.simplyblock.node-type"
 LABEL_VALUE="simplyblock-storage-plane"
 NAMESPACE="${1:-simplyblock}" 
 NODES=$(kubectl get nodes -l "${LABEL_KEY}=${LABEL_VALUE}" -o jsonpath='{.items[*].metadata.name}')
