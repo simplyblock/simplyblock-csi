@@ -94,6 +94,11 @@ spec:
       - name: s-node-api-config-generator
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
         imagePullPolicy: "{{ $.Values.image.simplyblock.pullPolicy }}"
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         command:
           - "python"
           - "simplyblock_web/node_configure.py"
