@@ -12,6 +12,7 @@ import (
 
 	. "github.com/onsi/gomega" //nolint
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -921,17 +922,89 @@ func restartStorageNode(c kubernetes.Interface, nodeID string) error {
 	return nil
 }
 func writeDataToPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPath string) {
-	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, opt)
+    execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, opt)
 }
 
 func compareDataInPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPaths []string) error {
-	for i := range data {
-		// read data from PVC
-		persistData, stdErr := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, opt)
-		Expect(stdErr).Should(BeEmpty()) //nolint
-		if !strings.Contains(persistData, data[i]) {
-			return fmt.Errorf("data not persistent: expected data %s received data %s ", data[i], persistData)
-		}
-	}
-	return nil
+    for i := range data {
+        // read data from PVC
+        persistData, stdErr := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, opt)
+        Expect(stdErr).Should(BeEmpty()) //nolint
+        if !strings.Contains(persistData, data[i]) {
+            return fmt.Errorf("data not persistent: expected data %s received data %s ", data[i], persistData)
+        }
+    }
+    return nil
+}
+
+// getSimplyblockAPIIP reads the Simplyblock API endpoint IP from configmap/secret.
+func getSimplyblockAPIIP(c kubernetes.Interface) (string, error) {
+    cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
+    if err != nil {
+        return "", err
+    }
+    value := cm.Data["config.json"]
+    var creds simplyblockCreds
+    if err := json.Unmarshal([]byte(value), &creds); err != nil {
+        return "", err
+    }
+
+    secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
+    if err != nil {
+        return "", err
+    }
+    value = string(secret.Data["secret.json"])
+    if err := json.Unmarshal([]byte(value), &creds); err != nil {
+        return "", err
+    }
+
+    return creds.Simplyblock.IP, nil
+}
+
+// createControllerEgressBlockPolicy creates a NetworkPolicy that allows egress to everywhere
+// except the provided blockedIP (/32). This effectively blocks only Simplyblock API while
+// keeping access to Kubernetes API and other services.
+func createControllerEgressBlockPolicy(c kubernetes.Interface, ns, npName, blockedIP string) error {
+    zero := int32(0)
+    policy := &networkingv1.NetworkPolicy{
+        ObjectMeta: metav1.ObjectMeta{
+            Name: npName,
+        },
+        Spec: networkingv1.NetworkPolicySpec{
+            PodSelector: metav1.LabelSelector{
+                MatchLabels: map[string]string{
+                    "app": "csi-controller",
+                },
+            },
+            PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+            Egress: []networkingv1.NetworkPolicyEgressRule{
+                {
+                    // allow to everywhere except blockedIP
+                    To: []networkingv1.NetworkPolicyPeer{
+                        {
+                            IPBlock: &networkingv1.IPBlock{
+                                CIDR:   "0.0.0.0/0",
+                                Except: []string{fmt.Sprintf("%s/32", blockedIP)},
+                            },
+                        },
+                    },
+                    // no port restriction; allow all ports
+                    Ports: []networkingv1.NetworkPolicyPort{
+                        {
+                            Protocol: nil,
+                            Port:     nil,
+                        },
+                    },
+                },
+            },
+        },
+    }
+    // silence go vet about unused var when compiled with different tags
+    _ = zero
+    _, err := c.NetworkingV1().NetworkPolicies(ns).Create(ctx, policy, metav1.CreateOptions{})
+    return err
+}
+
+func deleteNetworkPolicy(c kubernetes.Interface, ns, npName string) error {
+    return c.NetworkingV1().NetworkPolicies(ns).Delete(ctx, npName, metav1.DeleteOptions{})
 }
