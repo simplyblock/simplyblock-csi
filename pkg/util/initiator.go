@@ -611,6 +611,9 @@ func reconnectSubsystems() error {
 			continue
 		}
 
+		deviceSubsystemMap[device.devicePath] = true
+		currentDevices[device.devicePath] = true
+
 		for _, host := range subsystems {
 			for _, subsystem := range host.Subsystems {
 				clusterID, lvolID := getLvolIDFromNQN(subsystem.NQN)
@@ -627,7 +630,7 @@ func reconnectSubsystems() error {
 					for _, path := range subsystem.Paths {
 						if path.State == "connecting" && device.serialNumber == "single" ||
 							((path.ANAState == "optimized" || path.ANAState == "non-optimized") && device.serialNumber == "ha") {
-							if err := checkOnlineNode(clusterID, lvolID, path); err != nil {
+							if err := checkOnlineNode(clusterID, lvolID, device.devicePath, path); err != nil {
 								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
 						}
@@ -636,8 +639,6 @@ func reconnectSubsystems() error {
 			}
 		}
 
-		deviceSubsystemMap[device.devicePath] = true
-		currentDevices[device.devicePath] = true
 	}
 
 	mu.Lock()
@@ -652,7 +653,7 @@ func reconnectSubsystems() error {
 	return nil
 }
 
-func checkOnlineNode(clusterID, lvolID string, path path) error {
+func checkOnlineNode(clusterID, lvolID, devicePath string, path path) error {
 	sbcClient, err := NewsimplyBlockClient(clusterID)
 	if err != nil {
 		return fmt.Errorf("failed to create SPDK client: %w", err)
@@ -696,7 +697,7 @@ func checkOnlineNode(clusterID, lvolID string, path path) error {
 		if connCount == 1 && conn.IP != targetIP {
 			ctrlLossTmo *= 15
 
-			if err := disconnectViaNVMe(path); err != nil {
+			if err := disconnectViaNVMe(devicePath, path); err != nil {
 				return err
 			}
 			if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
@@ -785,14 +786,19 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	return nil
 }
 
-func disconnectViaNVMe(path path) error {
+func disconnectViaNVMe(devicePath string, path path) error {
 	cmd := []string{
 		"nvme", "disconnect", "-d", path.Name,
 	}
+
+	mu.Lock()
 	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
 		klog.Errorf("nvme disconnect failed: %v", err)
 		return err
 	}
+
+	delete(deviceSubsystemMap, devicePath)
+	mu.Unlock()
 
 	return nil
 }
