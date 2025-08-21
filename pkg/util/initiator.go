@@ -506,7 +506,7 @@ func disconnectDevicePath(devicePath string) error {
 		}
 	}
 	klog.Infof("deviceSubsystemMap before delete: %+v", deviceSubsystemMap)
-	delete(deviceSubsystemMap, devicePath)
+	delete(deviceSubsystemMap, realPath)
 	klog.Infof("deviceSubsystemMap after Delete: %+v", deviceSubsystemMap)
 	mu.Unlock()
 
