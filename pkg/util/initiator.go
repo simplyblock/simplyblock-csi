@@ -496,7 +496,7 @@ func disconnectDevicePath(devicePath string) error {
 		return true
 	})
 
-	mapMu.Lock()
+	mu.Lock()
 	for _, p := range paths {
 		klog.Infof("Disconnecting device %s", p.Name)
 		disconnectCmd := []string{"nvme", "disconnect", "-d", p.Name}
@@ -507,7 +507,7 @@ func disconnectDevicePath(devicePath string) error {
 	}
 
 	delete(deviceSubsystemMap, devicePath)
-	mapMu.Unlock()
+	mu.Unlock()
 
 	return nil
 }
