@@ -114,7 +114,7 @@ type nvmeDeviceInfo struct {
 
 var (
 	deviceSubsystemMap = make(map[string]bool)
-	mapMu              sync.RWMutex
+	mu                 sync.Mutex
 )
 
 // clusterConfig represents the Kubernetes secret structure
