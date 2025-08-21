@@ -505,8 +505,9 @@ func disconnectDevicePath(devicePath string) error {
 			klog.Errorf("Failed to disconnect device %s: %v", p.Name, err)
 		}
 	}
-
+	klog.Infof("deviceSubsystemMap before delete: %+v", deviceSubsystemMap)
 	delete(deviceSubsystemMap, devicePath)
+	klog.Infof("deviceSubsystemMap after Delete: %+v", deviceSubsystemMap)
 	mu.Unlock()
 
 	return nil
@@ -611,8 +612,8 @@ func reconnectSubsystems() error {
 			continue
 		}
 
-		deviceSubsystemMap[device.devicePath] = true
 		currentDevices[device.devicePath] = true
+		deviceSubsystemMap[device.devicePath] = true
 
 		for _, host := range subsystems {
 			for _, subsystem := range host.Subsystems {
@@ -645,6 +646,7 @@ func reconnectSubsystems() error {
 	for devPath := range deviceSubsystemMap {
 		if !currentDevices[devPath] {
 			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device", devPath)
+			klog.Infof("deviceSubsystemMap during device check: %+v", deviceSubsystemMap)
 			delete(deviceSubsystemMap, devPath)
 		}
 	}
