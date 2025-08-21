@@ -111,6 +111,8 @@ type nvmeDeviceInfo struct {
 	serialNumber string
 }
 
+var deviceSubsystemMap = make(map[string]bool)
+
 // clusterConfig represents the Kubernetes secret structure
 type ClusterConfig struct {
 	ClusterID       string `json:"cluster_id"`
@@ -499,6 +501,8 @@ func disconnectDevicePath(devicePath string) error {
 		}
 	}
 
+	delete(deviceSubsystemMap, devicePath)
+
 	return nil
 }
 
@@ -592,6 +596,8 @@ func reconnectSubsystems() error {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
 
+	currentDevices := make(map[string]bool)
+
 	for _, device := range devices {
 		subsystems, err := getSubsystemsForDevice(device.devicePath)
 		if err != nil {
@@ -623,7 +629,18 @@ func reconnectSubsystems() error {
 				}
 			}
 		}
+
+		deviceSubsystemMap[device.devicePath] = true
+		currentDevices[device.devicePath] = true
 	}
+
+	for devPath := range deviceSubsystemMap {
+		if !currentDevices[devPath] {
+			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device", devPath)
+			delete(deviceSubsystemMap, devPath)
+		}
+	}
+
 	return nil
 }
 
@@ -768,6 +785,7 @@ func disconnectViaNVMe(path path) error {
 		klog.Errorf("nvme disconnect failed: %v", err)
 		return err
 	}
+
 	return nil
 }
 
