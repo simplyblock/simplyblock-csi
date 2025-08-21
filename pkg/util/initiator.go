@@ -506,9 +506,7 @@ func disconnectDevicePath(devicePath string) error {
 	}
 
 	mu.Lock()
-	klog.Infof("deviceSubsystemMap before delete: %+v", deviceSubsystemMap)
 	delete(deviceSubsystemMap, realPath)
-	klog.Infof("deviceSubsystemMap after Delete: %+v", deviceSubsystemMap)
 	mu.Unlock()
 
 	return nil
@@ -647,7 +645,6 @@ func reconnectSubsystems() error {
 	for devPath := range deviceSubsystemMap {
 		if !currentDevices[devPath] {
 			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device", devPath)
-			klog.Infof("deviceSubsystemMap during device check: %+v", deviceSubsystemMap)
 			delete(deviceSubsystemMap, devPath)
 		}
 	}
