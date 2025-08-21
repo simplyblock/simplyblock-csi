@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/klog"
@@ -111,7 +112,10 @@ type nvmeDeviceInfo struct {
 	serialNumber string
 }
 
-var deviceSubsystemMap = make(map[string]bool)
+var (
+	deviceSubsystemMap = make(map[string]bool)
+	mapMu              sync.RWMutex
+)
 
 // clusterConfig represents the Kubernetes secret structure
 type ClusterConfig struct {
@@ -492,6 +496,7 @@ func disconnectDevicePath(devicePath string) error {
 		return true
 	})
 
+	mapMu.Lock()
 	for _, p := range paths {
 		klog.Infof("Disconnecting device %s", p.Name)
 		disconnectCmd := []string{"nvme", "disconnect", "-d", p.Name}
@@ -502,6 +507,7 @@ func disconnectDevicePath(devicePath string) error {
 	}
 
 	delete(deviceSubsystemMap, devicePath)
+	mapMu.Unlock()
 
 	return nil
 }
@@ -634,12 +640,14 @@ func reconnectSubsystems() error {
 		currentDevices[device.devicePath] = true
 	}
 
+	mu.Lock()
 	for devPath := range deviceSubsystemMap {
 		if !currentDevices[devPath] {
 			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device", devPath)
 			delete(deviceSubsystemMap, devPath)
 		}
 	}
+	mu.Unlock()
 
 	return nil
 }
