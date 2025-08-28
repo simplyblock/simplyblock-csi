@@ -14,7 +14,7 @@ data:
     v1 = client.CoreV1Api()
 
     def get_node_statuses(cluster_ip, cluster_uuid, cluster_secret):
-        url = f"{cluster_ip}/api/v1/storagenode"
+        url = f"{cluster_ip}/storagenode"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"{cluster_uuid} {cluster_secret}"
@@ -43,7 +43,7 @@ data:
 
             if len(online_nodes) >= total_nodes and len(online_nodes) >= total_value :
                 print("Proceeding with cluster activation.")
-                url = f"{cluster_ip}/api/v1/cluster/activate/{cluster_uuid}"
+                url = f"{cluster_ip}/cluster/activate/{cluster_uuid}"
                 headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"{cluster_uuid} {cluster_secret}"
@@ -91,13 +91,13 @@ data:
         activate_cluster_if_needed(cluster_ip, cluster_uuid, cluster_secret, distr_ndcs, distr_npcs, label_selector)
     elif action_type in ["sn_restart", "sn_shutdown", "sn_remove", "make_sec_primary"] and uuid:
         if action_type == "sn_restart":
-            url = f"{cluster_ip}/api/v1/storagenode/restart/{uuid}"
+            url = f"{cluster_ip}/storagenode/restart/{uuid}"
         elif action_type == "sn_shutdown":
-            url = f"{cluster_ip}/api/v1/storagenode/shutdown/{uuid}?force=True"
+            url = f"{cluster_ip}/storagenode/shutdown/{uuid}?force=True"
         elif action_type == "sn_remove":
-            url = f"{cluster_ip}/api/v1/storagenode/remove/{uuid}"
+            url = f"{cluster_ip}/storagenode/remove/{uuid}"
         elif action_type == "make_sec_primary":
-            url = f"{cluster_ip}/api/v1/storagenode/make-sec-new-primary/{uuid}"
+            url = f"{cluster_ip}/storagenode/make-sec-new-primary/{uuid}"
 
         try:
             response = requests.get(url, headers=headers)
