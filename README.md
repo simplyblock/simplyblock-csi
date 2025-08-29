@@ -34,7 +34,7 @@ advanced features like:
 
 ## ✨ Features
 
-| Feature                           | Benefit                                                                 |Add a comment on lines R31 to R33Add diff commentMarkdown input: edit mode selected.WritePreviewAdd a suggestionHeadingBoldItalicQuoteCodeLinkUnordered listNumbered listTask listMentionReferenceSaved repliesAdd FilesPaste, drop, or click to add filesCancelCommentStart a reviewReturn to code
+| Feature                           | Benefit                                                                 |
 |----------------------------------|-------------------------------------------------------------------------|
 | **Dynamic Volume Provisioning**   | Dynamically provision and lifecycle-manage persistent volumes in Kubernetes |
 | **NVMe/TCP Support**              | High throughput, low latency storage over standard Ethernet              |
@@ -69,7 +69,7 @@ Ensure your cluster meets the requirements:
   ```bash
   modprobe nvme-tcp
   lsmod | grep 'nvme_'
-````
+  ```
 
 You should see `nvme_tcp`, `nvme_fabrics`, and related modules.
 To make it persistent, add to `/etc/modules-load.d/nvme-tcp.conf` or `/etc/modules` depending on your distro.
