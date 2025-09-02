@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/klog"
@@ -109,6 +110,11 @@ type nvmeDeviceInfo struct {
 	devicePath   string
 	serialNumber string
 }
+
+var (
+	deviceSubsystemMap = make(map[string]bool)
+	mu                 sync.Mutex
+)
 
 // clusterConfig represents the Kubernetes secret structure
 type ClusterConfig struct {
@@ -485,6 +491,10 @@ func disconnectDevicePath(devicePath string) error {
 		}
 	}
 
+	mu.Lock()
+	delete(deviceSubsystemMap, realPath)
+	mu.Unlock()
+
 	return nil
 }
 
@@ -559,12 +569,17 @@ func reconnectSubsystems() error {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
 
+	currentDevices := make(map[string]bool)
+
 	for _, device := range devices {
 		subsystems, err := getSubsystemsForDevice(device.devicePath)
 		if err != nil {
 			klog.Errorf("failed to get subsystems for device %s: %v", device.devicePath, err)
 			continue
 		}
+
+		currentDevices[device.devicePath] = true
+		deviceSubsystemMap[device.devicePath] = true
 
 		for _, host := range subsystems {
 			for _, subsystem := range host.Subsystems {
@@ -582,7 +597,7 @@ func reconnectSubsystems() error {
 					for _, path := range subsystem.Paths {
 						if path.State == "connecting" && device.serialNumber == "single" ||
 							((path.ANAState == "optimized" || path.ANAState == "non-optimized") && device.serialNumber == "ha") {
-							if err := checkOnlineNode(clusterID, lvolID, path); err != nil {
+							if err := checkOnlineNode(clusterID, lvolID, device.devicePath, path); err != nil {
 								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
 							}
 						}
@@ -590,11 +605,22 @@ func reconnectSubsystems() error {
 				}
 			}
 		}
+
 	}
+
+	mu.Lock()
+	for devPath := range deviceSubsystemMap {
+		if !currentDevices[devPath] {
+			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device", devPath)
+			delete(deviceSubsystemMap, devPath)
+		}
+	}
+	mu.Unlock()
+
 	return nil
 }
 
-func checkOnlineNode(clusterID, lvolID string, path path) error {
+func checkOnlineNode(clusterID, lvolID, devicePath string, path path) error {
 	sbcClient, err := NewsimplyBlockClient(clusterID)
 	if err != nil {
 		return fmt.Errorf("failed to create SPDK client: %w", err)
@@ -638,7 +664,7 @@ func checkOnlineNode(clusterID, lvolID string, path path) error {
 		if connCount == 1 && conn.IP != targetIP {
 			ctrlLossTmo *= 15
 
-			if err := disconnectViaNVMe(path); err != nil {
+			if err := disconnectViaNVMe(devicePath, path); err != nil {
 				return err
 			}
 			if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
@@ -727,14 +753,20 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	return nil
 }
 
-func disconnectViaNVMe(path path) error {
+func disconnectViaNVMe(devicePath string, path path) error {
 	cmd := []string{
 		"nvme", "disconnect", "-d", path.Name,
 	}
+
 	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
 		klog.Errorf("nvme disconnect failed: %v", err)
 		return err
 	}
+
+	mu.Lock()
+	delete(deviceSubsystemMap, devicePath)
+	mu.Unlock()
+
 	return nil
 }
 
