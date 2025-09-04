@@ -39,7 +39,11 @@ spec:
               name: simplyblock-csi-cm
               key: config.json
         - name: IFNAME
-          value: "{{ .Values.storagenode.ifname }}"
+          value: "{{- if kindIs "string" .Values.storagenode.ifname -}}
+                    {{ .Values.storagenode.ifname }}
+                  {{- else -}}
+                    {{ join "," .Values.storagenode.ifname }}
+                  {{- end -}}"
         - name: MAXSNAP
           value: "{{ .Values.storagenode.maxSnapshots }}"
         - name: JMPERCENT
