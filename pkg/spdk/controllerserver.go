@@ -210,27 +210,26 @@ func (cs *controllerServer) CreateSnapshot(_ context.Context, req *csi.CreateSna
 }
 
 func (cs *controllerServer) DeleteSnapshot(_ context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	snapshotID := req.GetSnapshotId()
-	snapshot, err := getSnapshot(snapshotID)
+	csiSnapshotID := req.GetSnapshotId()
+	sbSnapshot, err := getSnapshot(csiSnapshotID)
 	if err != nil {
-		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", snapshotID, err)
+		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(snapshot.clusterID)
+	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	klog.Infof("snapshotID=%s", snapshotID)
-	unlock := cs.volumeLocks.Lock(snapshotID)
+	unlock := cs.volumeLocks.Lock(csiSnapshotID)
 	defer unlock()
 
-	klog.Infof("Deleting Snapshot : snapshotID=%s", snapshotID)
+	klog.Infof("Deleting Snapshot : csiSnapshotID=%s sbSnapshotID=%s", csiSnapshotID, sbSnapshot.snapshotID)
 
-	err = sbclient.DeleteSnapshot(snapshotID)
+	err = sbclient.DeleteSnapshot(sbSnapshot.snapshotID)
 	if err != nil {
-		klog.Errorf("failed to delete snapshot, snapshotID: %s err: %v", snapshotID, err)
+		klog.Errorf("failed to delete snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
