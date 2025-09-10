@@ -6,6 +6,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
     api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/955"
+    helm.sh/resource-policy: keep
   name: volumesnapshotcontents.snapshot.storage.k8s.io
 spec:
   group: snapshot.storage.k8s.io
