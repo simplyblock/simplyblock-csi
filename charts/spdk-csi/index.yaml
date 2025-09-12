@@ -55,6 +55,22 @@ entries:
     version: v0.3.20
   - apiVersion: v1
     appVersion: latest
+    created: "2025-09-12T14:25:36.547874066Z"
+    description: Simplyblock CSI Driver for Kubernetes
+    digest: d1530392b34285726a65f06e33e98858498cdc32cc2c916b4aa151fffdd658d4
+    home: https://github.com/simplyblock-io/spdk-csi
+    keywords:
+    - spdk
+    - csi
+    - spdk-csi
+    name: spdk-csi
+    sources:
+    - https://github.com/simplyblock-io/spdk-csi/tree/master/charts/spdk-csi
+    urls:
+    - https://github.com/simplyblock-io/spdk-csi/raw/master/charts/spdk-csi/v0.3.19-patch/spdk-csi-v0.3.19-patch.tgz
+    version: v0.3.19-patch
+  - apiVersion: v1
+    appVersion: latest
     created: "2025-08-28T10:13:36.547874066Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: de203b9ace5c818cda9a2766e415ff5163cb3aafcc29c4e3bb28cd614491b1fe
