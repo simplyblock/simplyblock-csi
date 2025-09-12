@@ -9,6 +9,8 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
+  annotations:
+    helm.sh/resource-policy: keep
   name: simplyblock-snapshot-controller
   namespace: kube-system
 spec:
