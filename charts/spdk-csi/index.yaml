@@ -68,7 +68,7 @@ entries:
     - https://github.com/simplyblock-io/spdk-csi/tree/master/charts/spdk-csi
     urls:
     - https://github.com/simplyblock-io/spdk-csi/raw/master/charts/spdk-csi/v0.3.19-patch/spdk-csi-v0.3.19-patch.tgz
-    version: v0.3.50
+    version: v0.3.19-patch
   - apiVersion: v1
     appVersion: latest
     created: "2025-08-28T10:13:36.547874066Z"
