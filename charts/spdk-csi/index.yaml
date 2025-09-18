@@ -23,7 +23,7 @@ entries:
     appVersion: latest
     created: "2025-09-18T10:07:02.255517+01:00"
     description: Simplyblock CSI Driver for Kubernetes
-    digest: b274263082859de994d611dc7890d77aa2095a84da69a73741d81a325568d6fe
+    digest: cbd0207cdfb4f16fd8a26a820ef558e65ed2cf80087086a6c8ecec581fb1a363
     home: https://github.com/simplyblock-io/spdk-csi
     keywords:
     - spdk
