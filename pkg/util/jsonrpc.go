@@ -443,7 +443,7 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 		data = nil
 	}
 
-	requestURL := fmt.Sprintf("%s/api/v1/%s", client.ClusterIP, path)
+	requestURL := fmt.Sprintf("%s/%s", client.ClusterIP, path)
 	klog.Infof("Calling Simplyblock API: Method: %s: RequestURL: %s: Body: %s\n", method, requestURL, string(data))
 	req, err := http.NewRequest(method, requestURL, bytes.NewReader(data))
 	if err != nil {
