@@ -34,6 +34,10 @@ import (
 	mount "k8s.io/mount-utils"
 	"k8s.io/utils/exec"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+
 	csicommon "github.com/spdk/spdk-csi/pkg/csi-common"
 	"github.com/spdk/spdk-csi/pkg/util"
 )
@@ -45,6 +49,7 @@ type nodeServer struct {
 	xpuConnClient *grpc.ClientConn
 	xpuTargetType string
 	kvmPciBridges int
+	kubeClient    kubernetes.Interface
 }
 
 func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
@@ -52,6 +57,18 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		DefaultNodeServer: csicommon.NewDefaultNodeServer(d),
 		mounter:           mount.New(""),
 		volumeLocks:       util.NewVolumeLocks(),
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Warningf("failed to get in-cluster config for node topology discovery: %v", err)
+	} else {
+		clientset, clientErr := kubernetes.NewForConfig(config)
+		if clientErr != nil {
+			klog.Warningf("failed to create kubernetes client for node topology discovery: %v", clientErr)
+		} else {
+			ns.kubeClient = clientset
+		}
 	}
 
 	// get xPU nodes' configs, see deploy/kubernetes/nodeserver-config-map.yaml
@@ -126,6 +143,55 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 	go util.MonitorConnection()
 
 	return ns, nil
+}
+
+func (ns *nodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	topology := ns.buildAccessibleTopology(ctx)
+
+	response := &csi.NodeGetInfoResponse{
+		NodeId: ns.Driver.GetNodeID(),
+	}
+
+	if len(topology) > 0 {
+		response.AccessibleTopology = &csi.Topology{Segments: topology}
+	}
+
+	return response, nil
+}
+
+func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]string {
+	if ns.kubeClient == nil {
+		return nil
+	}
+
+	nodeName := ns.Driver.GetNodeID()
+	if nodeName == "" {
+		return nil
+	}
+
+	node, err := ns.kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		klog.Warningf("failed to get node %s for topology discovery: %v", nodeName, err)
+		return nil
+	}
+
+	segments := make(map[string]string)
+
+	if zone, ok := node.Labels[topologyKeyZoneStable]; ok && zone != "" {
+		segments[topologyKeyZoneStable] = zone
+	} else if zone, ok := node.Labels[topologyKeyZoneBeta]; ok && zone != "" {
+		segments[topologyKeyZoneStable] = zone
+	}
+
+	if region, ok := node.Labels[topologyKeyRegionStable]; ok && region != "" {
+		segments[topologyKeyRegionStable] = region
+	}
+
+	if len(segments) == 0 {
+		return nil
+	}
+
+	return segments
 }
 
 func (ns *nodeServer) NodeGetVolumeStats(_ context.Context, _ *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
