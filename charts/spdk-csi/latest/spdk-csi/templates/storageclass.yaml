@@ -26,7 +26,11 @@ parameters:
   tune2fs_reserved_blocks: "{{ .Values.logicalVolume.tune2fs_reserved_blocks }}"
 {{- if .Values.storageclass.zoneClusterMap }}
   zone_cluster_map: |
+<<<<<<< HEAD
     {{ .Values.storageclass.zoneClusterMap | toJson }}
+=======
+{{ .Values.storageclass.zoneClusterMap | nindent 4 }}
+>>>>>>> d885ec5 (feat: add topology-aware multicluster provisioning support)
 {{- else }}
   cluster_id: "{{ .Values.csiConfig.simplybk.uuid }}"
 {{- end }}
