@@ -46,9 +46,6 @@ const (
 	annotationSecretNamespace = "simplybk/secret-namespace"
 	paramClusterID            = "cluster_id"
 	paramZoneClusterMap       = "zone_cluster_map"
-	topologyKeyZoneStable     = "topology.kubernetes.io/zone"
-	topologyKeyZoneBeta       = "failure-domain.beta.kubernetes.io/zone"
-	topologyKeyRegionStable   = "topology.kubernetes.io/region"
 )
 
 type controllerServer struct {
@@ -72,6 +69,8 @@ type clusterSelection struct {
 	topology  map[string]string
 }
 
+var errTopologyNotProvided = errors.New("topology requirements not provided")
+
 func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest) (*clusterSelection, error) {
 	params := req.GetParameters()
 	if params == nil {
@@ -85,9 +84,20 @@ func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest
 		}
 	}
 
+	selection, _, registryErr := cs.selectClusterFromRegistry(req)
+	if registryErr == nil {
+		return selection, nil
+	}
+
 	rawMap, ok := params[paramZoneClusterMap]
 	if !ok {
-		return nil, fmt.Errorf("failed to get cluster_id from parameters")
+		if errors.Is(registryErr, errTopologyNotProvided) {
+			return nil, fmt.Errorf("topology requirements are required when using Simplyblock multicluster support")
+		}
+		if errors.Is(registryErr, util.ErrClusterRegistryUnavailable) {
+			return nil, fmt.Errorf("cluster registry unavailable and no %s parameter provided: %v", paramZoneClusterMap, registryErr)
+		}
+		return nil, registryErr
 	}
 
 	zoneMap, err := parseZoneClusterMap(rawMap)
@@ -131,6 +141,68 @@ func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest
 	}
 
 	return nil, fmt.Errorf("no cluster mapping found for zones %s", strings.Join(zones, ", "))
+}
+
+func (cs *controllerServer) selectClusterFromRegistry(req *csi.CreateVolumeRequest) (*clusterSelection, []string, error) {
+	topoReq := req.GetAccessibilityRequirements()
+	if topoReq == nil {
+		return nil, nil, errTopologyNotProvided
+	}
+
+	attempted := []string{}
+	seenZones := map[string]struct{}{}
+
+	lookup := func(topo *csi.Topology) (*clusterSelection, error) {
+		if topo == nil {
+			return nil, nil
+		}
+		zone := zoneFromTopology(topo)
+		if zone == "" {
+			return nil, nil
+		}
+		if _, ok := seenZones[zone]; !ok {
+			seenZones[zone] = struct{}{}
+			attempted = append(attempted, zone)
+		}
+
+		cluster, segments, err := util.LookupClusterByZone(zone)
+		if err != nil {
+			return nil, err
+		}
+		return &clusterSelection{clusterID: cluster.ClusterID, topology: segments}, nil
+	}
+
+	for _, topo := range topoReq.GetPreferred() {
+		selection, err := lookup(topo)
+		if err != nil {
+			if errors.Is(err, util.ErrZoneNotMapped) {
+				continue
+			}
+			return nil, attempted, err
+		}
+		if selection != nil {
+			return selection, attempted, nil
+		}
+	}
+
+	for _, topo := range topoReq.GetRequisite() {
+		selection, err := lookup(topo)
+		if err != nil {
+			if errors.Is(err, util.ErrZoneNotMapped) {
+				continue
+			}
+			return nil, attempted, err
+		}
+		if selection != nil {
+			return selection, attempted, nil
+		}
+	}
+
+	if len(attempted) == 0 {
+		return nil, attempted, fmt.Errorf("no zone information found in topology requirements")
+	}
+
+	return nil, attempted, fmt.Errorf("no cluster mapping found for zones %s", strings.Join(attempted, ", "))
 }
 
 func parseZoneClusterMap(raw string) (map[string]string, error) {
@@ -198,10 +270,10 @@ func zoneFromSegments(segments map[string]string) string {
 	if segments == nil {
 		return ""
 	}
-	if zone, ok := segments[topologyKeyZoneStable]; ok && zone != "" {
+	if zone, ok := segments[util.TopologyKeyZoneStable]; ok && zone != "" {
 		return zone
 	}
-	if zone, ok := segments[topologyKeyZoneBeta]; ok && zone != "" {
+	if zone, ok := segments[util.TopologyKeyZoneBeta]; ok && zone != "" {
 		return zone
 	}
 	return ""
@@ -271,7 +343,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		csiVolume.AccessibleTopology = []*csi.Topology{{Segments: copyTopologySegments(selection.topology)}}
 
 		if zone := zoneFromSegments(selection.topology); zone != "" {
-			csiVolume.VolumeContext[topologyKeyZoneStable] = zone
+			csiVolume.VolumeContext[util.TopologyKeyZoneStable] = zone
 		}
 	}
 
@@ -725,17 +797,24 @@ func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshot
 }
 
 func ListClusters() (clusterIds []string, err error) {
+	ids, registryErr := util.ListClusterIDsFromRegistry()
+	if registryErr == nil && len(ids) > 0 {
+		return ids, nil
+	}
+	if registryErr != nil && !errors.Is(registryErr, util.ErrClusterRegistryUnavailable) {
+		return nil, registryErr
+	}
+
 	var clusters util.ClustersInfo
 	secretFile := util.FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
-	err = util.ParseJSONFile(secretFile, &clusters)
-	if err != nil {
+	if err := util.ParseJSONFile(secretFile, &clusters); err != nil {
 		klog.Errorf("failed to parse secret file: %v", err)
-		return
+		return nil, err
 	}
 	for _, cluster := range clusters.Clusters {
 		clusterIds = append(clusterIds, cluster.ClusterID)
 	}
-	return
+	return clusterIds, nil
 }
 
 // func (cs *controllerServer) ListVolumes(_ context.Context, _ *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {

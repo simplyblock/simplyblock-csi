@@ -119,9 +119,11 @@ var (
 
 // clusterConfig represents the Kubernetes secret structure
 type ClusterConfig struct {
-	ClusterID       string `json:"cluster_id"`
-	ClusterEndpoint string `json:"cluster_endpoint"`
-	ClusterSecret   string `json:"cluster_secret"`
+	ClusterID       string            `json:"cluster_id"`
+	ClusterEndpoint string            `json:"cluster_endpoint"`
+	ClusterSecret   string            `json:"cluster_secret"`
+	Topology        map[string]string `json:"topology,omitempty"`
+	Zones           []string          `json:"zones,omitempty"`
 }
 
 type ClustersInfo struct {
@@ -131,23 +133,9 @@ type ClustersInfo struct {
 // NewsimplyBlockClient create a new Simplyblock client
 // should be called for every CSI driver operation
 func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
-	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
-	var clusters ClustersInfo
-	err := ParseJSONFile(secretFile, &clusters)
+	clusterConfig, err := getClusterConfig(clusterID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse secret file: %w", err)
-	}
-
-	var clusterConfig *ClusterConfig
-	for _, cluster := range clusters.Clusters {
-		if cluster.ClusterID == clusterID {
-			clusterConfig = &cluster
-			break
-		}
-	}
-
-	if clusterConfig == nil {
-		return nil, fmt.Errorf("failed to find secret for clusterID %s", clusterID)
+		return nil, err
 	}
 
 	if clusterConfig.ClusterEndpoint == "" || clusterConfig.ClusterSecret == "" {
@@ -159,7 +147,41 @@ func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 		clusterConfig.ClusterID,
 		clusterConfig.ClusterEndpoint,
 	)
-	return NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret), nil
+	return NewNVMf(clusterConfig.ClusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret), nil
+}
+
+func getClusterConfig(clusterID string) (*ClusterConfig, error) {
+	cluster, err := LookupClusterConfigByID(clusterID)
+	if err == nil {
+		return cluster, nil
+	}
+
+	if !errors.Is(err, ErrClusterConfigNotFound) && !errors.Is(err, ErrClusterRegistryUnavailable) {
+		return nil, err
+	}
+
+	return getClusterConfigFromSecret(clusterID)
+}
+
+func getClusterConfigFromSecret(clusterID string) (*ClusterConfig, error) {
+	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
+	var clusters ClustersInfo
+	if err := ParseJSONFile(secretFile, &clusters); err != nil {
+		return nil, fmt.Errorf("failed to parse secret file: %w", err)
+	}
+
+	for _, cluster := range clusters.Clusters {
+		if cluster.ClusterID == clusterID {
+			clone := cluster
+			clone.Topology = copyStringMap(cluster.Topology)
+			if len(cluster.Zones) > 0 {
+				clone.Zones = append([]string(nil), cluster.Zones...)
+			}
+			return &clone, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find secret for clusterID %s", clusterID)
 }
 
 // NewSpdkCsiInitiator creates a new SpdkCsiInitiator based on the target type

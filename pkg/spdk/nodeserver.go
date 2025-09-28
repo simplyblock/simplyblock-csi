@@ -177,14 +177,14 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 
 	segments := make(map[string]string)
 
-	if zone, ok := node.Labels[topologyKeyZoneStable]; ok && zone != "" {
-		segments[topologyKeyZoneStable] = zone
-	} else if zone, ok := node.Labels[topologyKeyZoneBeta]; ok && zone != "" {
-		segments[topologyKeyZoneStable] = zone
+	if zone, ok := node.Labels[util.TopologyKeyZoneStable]; ok && zone != "" {
+		segments[util.TopologyKeyZoneStable] = zone
+	} else if zone, ok := node.Labels[util.TopologyKeyZoneBeta]; ok && zone != "" {
+		segments[util.TopologyKeyZoneStable] = zone
 	}
 
-	if region, ok := node.Labels[topologyKeyRegionStable]; ok && region != "" {
-		segments[topologyKeyRegionStable] = region
+	if region, ok := node.Labels[util.TopologyKeyRegionStable]; ok && region != "" {
+		segments[util.TopologyKeyRegionStable] = region
 	}
 
 	if len(segments) == 0 {

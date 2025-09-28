@@ -73,9 +73,17 @@ controller:
 
 storageclass:
   create: true
-  volumeBindingMode: Immediate
+  volumeBindingMode: WaitForFirstConsumer
   zoneClusterMap: ""
   allowedTopologyZones: []
+
+crd:
+  create: true
+
+clusterRegistry:
+  create: false
+  name: simplyblock-clusters
+  clusters: []
 
 snapshotclass:
   create: true

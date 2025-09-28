@@ -1,0 +1,28 @@
+{{- if and .Values.clusterRegistry.create (gt (len .Values.clusterRegistry.clusters) 0) }}
+---
+apiVersion: csi.simplyblock.io/v1alpha1
+kind: SimplyBlockClusterConfig
+metadata:
+  name: {{ default "simplyblock-clusters" .Values.clusterRegistry.name }}
+spec:
+  clusters:
+{{- range .Values.clusterRegistry.clusters }}
+  - clusterID: {{ .clusterID | quote }}
+    clusterEndpoint: {{ .clusterEndpoint | quote }}
+    clusterSecret: {{ .clusterSecret | quote }}
+{{- if .topology }}
+    topology:
+{{ toYaml .topology | indent 6 }}
+{{- end }}
+{{- if .topologies }}
+    topologies:
+{{ toYaml .topologies | indent 6 }}
+{{- end }}
+{{- if .zones }}
+    zones:
+{{- range .zones }}
+    - {{ . | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

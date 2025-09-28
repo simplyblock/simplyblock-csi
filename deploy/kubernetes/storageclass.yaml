@@ -21,8 +21,6 @@ parameters:
   distr_npcs: "1"
   lvol_priority_class: "0"
   tune2fs_reserved_blocks: "0"
-  zone_cluster_map: |
-    {"us-east-1a":"cluster-uuid-1","us-east-1b":"cluster-uuid-2"}
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
