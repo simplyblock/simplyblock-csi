@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -288,6 +289,19 @@ func (ns *nodeServer) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVol
 		return nil, status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", volumeID, err)
 	}
 
+	mode := volumeContext[volumeContextModeKey]
+	if mode == volumeModeBlock {
+		klog.Infof("NodeExpandVolume: skipping block volume %s", volumeID)
+		return &csi.NodeExpandVolumeResponse{}, nil
+	}
+
+	if mode == "" {
+		if info, statErr := os.Stat(volumeMountPath); statErr == nil && (info.Mode()&os.ModeDevice) != 0 {
+			klog.Infof("NodeExpandVolume: detected block device at %s for volume %s, skipping expansion", volumeMountPath, volumeID)
+			return &csi.NodeExpandVolumeResponse{}, nil
+		}
+	}
+
 	devicePath, ok := volumeContext["devicePath"]
 	if !ok || devicePath == "" {
 		return nil, status.Errorf(codes.Internal, "could not find device path for volume %s", volumeID)
@@ -409,39 +423,71 @@ func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolumeRequest) error {
 	targetPath := req.GetTargetPath()
 
-	fsType := req.GetVolumeCapability().GetMount().GetFsType()
-
 	if req.GetVolumeCapability().GetBlock() != nil {
-		stagingParentPath := req.GetStagingTargetPath()
-		volumeContext, err := util.LookupVolumeContext(stagingParentPath)
-		if err != nil {
-			return status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
-		}
+		return ns.publishBlockVolume(req, targetPath)
+	}
 
-		devicePath, ok := volumeContext["devicePath"]
-		if !ok || devicePath == "" {
-			return status.Errorf(codes.Internal, "could not find device path for volume %s", req.GetVolumeId())
-		}
-		stagingPath = devicePath
+	return ns.publishFilesystemVolume(stagingPath, targetPath, req)
+}
 
-		fsType = ""
-		if err = ns.MakeFile(targetPath); err != nil {
-			if removeErr := os.Remove(targetPath); removeErr != nil {
-				return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, removeErr)
-			}
-			return status.Errorf(codes.Internal, "Could not create file %q: %v", targetPath, err)
-		}
-	} else if req.GetVolumeCapability().GetMount() != nil {
-		mounted, err := ns.createMountPoint(targetPath)
-		if err != nil {
-			return err
-		}
-		if mounted {
-			return nil
+func (ns *nodeServer) publishBlockVolume(req *csi.NodePublishVolumeRequest, targetPath string) error {
+	stagingParentPath := req.GetStagingTargetPath()
+	volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
+	}
+
+	devicePath, ok := volumeContext["devicePath"]
+	if !ok || devicePath == "" {
+		return status.Errorf(codes.Internal, "could not find device path for volume %s", req.GetVolumeId())
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o750); err != nil {
+		return status.Errorf(codes.Internal, "failed to create directory for %s: %v", targetPath, err)
+	}
+
+	if err := ns.MakeFile(targetPath); err != nil {
+		return status.Errorf(codes.Internal, "could not create target file %q: %v", targetPath, err)
+	}
+
+	notMounted, err := ns.mounter.IsLikelyNotMountPoint(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			notMounted = true
+		} else if mount.IsCorruptedMnt(err) {
+			notMounted = true
+		} else {
+			return status.Errorf(codes.Internal, "could not determine mount state for %s: %v", targetPath, err)
 		}
 	}
 
-	mntFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
+	if !notMounted {
+		klog.Infof("NodePublishVolume: block device %s already published at %s", devicePath, targetPath)
+		return nil
+	}
+
+	klog.Infof("NodePublishVolume: bind mounting block device %s to %s", devicePath, targetPath)
+	if err := ns.mounter.Mount(devicePath, targetPath, "", []string{"bind"}); err != nil {
+		return status.Errorf(codes.Internal, "failed to bind mount %s to %s: %v", devicePath, targetPath, err)
+	}
+	return nil
+}
+
+func (ns *nodeServer) publishFilesystemVolume(stagingPath, targetPath string, req *csi.NodePublishVolumeRequest) error {
+	if req.GetVolumeCapability().GetMount() == nil {
+		return status.Errorf(codes.InvalidArgument, "mount capability required for filesystem volume %s", req.GetVolumeId())
+	}
+
+	mounted, err := ns.createMountPoint(targetPath)
+	if err != nil {
+		return err
+	}
+	if mounted {
+		return nil
+	}
+
+	fsType := req.GetVolumeCapability().GetMount().GetFsType()
+	mntFlags := append([]string{}, req.GetVolumeCapability().GetMount().GetMountFlags()...)
 	mntFlags = append(mntFlags, "bind")
 	klog.Infof("mount %s to %s, fstype: %s, flags: %v", stagingPath, targetPath, fsType, mntFlags)
 	return ns.mounter.Mount(stagingPath, targetPath, fsType, mntFlags)
@@ -462,27 +508,25 @@ func (ns *nodeServer) createMountPoint(path string) (bool, error) {
 
 // unmount and delete mount point, must be idempotent
 func (ns *nodeServer) deleteMountPoint(path string) error {
-	isMount, err := ns.mounter.IsMountPoint(path)
-	if err != nil {
+	if err := mount.CleanupMountPoint(path, ns.mounter, false); err != nil {
 		if os.IsNotExist(err) {
 			klog.Infof("%s already deleted", path)
 			return nil
-		} else if mount.IsCorruptedMnt(err) {
-			klog.Warningf("Corrupted mount point detected at %s", path)
-			isMount = true
-		} else {
-			klog.Errorf("Error checking mount point %s: %v", path, err)
-			return err
 		}
-	}
-
-	if isMount {
-		err = ns.mounter.Unmount(path)
-		if err != nil {
-			return err
+		if mount.IsCorruptedMnt(err) {
+			klog.Warningf("detected corrupted mount point at %s, attempting forced cleanup", path)
+			if forceErr := mount.CleanupMountPoint(path, ns.mounter, true); forceErr != nil {
+				return forceErr
+			}
+			return nil
 		}
+		klog.Errorf("failed to cleanup mount point %s: %v", path, err)
+		return err
 	}
-	return os.RemoveAll(path)
+	if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func (ns *nodeServer) MakeFile(path string) error {

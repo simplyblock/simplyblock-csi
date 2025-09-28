@@ -46,17 +46,20 @@ const (
 	annotationLvolID          = "simplybk/lvol-id"
 	annotationSecretName      = "simplybk/secret-name"
 	annotationSecretNamespace = "simplybk/secret-namespace"
+	backendSupportsBlockRWX   = false
 )
 
 type controllerServer struct {
 	*csicommon.DefaultControllerServer
 	volumeLocks *util.VolumeLocks
+	meta        *volumeMetadataStore
 }
 
 type spdkVolume struct {
 	clusterID string
 	lvolID    string
 	poolName  string
+	mode      string
 }
 
 type spdkSnapshot struct {
@@ -69,6 +72,18 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	volumeID := req.GetName()
 	unlock := cs.volumeLocks.Lock(volumeID)
 	defer unlock()
+
+	isBlock := false
+	for _, vc := range req.GetVolumeCapabilities() {
+		if vc.GetBlock() != nil {
+			isBlock = true
+			break
+		}
+	}
+	mode := volumeModeFilesystem
+	if isBlock {
+		mode = volumeModeBlock
+	}
 
 	clusterID, ok := req.GetParameters()["cluster_id"]
 	if !ok {
@@ -85,6 +100,14 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		klog.Errorf("failed to create volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if csiVolume.VolumeContext == nil {
+		csiVolume.VolumeContext = map[string]string{}
+	}
+	csiVolume.VolumeContext[volumeContextModeKey] = mode
+	if csiVolume.VolumeId != "" {
+		cs.meta.Set(csiVolume.VolumeId, volumeMetadata{mode: mode, capacityBytes: csiVolume.CapacityBytes})
 	}
 
 	volumeInfo, err := cs.publishVolume(csiVolume.GetVolumeId(), sbClient)
@@ -137,24 +160,49 @@ func (cs *controllerServer) DeleteVolume(_ context.Context, req *csi.DeleteVolum
 		klog.Errorf("failed to delete volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	cs.meta.Delete(volumeID)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
-func (cs *controllerServer) ValidateVolumeCapabilities(_ context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	// make sure we support all requested caps
+func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+	volumeID := req.GetVolumeId()
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume ID is required")
+	}
+
+	meta, err := cs.meta.Get(ctx, volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "volume %s not found: %v", volumeID, err)
+	}
+	isBlock := isBlockMode(meta.mode)
+
 	for _, cap := range req.GetVolumeCapabilities() {
-		supported := false
-		for _, accessMode := range cs.Driver.GetVolumeCapabilityAccessModes() {
-			if cap.GetAccessMode().GetMode() == accessMode.GetMode() {
-				supported = true
-				break
+		if cap.GetBlock() != nil && !isBlock {
+			return &csi.ValidateVolumeCapabilitiesResponse{Message: "volume is provisioned as filesystem"}, nil
+		}
+		if cap.GetMount() != nil && isBlock {
+			return &csi.ValidateVolumeCapabilitiesResponse{Message: "volume is provisioned as block"}, nil
+		}
+
+		if cap.GetAccessMode() != nil {
+			mode := cap.GetAccessMode().GetMode()
+			if mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER && isBlock && !backendSupportsBlockRWX {
+				return &csi.ValidateVolumeCapabilitiesResponse{Message: "RWX on raw block not supported by backend"}, nil
+			}
+			supported := false
+			for _, accessMode := range cs.Driver.GetVolumeCapabilityAccessModes() {
+				if mode == accessMode.GetMode() {
+					supported = true
+					break
+				}
+			}
+			if !supported {
+				return &csi.ValidateVolumeCapabilitiesResponse{Message: fmt.Sprintf("access mode %s not supported", mode.String())}, nil
 			}
 		}
-		if !supported {
-			return &csi.ValidateVolumeCapabilitiesResponse{Message: ""}, nil
-		}
 	}
+
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
 			VolumeCapabilities: req.GetVolumeCapabilities(),
@@ -414,10 +462,12 @@ func getSPDKVol(csiVolumeID string) (*spdkVolume, error) {
 
 	ids := strings.Split(csiVolumeID, ":")
 	if len(ids) == 3 {
+		meta, _ := globalVolumeMetadata.TryGet(csiVolumeID)
 		return &spdkVolume{
 			clusterID: ids[0],
 			poolName:  ids[1],
 			lvolID:    ids[2],
+			mode:      meta.mode,
 		}, nil
 	}
 	return nil, fmt.Errorf("missing clusterID or poolName in volume: %s", csiVolumeID)
@@ -481,27 +531,74 @@ func (cs *controllerServer) unpublishVolume(volumeID string) error {
 	return sbclient.UnpublishVolume(spdkVol.lvolID)
 }
 
-func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
-	updatedSize := req.GetCapacityRange().GetRequiredBytes()
+	requested := req.GetCapacityRange().GetRequiredBytes()
+	if requested < 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid requested capacity %d", requested)
+	}
+
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.NotFound, "failed to parse volume %s: %v", volumeID, err)
 	}
+
+	meta, metaErr := cs.meta.Get(ctx, volumeID)
+	if metaErr != nil {
+		return nil, status.Errorf(codes.NotFound, "volume %s metadata not found: %v", volumeID, metaErr)
+	}
+	isBlock := isBlockMode(meta.mode)
+	current := meta.capacityBytes
 
 	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to create client for volume %s: %v", volumeID, err)
 	}
 
-	_, err = sbclient.ResizeVolume(spdkVol.lvolID, updatedSize)
-	if err != nil {
-		klog.Errorf("failed to resize lvol, LVolID: %s err: %v", spdkVol.lvolID, err)
-		return nil, err
+	if current == 0 {
+		volSize, sizeErr := sbclient.GetVolumeSize(spdkVol.lvolID)
+		if sizeErr != nil {
+			klog.Warningf("ControllerExpandVolume: failed to retrieve current size for %s: %v", volumeID, sizeErr)
+		} else if sizeErr == nil {
+			sizeBytes, parseErr := strconv.ParseInt(volSize, 10, 64)
+			if parseErr != nil {
+				klog.Warningf("ControllerExpandVolume: failed to parse current size for %s: %v", volumeID, parseErr)
+			} else {
+				current = sizeBytes
+				cs.meta.UpdateCapacity(volumeID, current)
+			}
+		}
 	}
+
+	if requested == 0 {
+		requested = current
+	}
+
+	if current > 0 && requested < current {
+		return nil, status.Errorf(codes.InvalidArgument, "shrink not supported for volume %s: current=%d requested=%d", volumeID, current, requested)
+	}
+
+	if requested == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "requested capacity for volume %s cannot be zero", volumeID)
+	}
+
+	if current == requested {
+		return &csi.ControllerExpandVolumeResponse{
+			CapacityBytes:         current,
+			NodeExpansionRequired: !isBlock,
+		}, nil
+	}
+
+	klog.Infof("ControllerExpandVolume: resizing volume %s (lvol=%s) from %d to %d bytes (mode=%s)", volumeID, spdkVol.lvolID, current, requested, meta.mode)
+	if _, err = sbclient.ResizeVolume(spdkVol.lvolID, requested); err != nil {
+		klog.Errorf("failed to resize lvol %s for volume %s: %v", spdkVol.lvolID, volumeID, err)
+		return nil, status.Errorf(codes.Internal, "resize failed: %v", err)
+	}
+	cs.meta.UpdateCapacity(volumeID, requested)
+
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         updatedSize,
-		NodeExpansionRequired: true,
+		CapacityBytes:         requested,
+		NodeExpansionRequired: !isBlock,
 	}, nil
 }
 
@@ -657,6 +754,7 @@ func newControllerServer(d *csicommon.CSIDriver) (*controllerServer, error) {
 	server := controllerServer{
 		DefaultControllerServer: csicommon.NewDefaultControllerServer(d),
 		volumeLocks:             util.NewVolumeLocks(),
+		meta:                    globalVolumeMetadata,
 	}
 	return &server, nil
 }
