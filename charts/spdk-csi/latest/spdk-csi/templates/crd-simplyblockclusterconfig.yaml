@@ -1,0 +1,60 @@
+{{- if .Values.crd.create }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: simplyblockclusterconfigs.csi.simplyblock.io
+spec:
+  group: csi.simplyblock.io
+  scope: Cluster
+  names:
+    plural: simplyblockclusterconfigs
+    singular: simplyblockclusterconfig
+    kind: SimplyBlockClusterConfig
+    shortNames:
+    - sbcc
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - clusters
+            properties:
+              clusters:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - clusterID
+                  - clusterEndpoint
+                  - clusterSecret
+                  properties:
+                    clusterID:
+                      type: string
+                    clusterEndpoint:
+                      type: string
+                    clusterSecret:
+                      type: string
+                    zones:
+                      type: array
+                      items:
+                        type: string
+                    topology:
+                      type: object
+                      additionalProperties:
+                        type: string
+                    topologies:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties:
+                          type: string
+          status:
+            type: object
+{{- end }}

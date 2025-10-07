@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: csi.simplyblock.io/v1alpha1
+kind: SimplyBlockClusterConfig
+metadata:
+  name: simplyblock-clusters
+spec:
+  clusters:
+  - clusterID: "cluster-uuid-1"
+    clusterEndpoint: "https://cluster-1.simplyblock.example"
+    clusterSecret: "super_secret_token_1"
+    topology:
+      topology.kubernetes.io/region: us-east-1
+    zones:
+    - us-east-1a
+  - clusterID: "cluster-uuid-2"
+    clusterEndpoint: "https://cluster-2.simplyblock.example"
+    clusterSecret: "super_secret_token_2"
+    topology:
+      topology.kubernetes.io/region: us-east-1
+    zones:
+    - us-east-1b
