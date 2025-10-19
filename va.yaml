@@ -1,0 +1,45 @@
+apiVersion: storage.k8s.io/v1
+kind: VolumeAttributesClass
+metadata:
+  name: pvc-100-iops
+driverName: csi.simplyblock.io
+parameters:
+  qos_r_mbytes: "100"
+  qos_rw_iops: "100"
+  qos_rw_mbytes: "100"
+  qos_w_mbytes: "100"
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spdkcsi-pvc2
+  annotations:
+    simplybk/secret-name: simplyblock-pvc-keys
+    simplybk/secret-namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: simplyblock-csi-sc
+  volumeAttributesClassName: pvc-100-iops
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: spdkcsi-test2
+spec:
+  containers:
+  - name: alpine
+    image: alpine:3
+    imagePullPolicy: "IfNotPresent"
+    command: ["sleep", "365d"]
+    volumeMounts:
+    - mountPath: "/spdkvol"
+      name: spdk-volume
+  volumes:
+  - name: spdk-volume
+    persistentVolumeClaim:
+      claimName: spdkcsi-pvc2

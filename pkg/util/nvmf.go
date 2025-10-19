@@ -85,6 +85,15 @@ type CreateLVolData struct {
 	PvcName      string `json:"pvc_name"`
 }
 
+// ModifyVolumeQoSRequest captures the subset of mutable volume parameters that
+// SimplyBlock currently allows to be changed after creation.
+type ModifyVolumeQoSRequest struct {
+	MaxRWIOPS   string `json:"max_rw_iops,omitempty"`
+	MaxRWmBytes string `json:"max_rw_mbytes,omitempty"`
+	MaxRmBytes  string `json:"max_r_mbytes,omitempty"`
+	MaxWmBytes  string `json:"max_w_mbytes,omitempty"`
+}
+
 // CreateVolume creates a logical volume and returns volume ID
 func (node *NodeNVMf) CreateVolume(params *CreateLVolData) (string, error) {
 	lvolID, err := node.Client.createVolume(params)
@@ -123,6 +132,14 @@ func (node *NodeNVMf) ListVolumes() ([]*BDev, error) {
 // ResizeVolume resizes a volume
 func (node *NodeNVMf) ResizeVolume(lvolID string, newSize int64) (bool, error) {
 	return node.Client.resizeVolume(lvolID, newSize)
+}
+
+// UpdateVolumeQoS updates the mutable QoS parameters of an existing volume.
+func (node *NodeNVMf) UpdateVolumeQoS(lvolID string, params *ModifyVolumeQoSRequest) error {
+	if params == nil {
+		return nil
+	}
+	return node.Client.updateVolumeQoS(lvolID, params)
 }
 
 // ListSnapshots returns a list of snapshots

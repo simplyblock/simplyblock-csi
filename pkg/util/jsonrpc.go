@@ -344,6 +344,15 @@ func (client *RPCClient) resizeVolume(lvolID string, size int64) (bool, error) {
 	return result, nil
 }
 
+// updateVolumeQoS updates mutable QoS parameters for a logical volume.
+func (client *RPCClient) updateVolumeQoS(lvolID string, params *ModifyVolumeQoSRequest) error {
+	if params == nil {
+		return nil
+	}
+	_, err := client.CallSBCLI("PUT", "/lvol/"+lvolID, params)
+	return err
+}
+
 // cloneSnapshot clones a snapshot
 func (client *RPCClient) cloneSnapshot(snapshotID, cloneName, newSize, pvcName string) (string, error) {
 	params := struct {
@@ -443,7 +452,7 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 		data = nil
 	}
 
-	requestURL := fmt.Sprintf("%s/api/v1/%s", client.ClusterIP, path)
+	requestURL := fmt.Sprintf("%s/%s", client.ClusterIP, path)
 	klog.Infof("Calling Simplyblock API: Method: %s: RequestURL: %s: Body: %s\n", method, requestURL, string(data))
 	req, err := http.NewRequest(method, requestURL, bytes.NewReader(data))
 	if err != nil {

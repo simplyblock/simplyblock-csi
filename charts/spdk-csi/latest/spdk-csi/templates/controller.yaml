@@ -60,6 +60,7 @@ spec:
         - "--leader-election=false"
         - "--extra-create-metadata=true"
         - "--feature-gates=Topology=true"
+        - "--feature-gates=VolumeAttributesClass=true"
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
