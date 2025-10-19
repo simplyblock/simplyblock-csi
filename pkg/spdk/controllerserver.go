@@ -70,7 +70,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	unlock := cs.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	clusterID, ok := req.GetParameters()["cluster_id"]
+	params := mergeStringMaps(req.GetParameters(), req.GetMutableParameters())
+
+	clusterID, ok := params["cluster_id"]
 	if !ok {
 		klog.Errorf("failed to get cluster_id from parameters")
 		return nil, status.Error(codes.Internal, "failed to get cluster_id from parameters")
@@ -81,7 +83,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	}
 
-	csiVolume, err := cs.createVolume(ctx, req, sbClient)
+	csiVolume, err := cs.createVolume(ctx, req, params, sbClient)
 	if err != nil {
 		klog.Errorf("failed to create volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -103,7 +105,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	if volType, ok := req.GetParameters()["type"]; ok {
+	if volType, ok := params["type"]; ok {
 		csiVolume.VolumeContext["targetType"] = volType
 	}
 
@@ -256,8 +258,29 @@ func getBoolParameter(params map[string]string, key string) bool {
 	return exists && (valueStr == "true" || valueStr == "True")
 }
 
-func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, sizeMiB int64) (*util.CreateLVolData, error) {
-	params := req.GetParameters()
+func mergeStringMaps(primary, overrides map[string]string) map[string]string {
+	result := make(map[string]string, len(primary)+len(overrides))
+	for k, v := range primary {
+		result[k] = v
+	}
+	for k, v := range overrides {
+		result[k] = v
+	}
+	return result
+}
+
+func copyStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, params map[string]string, sizeMiB int64) (*util.CreateLVolData, error) {
 
 	distrNdcs, err := getIntParameter(params, "distr_ndcs", 1)
 	if err != nil {
@@ -359,7 +382,7 @@ func (cs *controllerServer) getExistingVolume(name, poolName string, sbclient *u
 	return nil, err
 }
 
-func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest, sbclient *util.NodeNVMf) (*csi.Volume, error) {
+func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest, params map[string]string, sbclient *util.NodeNVMf) (*csi.Volume, error) {
 	size := req.GetCapacityRange().GetRequiredBytes()
 	if size == 0 {
 		klog.Warningln("invalid volume size, resize to 1G")
@@ -368,19 +391,19 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	sizeMiB := util.ToMiB(size)
 	vol := csi.Volume{
 		CapacityBytes: sizeMiB * 1024 * 1024,
-		VolumeContext: req.GetParameters(),
+		VolumeContext: copyStringMap(params),
 		ContentSource: req.GetVolumeContentSource(),
 	}
 
 	klog.V(5).Info("provisioning volume from SDK node..")
-	poolName := req.GetParameters()["pool_name"]
+	poolName := params["pool_name"]
 	existingVolume, err := cs.getExistingVolume(req.GetName(), poolName, sbclient, &vol)
 	if err == nil {
 		return existingVolume, nil
 	}
 
 	if req.GetVolumeContentSource() != nil {
-		clonedVolume, clonedErr := cs.handleVolumeContentSource(req, poolName, &vol, sizeMiB)
+		clonedVolume, clonedErr := cs.handleVolumeContentSource(req, params, poolName, &vol, sizeMiB)
 		if clonedErr != nil {
 			return nil, clonedErr
 		}
@@ -389,7 +412,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	createVolReq, err := prepareCreateVolumeReq(ctx, req, sizeMiB)
+	createVolReq, err := prepareCreateVolumeReq(ctx, req, params, sizeMiB)
 	if err != nil {
 		return nil, err
 	}
@@ -722,19 +745,19 @@ func newControllerServer(d *csicommon.CSIDriver) (*controllerServer, error) {
 	return &server, nil
 }
 
-func (cs *controllerServer) handleVolumeContentSource(req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeContentSource(req *csi.CreateVolumeRequest, params map[string]string, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
 	volumeSource := req.GetVolumeContentSource()
 	switch volumeSource.GetType().(type) {
 	case *csi.VolumeContentSource_Snapshot:
-		return cs.handleSnapshotSource(volumeSource.GetSnapshot(), req, poolName, vol, sizeMiB)
+		return cs.handleSnapshotSource(volumeSource.GetSnapshot(), req, params, poolName, vol, sizeMiB)
 	case *csi.VolumeContentSource_Volume:
-		return cs.handleVolumeSource(volumeSource.GetVolume(), req, poolName, vol, sizeMiB)
+		return cs.handleVolumeSource(volumeSource.GetVolume(), req, params, poolName, vol, sizeMiB)
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
 	}
 }
 
-func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, params map[string]string, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
 	if snapshot == nil {
 		return nil, nil
 	}
@@ -752,7 +775,6 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 
 	klog.Infof("CreateSnapshot : snapshotID=%s", sbSnapshot.snapshotID)
 	snapshotName := req.GetName()
-	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
 	newSize := fmt.Sprintf("%dM", sizeMiB)
 	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
@@ -766,7 +788,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	return vol, nil
 }
 
-func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, params map[string]string, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
 	if srcVolume == nil {
 		return nil, nil
 	}
@@ -775,7 +797,6 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 	klog.Infof("srcVolumeID=%s", srcVolumeID)
 
 	snapshotName := req.GetName()
-	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
 
 	spdkVol, err := getSPDKVol(srcVolumeID)
