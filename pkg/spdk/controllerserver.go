@@ -481,6 +481,67 @@ func (cs *controllerServer) unpublishVolume(volumeID string) error {
 	return sbclient.UnpublishVolume(spdkVol.lvolID)
 }
 
+func (cs *controllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume_id is required")
+	}
+
+	mutableParams := req.GetMutableParameters()
+	if len(mutableParams) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "mutable_parameters are required")
+	}
+
+	unlock := cs.volumeLocks.Lock(volumeID)
+	defer unlock()
+
+	spdkVol, err := getSPDKVol(volumeID)
+	if err != nil {
+		klog.Errorf("invalid volume id %s: %v", volumeID, err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume id %s: %v", volumeID, err)
+	}
+
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	if err != nil {
+		klog.Errorf("failed to create simplyblock client: %v", err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	var qosReq util.ModifyVolumeQoSRequest
+	supportedParam := false
+
+	for key, value := range mutableParams {
+		switch key {
+		case "qos_rw_iops":
+			qosReq.MaxRWIOPS = value
+			supportedParam = true
+		case "qos_rw_mbytes":
+			qosReq.MaxRWmBytes = value
+			supportedParam = true
+		case "qos_r_mbytes":
+			qosReq.MaxRmBytes = value
+			supportedParam = true
+		case "qos_w_mbytes":
+			qosReq.MaxWmBytes = value
+			supportedParam = true
+		default:
+			klog.Errorf("mutable parameter %s is not supported for volume %s", key, volumeID)
+			return nil, status.Errorf(codes.InvalidArgument, "mutable parameter %q not supported", key)
+		}
+	}
+
+	if !supportedParam {
+		return nil, status.Error(codes.InvalidArgument, "no supported mutable parameters provided")
+	}
+
+	if err = sbclient.UpdateVolumeQoS(spdkVol.lvolID, &qosReq); err != nil {
+		klog.Errorf("failed to update mutable parameters for volume %s: %v", volumeID, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &csi.ControllerModifyVolumeResponse{}, nil
+}
+
 func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	updatedSize := req.GetCapacityRange().GetRequiredBytes()
