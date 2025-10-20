@@ -112,7 +112,7 @@ type LvolConnectResp struct {
 	NrIoQueues     int    `json:"nr-io-queues"`
 	CtrlLossTmo    int    `json:"ctrl-loss-tmo"`
 	Port           int    `json:"port"`
-	TargetType     string `json:"target"`
+	TargetType     string `json:"transport"`
 	IP             string `json:"ip"`
 	Connect        string `json:"connect"`
 	NSID           int    `json:"ns_id"`
@@ -311,7 +311,7 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 		"nrIoQueues":     strconv.Itoa(result[0].NrIoQueues),
 		"ctrlLossTmo":    strconv.Itoa(result[0].CtrlLossTmo),
 		"model":          model,
-		"targetType":     result[0].TargetType,
+		"TargetType":     result[0].TargetType,
 		"connections":    string(connectionsData),
 		"nsId":           strconv.Itoa(result[0].NSID),
 	}, nil
