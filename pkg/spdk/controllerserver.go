@@ -328,6 +328,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		LvolName:     req.GetName(),
 		Size:         fmt.Sprintf("%dM", sizeMiB),
 		LvsName:      params["pool_name"],
+		Fabrics:      params["fabrics"],
 		MaxRWIOPS:    params["qos_rw_iops"],
 		MaxRWmBytes:  params["qos_rw_mbytes"],
 		MaxRmBytes:   params["qos_r_mbytes"],
