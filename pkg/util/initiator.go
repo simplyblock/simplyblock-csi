@@ -166,6 +166,7 @@ func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 // NewSpdkCsiInitiator creates a new SpdkCsiInitiator based on the target type
 func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
+	klog.Infof("Simplyblock targetType created :%s", targetType)
 	switch targetType {
 	case TargetTypeTCP, TargetTypeRDMA:
 		var connections []connectionInfo
