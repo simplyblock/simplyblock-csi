@@ -311,7 +311,7 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 		"nrIoQueues":     strconv.Itoa(result[0].NrIoQueues),
 		"ctrlLossTmo":    strconv.Itoa(result[0].CtrlLossTmo),
 		"model":          model,
-		"TargetType":     result[0].TargetType,
+		"targetType":     result[0].TargetType,
 		"connections":    string(connectionsData),
 		"nsId":           strconv.Itoa(result[0].NSID),
 	}, nil
