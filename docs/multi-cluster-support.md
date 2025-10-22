@@ -2,10 +2,10 @@
 
 The Simplyblock CSI driver now offers **multi-cluster support**, allowing it to connect with multiple Simplyblock clusters. Previously, the CSI driver could only connect to a single cluster.
 
-To enable interaction with multiple clusters, we've introduced two key changes:
+To enable interaction with multiple clusters, we rely on two building blocks:
 
-1.  **`cluster_id` Parameter in Storage Class:** A new parameter, `cluster_id`, has been added to the storage class. This parameter specifies which Simplyblock cluster a given request should be directed to.
-2.  **`simplyblock-csi-secret-v2` Secret:** A new Kubernetes secret, `simplyblock-csi-secret-v2`, is now used to store credentials for all configured Simplyblock clusters.
+1. **Topology-aware cluster selection (`zone_cluster_map` parameter):** A StorageClass can now expose a single parameter, `zone_cluster_map`, that maps Kubernetes zones to Simplyblock cluster IDs. When a PersistentVolumeClaim is created, the CSI controller inspects the topology selected by the scheduler (using `volumeBindingMode: WaitForFirstConsumer`) and automatically provisions the volume on the mapped cluster. This enables you to present **one** StorageClass that works across all Availability Zones.
+2. **`simplyblock-csi-secret-v2` Secret:** A Kubernetes secret that stores credentials for each configured Simplyblock cluster. The driver reads this secret to establish connections on demand.
 
 
 #### Adding new cluster
@@ -72,14 +72,30 @@ metadata:
 type: Opaque
 ```
 
-### using multi cluster
+### Using multi cluster
 
-With multi-cluster support enabled, it's highly recommended to create a separate storage class for each Simplyblock cluster. This provides clear segregation and management.
+With the `zone_cluster_map` parameter you can publish a single StorageClass that targets multiple Simplyblock clusters. A minimal example:
 
-For example:
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: simplyblock-csi
+provisioner: csi.simplyblock.io
+parameters:
+  pool_name: production
+  zone_cluster_map: |
+    {"us-east-1a":"cluster-uuid-a","us-east-1b":"cluster-uuid-b"}
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/zone
+    values:
+    - us-east-1a
+    - us-east-1b
+```
 
-* `simplyblock-csi-sc-cluster1` (for `cluster_id: 4ec308a1-...`)
+> **Tip:** The keys inside `zone_cluster_map` must match the zone labels present on your Kubernetes nodes (typically `topology.kubernetes.io/zone`). You can include as many zones as needed, each pointing to the cluster ID defined in `simplyblock-csi-secret-v2`.
 
-* `simplyblock-csi-sc-cluster2` (for `cluster_id: YOUR_NEW_CLUSTER_ID`)
-
-Each storage class would then specify its corresponding cluster_id in its parameters.
+Stateful workloads can then rely on standard pod topology hints, for example a StatefulSet with `podAntiAffinity` that spreads replicas across zones. When a PVC is created, the scheduler selects the desired zone, the CSI driver resolves the cluster ID from the map, and the volume is provisioned on the correct Simplyblock backend.
