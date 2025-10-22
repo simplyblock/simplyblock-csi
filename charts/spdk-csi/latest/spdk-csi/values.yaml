@@ -74,8 +74,8 @@ controller:
 storageclass:
   create: true
   volumeBindingMode: Immediate
-  zoneClusterMap: ""
-  allowedTopologyZones: []
+  zoneClusterMap: {"us-east-2b":"5d1c978a-ca34-4916-9096-f65f38a0b42f"}
+  allowedTopologyZones: [us-east-2a, us-east-2b]
 
 snapshotclass:
   create: true
