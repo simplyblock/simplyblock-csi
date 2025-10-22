@@ -76,7 +76,7 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 	spdkcsiNodeServerConfigFile := "/etc/spdkcsi-nodeserver-config/nodeserver-config.json"
 	spdkcsiNodeServerConfigFileEnv := "SPDKCSI_CONFIG_NODESERVER"
 	configFile := util.FromEnv(spdkcsiNodeServerConfigFileEnv, spdkcsiNodeServerConfigFile)
-	_, err := os.Stat(configFile)
+	_, err = os.Stat(configFile)
 	klog.Infof("check whether the configuration file (%s) which is supposed to contain xPU info exists", spdkcsiNodeServerConfigFile)
 	if os.IsNotExist(err) {
 		klog.Infof("configuration file specified in %s (%s by default) is missing or empty", spdkcsiNodeServerConfigFileEnv, spdkcsiNodeServerConfigFile)
