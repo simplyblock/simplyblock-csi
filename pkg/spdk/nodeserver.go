@@ -59,11 +59,11 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		volumeLocks:       util.NewVolumeLocks(),
 	}
 
-	config, err := rest.InClusterConfig()
+	k8sconfig, err := rest.InClusterConfig()
 	if err != nil {
 		klog.Warningf("failed to get in-cluster config for node topology discovery: %v", err)
 	} else {
-		clientset, clientErr := kubernetes.NewForConfig(config)
+		clientset, clientErr := kubernetes.NewForConfig(k8sconfig)
 		if clientErr != nil {
 			klog.Warningf("failed to create kubernetes client for node topology discovery: %v", clientErr)
 		} else {
