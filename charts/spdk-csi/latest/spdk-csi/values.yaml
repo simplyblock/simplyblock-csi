@@ -172,7 +172,7 @@ cachingnode:
       value:
 
 storagenode:
-  create: true
+  create: false
   ifname: eth0
   numDataChunks: "1"
   numParityChunks: "1"
