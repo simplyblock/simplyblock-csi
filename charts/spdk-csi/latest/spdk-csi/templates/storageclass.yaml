@@ -25,7 +25,7 @@ parameters:
   tune2fs_reserved_blocks: "{{ .Values.logicalVolume.tune2fs_reserved_blocks }}"
 {{- if .Values.storageclass.zoneClusterMap }}
   zone_cluster_map: |
-{{ .Values.storageclass.zoneClusterMap | toYaml | nindent 4 }}
+    {{ .Values.storageclass.zoneClusterMap | toJson }}
 {{- else }}
   cluster_id: "{{ .Values.csiConfig.simplybk.uuid }}"
 {{- end }}
