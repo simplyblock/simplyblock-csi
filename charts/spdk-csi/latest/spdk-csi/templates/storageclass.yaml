@@ -21,6 +21,7 @@ parameters:
   distr_ndcs: "{{ .Values.logicalVolume.numDataChunks }}"
   distr_npcs: "{{ .Values.logicalVolume.numParityChunks }}"
   lvol_priority_class: "{{ .Values.logicalVolume.lvol_priority_class }}"
+  fabric: "{{ .Values.logicalVolume.fabric }}"
   max_namespace_per_subsys: "{{ .Values.logicalVolume.max_namespace_per_subsys }}"
   tune2fs_reserved_blocks: "{{ .Values.logicalVolume.tune2fs_reserved_blocks }}"
 {{- if .Values.storageclass.zoneClusterMap }}

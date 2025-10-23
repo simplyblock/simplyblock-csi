@@ -66,6 +66,7 @@ type CreateLVolData struct {
 	LvolName     string `json:"name"`
 	Size         string `json:"size"`
 	LvsName      string `json:"pool"`
+	Fabric       string `json:"fabric"`
 	Compression  bool   `json:"comp"`
 	Encryption   bool   `json:"crypto"`
 	MaxRWIOPS    string `json:"max_rw_iops"`

@@ -38,7 +38,8 @@ const (
 	DevDiskByID = "/dev/disk/by-id/*%s*"
 
 	// TargetTypeNVMf is the target type for NVMe over Fabrics
-	TargetTypeNVMf = "tcp"
+	TargetTypeTCP  = "tcp"
+	TargetTypeRDMA = "rdma"
 
 	// TargetTypeISCSI is the target type for cache
 	TargetTypeCache = "cache"
@@ -165,8 +166,9 @@ func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 // NewSpdkCsiInitiator creates a new SpdkCsiInitiator based on the target type
 func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, error) {
 	targetType := strings.ToLower(volumeContext["targetType"])
+	klog.Infof("Simplyblock targetType created :%s", targetType)
 	switch targetType {
-	case TargetTypeNVMf:
+	case TargetTypeTCP, TargetTypeRDMA:
 		var connections []connectionInfo
 
 		err := json.Unmarshal([]byte(volumeContext["connections"]), &connections)
@@ -772,7 +774,7 @@ func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string) ([]*LvolConnectResp,
 
 func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	cmd := []string{
-		"nvme", "connect", "-t", "tcp",
+		"nvme", "connect", "-t", conn.TargetType,
 		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
 		"-n", conn.Nqn,
 		"-l", strconv.Itoa(ctrlLossTmo),
