@@ -21,10 +21,17 @@ parameters:
   distr_npcs: "1"
   lvol_priority_class: "0"
   tune2fs_reserved_blocks: "0"
-  cluster_id: "aaaabbbbcccc"
+  zone_cluster_map: |
+    {"us-east-1a":"cluster-uuid-1","us-east-1b":"cluster-uuid-2"}
 reclaimPolicy: Delete
-volumeBindingMode: Immediate
+volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/zone
+    values:
+    - us-east-1a
+    - us-east-1b
 
 ---
 apiVersion: storage.k8s.io/v1

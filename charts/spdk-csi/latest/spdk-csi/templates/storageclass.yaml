@@ -24,10 +24,28 @@ parameters:
   fabric: "{{ .Values.logicalVolume.fabric }}"
   max_namespace_per_subsys: "{{ .Values.logicalVolume.max_namespace_per_subsys }}"
   tune2fs_reserved_blocks: "{{ .Values.logicalVolume.tune2fs_reserved_blocks }}"
+{{- if .Values.storageclass.zoneClusterMap }}
+  zone_cluster_map: |
+<<<<<<< HEAD
+    {{ .Values.storageclass.zoneClusterMap | toJson }}
+=======
+{{ .Values.storageclass.zoneClusterMap | nindent 4 }}
+>>>>>>> d885ec5 (feat: add topology-aware multicluster provisioning support)
+{{- else }}
   cluster_id: "{{ .Values.csiConfig.simplybk.uuid }}"
+{{- end }}
 reclaimPolicy: Delete
-volumeBindingMode: Immediate
+volumeBindingMode: {{ .Values.storageclass.volumeBindingMode }}
 allowVolumeExpansion: true
+{{- if .Values.storageclass.allowedTopologyZones }}
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/zone
+    values:
+{{- range .Values.storageclass.allowedTopologyZones }}
+    - {{ . }}
+{{- end }}
+{{- end }}
 
 ---
 apiVersion: storage.k8s.io/v1
