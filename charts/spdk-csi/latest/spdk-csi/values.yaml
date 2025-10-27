@@ -77,13 +77,8 @@ controller:
 
 storageclass:
   create: true
-<<<<<<< HEAD
   volumeBindingMode: WaitForFirstConsumer
   zoneClusterMap: {}
-=======
-  volumeBindingMode: Immediate
-  zoneClusterMap: ""
->>>>>>> d885ec5 (feat: add topology-aware multicluster provisioning support)
   allowedTopologyZones: []
 
 snapshotclass:
