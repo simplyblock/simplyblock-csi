@@ -18,8 +18,10 @@ package spdk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -39,9 +41,18 @@ import (
 
 // var errVolumeInCreation = status.Error(codes.Internal, "volume in creation")
 const (
-	CSIStorageBaseKey      = "csi.storage.k8s.io/pvc"
-	CSIStorageNameKey      = CSIStorageBaseKey + "/name"
-	CSIStorageNamespaceKey = CSIStorageBaseKey + "/namespace"
+	CSIStorageBaseKey         = "csi.storage.k8s.io/pvc"
+	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
+	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
+	annotationNvmfModelID     = "simplybk/nvmf-model-id"
+	annotationLvolID          = "simplybk/lvol-id"
+	annotationSecretName      = "simplybk/secret-name"
+	annotationSecretNamespace = "simplybk/secret-namespace"
+	paramClusterID            = "cluster_id"
+	paramZoneClusterMap       = "zone_cluster_map"
+	topologyKeyZoneStable     = "topology.kubernetes.io/zone"
+	topologyKeyZoneBeta       = "failure-domain.beta.kubernetes.io/zone"
+	topologyKeyRegionStable   = "topology.kubernetes.io/region"
 )
 
 type controllerServer struct {
@@ -60,19 +71,171 @@ type spdkSnapshot struct {
 	snapshotID string
 }
 
+type clusterSelection struct {
+	clusterID string
+	topology  map[string]string
+}
+
+func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest) (*clusterSelection, error) {
+	params := req.GetParameters()
+	if params == nil {
+		return nil, fmt.Errorf("missing parameters in CreateVolumeRequest")
+	}
+
+	if id, ok := params[paramClusterID]; ok {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			return &clusterSelection{clusterID: id}, nil
+		}
+	}
+
+	rawMap, ok := params[paramZoneClusterMap]
+	if !ok {
+		return nil, fmt.Errorf("failed to get cluster_id from parameters")
+	}
+
+	zoneMap, err := parseZoneClusterMap(rawMap)
+	if err != nil {
+		return nil, err
+	}
+
+	topoReq := req.GetAccessibilityRequirements()
+	if topoReq == nil {
+		return nil, fmt.Errorf("topology requirements are required when using %s", paramZoneClusterMap)
+	}
+
+	attemptedZones := map[string]struct{}{}
+
+	for _, topo := range topoReq.GetPreferred() {
+		if sel := matchTopologyWithZoneMap(topo, zoneMap); sel != nil {
+			return sel, nil
+		}
+		if zone := zoneFromTopology(topo); zone != "" {
+			attemptedZones[zone] = struct{}{}
+		}
+	}
+
+	for _, topo := range topoReq.GetRequisite() {
+		if sel := matchTopologyWithZoneMap(topo, zoneMap); sel != nil {
+			return sel, nil
+		}
+		if zone := zoneFromTopology(topo); zone != "" {
+			attemptedZones[zone] = struct{}{}
+		}
+	}
+
+	zones := make([]string, 0, len(attemptedZones))
+	for z := range attemptedZones {
+		zones = append(zones, z)
+	}
+	sort.Strings(zones)
+
+	if len(zones) == 0 {
+		return nil, fmt.Errorf("no zone information found in topology requirements")
+	}
+
+	return nil, fmt.Errorf("no cluster mapping found for zones %s", strings.Join(zones, ", "))
+}
+
+func parseZoneClusterMap(raw string) (map[string]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("%s parameter is empty", paramZoneClusterMap)
+	}
+
+	var parsed map[string]string
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse %s parameter: %w", paramZoneClusterMap, err)
+	}
+
+	normalized := make(map[string]string, len(parsed))
+	for zone, cluster := range parsed {
+		zone = strings.TrimSpace(zone)
+		cluster = strings.TrimSpace(cluster)
+		if zone == "" || cluster == "" {
+			continue
+		}
+		normalized[zone] = cluster
+	}
+
+	if len(normalized) == 0 {
+		return nil, fmt.Errorf("%s parameter did not contain any zone to cluster_id mappings", paramZoneClusterMap)
+	}
+
+	return normalized, nil
+}
+
+func matchTopologyWithZoneMap(topo *csi.Topology, zoneMap map[string]string) *clusterSelection {
+	if topo == nil {
+		return nil
+	}
+
+	zone := zoneFromTopology(topo)
+	if zone == "" {
+		return nil
+	}
+
+	clusterID, ok := zoneMap[zone]
+	if !ok {
+		return nil
+	}
+
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return nil
+	}
+
+	return &clusterSelection{
+		clusterID: clusterID,
+		topology:  copyTopologySegments(topo.GetSegments()),
+	}
+}
+
+func zoneFromTopology(topo *csi.Topology) string {
+	if topo == nil {
+		return ""
+	}
+	return zoneFromSegments(topo.GetSegments())
+}
+
+func zoneFromSegments(segments map[string]string) string {
+	if segments == nil {
+		return ""
+	}
+	if zone, ok := segments[topologyKeyZoneStable]; ok && zone != "" {
+		return zone
+	}
+	if zone, ok := segments[topologyKeyZoneBeta]; ok && zone != "" {
+		return zone
+	}
+	return ""
+}
+
+func copyTopologySegments(segments map[string]string) map[string]string {
+	if len(segments) == 0 {
+		return nil
+	}
+
+	copied := make(map[string]string, len(segments))
+	for k, v := range segments {
+		copied[k] = v
+	}
+	return copied
+}
+
 // CreateVolume creates a new volume in the SimplyBlock storage system.
 func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	volumeID := req.GetName()
 	unlock := cs.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	clusterID, ok := req.GetParameters()["cluster_id"]
-	if !ok {
-		klog.Errorf("failed to get cluster_id from parameters")
-		return nil, status.Error(codes.Internal, "failed to get cluster_id from parameters")
+	selection, err := cs.resolveClusterSelection(req)
+	if err != nil {
+		klog.Errorf("failed to resolve cluster selection for volume %s: %v", volumeID, err)
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	sbClient, err := util.NewsimplyBlockClient(clusterID)
+	sbClient, err := util.NewsimplyBlockClient(selection.clusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +262,21 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
+	if csiVolume.VolumeContext == nil {
+		csiVolume.VolumeContext = map[string]string{}
+	}
+	csiVolume.VolumeContext[paramClusterID] = selection.clusterID
+
 	if volType, ok := req.GetParameters()["type"]; ok {
 		csiVolume.VolumeContext["targetType"] = volType
+	}
+
+	if selection.topology != nil {
+		csiVolume.AccessibleTopology = []*csi.Topology{{Segments: copyTopologySegments(selection.topology)}}
+
+		if zone := zoneFromSegments(selection.topology); zone != "" {
+			csiVolume.VolumeContext[topologyKeyZoneStable] = zone
+		}
 	}
 
 	return &csi.CreateVolumeResponse{Volume: csiVolume}, nil
@@ -269,6 +445,11 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		return nil, err
 	}
 
+	maxNamespace, err := getIntParameter(params, "max_namespace_per_subsys", 1)
+	if err != nil {
+		return nil, err
+	}
+
 	compression := getBoolParameter(params, "compression")
 	encryption := getBoolParameter(params, "encryption")
 
@@ -310,25 +491,33 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 		return nil, err
 	}
 
+	modelID, err := getNvmfModelIDAnnotation(ctx, pvcName, pvcNamespace)
+	if err != nil {
+		return nil, err
+	}
+
 	createVolReq := util.CreateLVolData{
-		LvolName:    req.GetName(),
-		Size:        fmt.Sprintf("%dM", sizeMiB),
-		LvsName:     params["pool_name"],
-		MaxRWIOPS:   params["qos_rw_iops"],
-		MaxRWmBytes: params["qos_rw_mbytes"],
-		MaxRmBytes:  params["qos_r_mbytes"],
-		MaxWmBytes:  params["qos_w_mbytes"],
-		MaxSize:     params["max_size"],
-		PriorClass:  priorClass,
-		Compression: compression,
-		Encryption:  encryption,
-		DistNdcs:    distrNdcs,
-		DistNpcs:    distrNpcs,
-		CryptoKey1:  cryptoKey1,
-		CryptoKey2:  cryptoKey2,
-		HostID:      hostID,
-		LvolID:      lvolID,
-		PvcName:     pvcFullName,
+		LvolName:     req.GetName(),
+		Size:         fmt.Sprintf("%dM", sizeMiB),
+		LvsName:      params["pool_name"],
+		Fabric:       params["fabric"],
+		MaxRWIOPS:    params["qos_rw_iops"],
+		MaxRWmBytes:  params["qos_rw_mbytes"],
+		MaxRmBytes:   params["qos_r_mbytes"],
+		MaxWmBytes:   params["qos_w_mbytes"],
+		MaxSize:      params["max_size"],
+		MaxNamespace: maxNamespace,
+		PriorClass:   priorClass,
+		Compression:  compression,
+		Encryption:   encryption,
+		DistNdcs:     distrNdcs,
+		DistNpcs:     distrNpcs,
+		CryptoKey1:   cryptoKey1,
+		CryptoKey2:   cryptoKey2,
+		HostID:       hostID,
+		LvolID:       lvolID,
+		ModelID:      modelID,
+		PvcName:      pvcFullName,
 	}
 	return &createVolReq, nil
 }
@@ -756,8 +945,8 @@ func GetCryptoKeys(ctx context.Context, pvcName, pvcNamespace string) (cryptoKey
 		return "", "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	secretName := pvc.ObjectMeta.Annotations["simplybk/secret-name"]
-	secretNamespace := pvc.ObjectMeta.Annotations["simplybk/secret-namespace"]
+	secretName := pvc.ObjectMeta.Annotations[annotationSecretName]
+	secretNamespace := pvc.ObjectMeta.Annotations[annotationSecretNamespace]
 
 	secret, err := clientset.CoreV1().Secrets(secretNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
@@ -823,10 +1012,37 @@ func getLvolIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (str
 		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	lvolID, ok := pvc.ObjectMeta.Annotations["simplybk/lvol-id"]
+	lvolID, ok := pvc.ObjectMeta.Annotations[annotationLvolID]
 	if !ok {
 		return "", nil
 	}
 
 	return lvolID, nil
+}
+
+func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Errorf("failed to get in-cluster config: %v", err)
+		return "", fmt.Errorf("could not get in-cluster config: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Errorf("failed to create clientset: %v", err)
+		return "", fmt.Errorf("could not create clientset: %w", err)
+	}
+
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
+		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
+	}
+
+	modelID, ok := pvc.ObjectMeta.Annotations[annotationNvmfModelID]
+	if !ok {
+		return "", nil
+	}
+
+	return modelID, nil
 }

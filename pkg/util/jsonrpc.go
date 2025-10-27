@@ -112,8 +112,10 @@ type LvolConnectResp struct {
 	NrIoQueues     int    `json:"nr-io-queues"`
 	CtrlLossTmo    int    `json:"ctrl-loss-tmo"`
 	Port           int    `json:"port"`
+	TargetType     string `json:"transport"`
 	IP             string `json:"ip"`
 	Connect        string `json:"connect"`
+	NSID           int    `json:"ns_id"`
 }
 
 type connectionInfo struct {
@@ -294,6 +296,7 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 		connections = append(connections, connectionInfo{IP: r.IP, Port: r.Port})
 	}
 
+	_, model := getLvolIDFromNQN(result[0].Nqn)
 	connectionsData, err := json.Marshal(connections)
 	if err != nil {
 		klog.Error(err)
@@ -307,9 +310,10 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 		"reconnectDelay": strconv.Itoa(result[0].ReconnectDelay),
 		"nrIoQueues":     strconv.Itoa(result[0].NrIoQueues),
 		"ctrlLossTmo":    strconv.Itoa(result[0].CtrlLossTmo),
-		"model":          lvolID,
-		"targetType":     "tcp",
+		"model":          model,
+		"targetType":     result[0].TargetType,
 		"connections":    string(connectionsData),
+		"nsId":           strconv.Itoa(result[0].NSID),
 	}, nil
 }
 

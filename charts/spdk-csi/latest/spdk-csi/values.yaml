@@ -7,7 +7,7 @@ driverName: csi.simplyblock.io
 image:
   csi:
     repository: simplyblock/spdkcsi
-    tag: v0.1.4
+    tag: v0.1.5
     pullPolicy: Always
   csiProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
@@ -39,7 +39,7 @@ image:
     pullPolicy: Always
   storageNode:
     repository: simplyblock/storage-node-handler
-    tag: v0.1.2
+    tag: v0.1.3
     pullPolicy: Always
   cachingNode:
     repository: simplyblock/caching-node-handler
@@ -73,6 +73,9 @@ controller:
 
 storageclass:
   create: true
+  volumeBindingMode: WaitForFirstConsumer
+  zoneClusterMap: {}
+  allowedTopologyZones: []
 
 snapshotclass:
   create: true
@@ -118,7 +121,9 @@ logicalVolume:
   numDataChunks: "1"
   numParityChunks: "1"
   lvol_priority_class: "0"
+  max_namespace_per_subsys: "1"
   tune2fs_reserved_blocks: "0"
+  fabric: tcp
 
 podAnnotations: {}
 

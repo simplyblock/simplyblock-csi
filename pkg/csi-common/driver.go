@@ -94,3 +94,7 @@ func (d *CSIDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_Acc
 func (d *CSIDriver) GetVolumeCapabilityAccessModes() []*csi.VolumeCapability_AccessMode {
 	return d.vc
 }
+
+func (d *CSIDriver) GetNodeID() string {
+	return d.nodeID
+}
