@@ -362,25 +362,6 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			if err != nil {
 				// go on checking device status in case caused by duplicated request
 				klog.Errorf("command %v failed: %s", cmdLine, err)
-
-				// disconnect the primary connection if secondary connection fails
-				if i == 1 {
-					klog.Warning("Secondary connection failed, disconnecting primary...")
-
-					deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
-					devicePath, err := waitForDeviceReady(deviceGlob, 20)
-					if err != nil {
-						return "", err
-					}
-					err = disconnectDevicePath(devicePath)
-					if err != nil {
-						klog.Errorf("Failed to disconnect primary: %v", err)
-						return "", err
-					} else {
-						klog.Infof("Primary connection disconnected due to secondary failure")
-					}
-				}
-
 				return "", err
 			}
 		}
