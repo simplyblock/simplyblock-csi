@@ -352,7 +352,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			return "", err
 		}
 
-		for _, conn := range nvmf.connections {
+		for i, conn := range nvmf.connections {
 			cmdLine := []string{
 				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
 				"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
