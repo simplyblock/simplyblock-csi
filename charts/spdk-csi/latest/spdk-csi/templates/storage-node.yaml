@@ -147,8 +147,8 @@ spec:
         - name: UBUNTU_HOST
           value: "{{ $.Values.storagenode.ubuntuHost }}"
         - name: OPENSHIFT_CLUSTER
-        - name: HOSTNAME
           value: "{{ $.Values.storagenode.openShiftCluster }}"
+        - name: HOSTNAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
