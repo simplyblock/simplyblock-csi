@@ -23,7 +23,7 @@ rules:
 
 {{- if .Values.storagenode.openShiftCluster }}
 - apiGroups: ["machineconfiguration.openshift.io"]
-  resources: ["machineconfigs", "machineconfigpools"]
+  resources: ["machineconfigs", "machineconfigpools", "kubeletconfigs"]
   verbs: ["list", "get", "create", "update", "patch", "watch"]
 - apiGroups: [""]
   resources: ["nodes"]
