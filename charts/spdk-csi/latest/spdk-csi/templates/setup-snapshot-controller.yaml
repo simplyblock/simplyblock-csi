@@ -36,7 +36,8 @@ spec:
       serviceAccountName: simplyblock-snapshot-controller
       containers:
         - name: snapshot-controller
-          image: registry.k8s.io/sig-storage/snapshot-controller:v8.2.0
+          image: "{{ .Values.image.csiSnapshotterController.repository }}:{{ .Values.image.csiSnapshotterController.tag }}"
+          imagePullPolicy: {{ .Values.image.csiSnapshotterController.pullPolicy }}
           args:
             - "--v=5"
             - "--leader-election=true"
