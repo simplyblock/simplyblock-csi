@@ -190,6 +190,7 @@ storagenode:
   nodesPerSocket:
   coresPercentage:
   ubuntuHost: false
+  openShiftCluster: false
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
