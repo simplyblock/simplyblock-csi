@@ -39,7 +39,7 @@ data:
         retries = total_value * 60
         while retries > 0:
             node_statuses = get_node_statuses(cluster_ip, cluster_uuid, cluster_secret)
-            online_nodes = [node for node in node_statuses if node.get('status') == 'online' and len(node.get('nvme_devices'))>0]
+            online_nodes = [node for node in node_statuses if node.get('status') == 'online' and node.get('health_check') == True and len(node.get('nvme_devices'))>0]
 
             if len(online_nodes) >= total_nodes and len(online_nodes) >= total_value :
                 print("Proceeding with cluster activation.")
