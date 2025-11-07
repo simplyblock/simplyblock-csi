@@ -42,7 +42,7 @@ data:
             online_nodes = [node for node in node_statuses if node.get('status') == 'online' and node.get('health_check') == True and len(node.get('nvme_devices'))>0]
 
             if len(online_nodes) >= total_nodes and len(online_nodes) >= total_value :
-                sleep(5)
+                sleep(30)
                 
                 print("Proceeding with cluster activation.")
                 url = f"{cluster_ip}/api/v1/cluster/activate/{cluster_uuid}"
