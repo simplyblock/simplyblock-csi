@@ -16,6 +16,25 @@ data:
 {{ toJson .Values.csiConfig | indent 4 -}}
 {{- end }}
 
+
+{{- if .Values.storagenode.create -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-clusters
+data:
+  clusters.json: |
+    {
+      "clusters": [
+        {
+          "cluster_id": "{{ .Values.csiConfig.simplybk.uuid }}",
+          "workers": []
+        }
+      ]
+    }
+{{- end -}}
+
 ---
 apiVersion: v1
 kind: ConfigMap

@@ -28,16 +28,6 @@ spec:
         image: "{{ .Values.image.storageNode.repository }}:{{ .Values.image.storageNode.tag }}"
         imagePullPolicy: "{{ .Values.image.storageNode.pullPolicy }}"
         env:
-        - name: SPDKCSI_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: simplyblock-csi-secret
-              key: secret.json
-        - name: CLUSTER_CONFIG
-          valueFrom:
-            configMapKeyRef:
-              name: simplyblock-csi-cm
-              key: config.json
         - name: IFNAME
           value: "{{- if kindIs "string" .Values.storagenode.ifname -}}
                     {{ .Values.storagenode.ifname }}
@@ -62,6 +52,20 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        volumeMounts:
+        - name: cluster-config
+          mountPath: /etc/simplyblock/
+          readOnly: true
+        - name: cluster-secret
+          mountPath: /etc/simplyblock/
+          readOnly: true        
+      volumes:
+      - name: cluster-config
+        configMap:
+          name: simplyblock-clusters
+      - name: cluster-secret
+        secret:
+          secretName: simplyblock-csi-secret-v2      
       restartPolicy: Always
 
 {{- end -}}
