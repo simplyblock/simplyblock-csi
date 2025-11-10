@@ -565,7 +565,7 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 	}
 	//check whether the node has suspended
 	expectedStatus := "suspended"
-	retries := 10
+	retries := 20
 	delay := 10 * time.Second
 
 	err := checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
