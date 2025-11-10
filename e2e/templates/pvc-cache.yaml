@@ -10,5 +10,5 @@ spec:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 256Mi
+      storage: 1Gi
   storageClassName: simplyblock-csi-sc-cache
