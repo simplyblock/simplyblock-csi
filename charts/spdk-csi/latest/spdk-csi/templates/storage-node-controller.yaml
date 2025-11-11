@@ -64,10 +64,10 @@ spec:
               fieldPath: metadata.namespace
         volumeMounts:
         - name: cluster-config
-          mountPath: /etc/simplyblock/
+          mountPath: /etc/simplyblock/config
           readOnly: true
         - name: cluster-secret
-          mountPath: /etc/simplyblock/
+          mountPath: /etc/simplyblock/secret
           readOnly: true        
       volumes:
       - name: cluster-config
