@@ -17,7 +17,7 @@ data:
 {{- end }}
 
 
-{{- if .Values.storagenode.create -}}
+{{- if .Values.storagenode.create }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -29,15 +29,11 @@ data:
       "clusters": [
         {
           "cluster_id": "{{ .Values.csiConfig.simplybk.uuid }}",
-          "workers": ["gke-israel-gke-clust-simplyblock-pool-68fd4668-c14p"]
-        },
-        {
-          "cluster_id": "1ccd8226-b2a8-4e3f-82c5-cbe956676e65",
-          "workers": ["gke-israel-gke-clust-simplyblock-pool-780401e9-7sk5", "gke-israel-gke-clust-simplyblock-pool-93576a7e-t15h"]
+          "workers": []
         }
       ]
     }
-{{- end -}}
+{{- end }}
 
 ---
 apiVersion: v1
