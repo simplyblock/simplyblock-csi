@@ -130,7 +130,7 @@ data:
 
 - workers — A list of worker nodes associated with the cluster.
 
-**NB:** This can be left empty if the driver should auto-discover or manage workers dynamically.
+**NB:** This can be left empty if the storage controller should auto-discover or manage workers dynamically.
 
 #### Adding Additional Clusters
 
