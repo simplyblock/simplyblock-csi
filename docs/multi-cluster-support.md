@@ -99,3 +99,63 @@ allowedTopologies:
 > **Tip:** The keys inside `zone_cluster_map` must match the zone labels present on your Kubernetes nodes (typically `topology.kubernetes.io/zone`). You can include as many zones as needed, each pointing to the cluster ID defined in `simplyblock-csi-secret-v2`.
 
 Stateful workloads can then rely on standard pod topology hints, for example a StatefulSet with `podAntiAffinity` that spreads replicas across zones. When a PVC is created, the scheduler selects the desired zone, the CSI driver resolves the cluster ID from the map, and the volume is provisioned on the correct Simplyblock backend.
+
+### Configuring Multi Storage Cluster Support
+In addition to multi-cluster connectivity via the `simplyblock-csi-secret-v2` secret, the Simplyblock Storage Controller also supports multi storage cluster configuration using a dedicated ConfigMap named `simplyblock-clusters`.
+
+This ConfigMap defines all Simplyblock clusters known to the Storage Controller and can be updated dynamically to include additional clusters as your environment grows.
+
+#### Default ConfigMap
+
+By default, the Helm chart installs a single-cluster configuration that looks like this:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-clusters
+data:
+  clusters.json: |
+    {
+      "clusters": [
+        {
+          "cluster_id": "{{ .Values.csiConfig.simplybk.uuid }}",
+          "workers": []
+        }
+      ]
+    }
+```
+
+- cluster_id — The UUID of the Simplyblock cluster.
+
+- workers — A list of worker nodes associated with the cluster.
+
+**NB:** This can be left empty if the storage controller should auto-discover or manage workers dynamically.
+
+#### Adding Additional Clusters
+
+To enable multi storage cluster support, edit the simplyblock-clusters ConfigMap and append the new clusters to the clusters array.
+
+Example for multiple clusters:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-clusters
+data:
+  clusters.json: |
+    {
+      "clusters": [
+        {
+          "cluster_id": "cluster-uuid-a",
+          "workers": ["k8-worker-node-1", "k8-worker-node-2", "k8-worker-node-3"]
+        },
+        {
+          "cluster_id": "cluster-uuid-b",
+          "workers": ["k8-worker-node-4", "k8-worker-node-5", "k8-worker-node-6"]
+        }
+      ]
+    }
+
+```

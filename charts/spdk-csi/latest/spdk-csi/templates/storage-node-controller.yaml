@@ -62,6 +62,20 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        volumeMounts:
+        - name: cluster-config
+          mountPath: /etc/simplyblock/config
+          readOnly: true
+        - name: cluster-secret
+          mountPath: /etc/simplyblock/secret
+          readOnly: true        
+      volumes:
+      - name: cluster-config
+        configMap:
+          name: simplyblock-clusters
+      - name: cluster-secret
+        secret:
+          secretName: simplyblock-csi-secret-v2      
       restartPolicy: Always
 
 {{- end -}}
