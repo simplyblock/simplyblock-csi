@@ -39,7 +39,7 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: simplyblock/simplyblock
-    tag: "R25.6-Hotfix"
+    tag: "25.10.3"
     pullPolicy: Always
   storageNode:
     repository: simplyblock/storage-node-handler
