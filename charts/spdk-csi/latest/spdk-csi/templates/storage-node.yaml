@@ -80,6 +80,9 @@ spec:
         - name: host-sys
           hostPath:
             path: /sys
+        - name: host-mnt
+          hostPath:
+            path: /mnt
         - name: host-modules
           hostPath:
             path: /lib/modules
@@ -134,6 +137,8 @@ spec:
           - name: host-modules
             mountPath: /lib/modules
             readOnly: true
+          - name: host-mnt
+            mountPath: /mnt
         securityContext:
           privileged: true
       containers:
