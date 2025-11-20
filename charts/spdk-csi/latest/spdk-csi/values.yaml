@@ -184,9 +184,10 @@ storagenode:
   spdkImage:
   maxLogicalVolumes: 10
   maxSnapshots: 10
-  maxSize: 150g
+  maxSize:
   numPartitions: 1
   isolateCores: false
+  haJMCount:
   dataNics:
   pciAllowed:
   pciBlocked:

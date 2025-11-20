@@ -58,6 +58,8 @@ spec:
           value: "{{ .Values.storagenode.dataNics }}"
         - name: SPDKIMAGE
           value: "{{ .Values.storagenode.spdkImage }}"
+        - name: HAJMCOUNT
+          value: "{{ .Values.storagenode.haJMCount }}"
         - name: NAMESPACE
           valueFrom:
             fieldRef:
