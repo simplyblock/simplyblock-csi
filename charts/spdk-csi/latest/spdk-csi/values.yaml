@@ -38,12 +38,12 @@ image:
     tag: v8.2.0
     pullPolicy: Always
   simplyblock:
-    repository: simplyblock/simplyblock
-    tag: "25.10.3"
+    repository: public.ecr.aws/simply-block/simplyblock
+    tag: "25.10.4"
     pullPolicy: Always
   storageNode:
     repository: simplyblock/storage-node-handler
-    tag: v0.1.4
+    tag: v0.1.6
     pullPolicy: Always
   cachingNode:
     repository: simplyblock/caching-node-handler
