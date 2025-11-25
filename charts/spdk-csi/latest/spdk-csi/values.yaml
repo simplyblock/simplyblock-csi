@@ -193,6 +193,8 @@ storagenode:
   pciBlocked:
   socketsToUse: 
   nodesPerSocket:
+  deviceModel:
+  sizeRange:
   coresPercentage:
   ubuntuHost: false
   openShiftCluster: false
