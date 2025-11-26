@@ -368,9 +368,18 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	}
 
 	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
+
+	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
+
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
-		return "", err
+		klog.Warningf("New device symlink not found (%s). Retrying legacy format: %s", deviceGlob, deviceGlobOld)
+
+		devicePath, err = waitForDeviceReady(deviceGlobOld, 10)
+		if err != nil {
+			return "", fmt.Errorf("device not found in both new (%s) and old (%s) formats: %w",
+				deviceGlob, deviceGlobOld, err)
+		}
 	}
 	return devicePath, nil
 }
