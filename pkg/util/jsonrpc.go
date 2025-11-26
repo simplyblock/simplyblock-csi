@@ -445,7 +445,12 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 	}
 
 	requestURL := fmt.Sprintf("%s/api/v1/%s", client.ClusterIP, path)
-	klog.Infof("Calling Simplyblock API: Method: %s: RequestURL: %s: Body: %s\n", method, requestURL, string(data))
+	oldURL := fmt.Sprintf("%s/%s", client.ClusterIP, path)
+
+try_request:
+	klog.Infof("Calling Simplyblock API: Method: %s RequestURL: %s Body: %s\n",
+		method, requestURL, string(data))
+
 	req, err := http.NewRequest(method, requestURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
@@ -462,11 +467,7 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
-
 	defer resp.Body.Close()
-	if resp.StatusCode >= http.StatusInternalServerError {
-		return nil, fmt.Errorf("%s: HTTP error code: %d", method, resp.StatusCode)
-	}
 
 	var response struct {
 		Result  any    `json:"result"`
@@ -474,20 +475,39 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 		Error   string `json:"error"`
 	}
 
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	if err != nil {
-		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %w", method, resp.StatusCode, err)
+	decodeErr := json.NewDecoder(resp.Body).Decode(&response)
+	if decodeErr != nil {
+		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %w",
+			method, resp.StatusCode, decodeErr)
+	}
+
+	// --- Backward compatibility fallback ---
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest {
+		if requestURL != oldURL {
+			klog.Warningf("New API path failed (%s), retrying legacy API path: %s",
+				requestURL, oldURL)
+			requestURL = oldURL
+			goto try_request
+		}
+	}
+
+	// Hard error
+	if resp.StatusCode >= http.StatusInternalServerError {
+		return nil, fmt.Errorf("%s: HTTP error code: %d", method, resp.StatusCode)
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %s", method, resp.StatusCode, response.Error)
+		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %s",
+			method, resp.StatusCode, response.Error)
 	}
 
+	// Return the correct field
 	if response.Result != nil {
 		return response.Result, nil
 	}
 	return response.Results, nil
 }
+
 
 // errorMatches checks if the error message from the full error
 func errorMatches(errFull, errJSON error) bool {
