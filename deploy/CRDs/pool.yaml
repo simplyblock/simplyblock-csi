@@ -1,0 +1,88 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: pools.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: pools
+    singular: pool
+    kind: Pool
+    shortNames:
+      - pl
+  action: "update"
+  versions:
+    - name: 25.11.1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                name:
+                  type: string
+                clusterUUID:
+                  type: string
+                  description: "UUID of the parent cluster"
+                status:
+                  type: string
+                  enum: ["enabled", "disabled"]
+                capacityLimit:
+                  type: string
+                  description: "Total capacity limit, e.g., 100Gi"
+                qosIOPSLimit:
+                  type: integer
+                  description: "QoS IOPS limit"
+                rwLimit:
+                  type: integer
+                rLimit:
+                  type: integer
+                wLimit:
+                  type: integer
+                action:
+                  type: string
+                  description: "One-shot action like restart or resync"
+              required: ["name", "clusterUUID"]
+            status:
+              type: object
+              properties:
+                uuid:
+                  type: string
+                  description: "Automatically generated UUID of the pool"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: UUID
+          type: string
+          jsonPath: .spec.uuid
+        - name: Name
+          type: string
+          jsonPath: .spec.name
+        - name: Status
+          type: string
+          jsonPath: .spec.status
+        - name: Capacity
+          type: string
+          jsonPath: .spec.capacity
+        - name: QoS IOPS Limit
+          type: integer
+          jsonPath: .spec.qosIOPSLimit
+        - name: RW Limit
+          type: integer
+          jsonPath: .spec.rwLimit
+        - name: R Limit
+          type: integer
+          jsonPath: .spec.rLimit
+        - name: W Limit
+          type: integer
+          jsonPath: .spec.wLimit
+        - name: Cluster UUID
+          type: string
+          jsonPath: .spec.clusterUUID
+      ~~~
+
+~~~

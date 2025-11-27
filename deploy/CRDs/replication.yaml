@@ -1,0 +1,107 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: replications.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: replications
+    singular: replication
+    kind: Rackup
+    shortNames:
+      - rpl
+
+  # create:    a new replication is setup between two storage clusters (one per site)
+  #            it can be setup for an entire storage pool or a particular PVC
+  #            an interval is defined
+  # delete:    a replication is entirely removed. This will also remove the target PVCs
+  # stop:      an ongoing replication is stopped. It can be resumed at a late time.
+  # resume:    resume a stopped replication. intermediate data must be replicated and this
+  #            can initially take some time to catch up
+  # fail-over: in this scenario, the target PVCs are flipped from primary to secondary.
+  #            The PVCs mounted on primary are disconnected (if still possible) and then the
+  #            (re)provisioning of the same PVCs happens on (new) target nodes.
+  # fail-back: During fail-back the delta between the most recent snapshot on the primary
+  #             and the current state on the secondary is synchronized back to primary
+  #            this can be done iteratively with smaller and smaller snapshots
+  #            finally, the PVC is frozen, a final snapshot is taken and the remaining data
+  #            is synchronized back. now the PVC is disconnected and re-provisioned (to
+  #            either the same host or a host on primary). using a raid-1 lvm, we could even make it
+  #            interrupt-free
+
+  action: "stop" #resume #fail-over #fail-back
+  versions:
+    - name: 25.11.1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                clusterUUID:
+                  type: string
+                  description: "UUID of the cluster this replication belongs to or is restored to"
+                targetClusterUUID:
+                  type: string
+                  description: "UUID of the target cluster this replication belongs to or is restored to"
+                pool:
+                  type: string
+                  description: "All PVCs in this pool are subject to this replication"
+                pvc:
+                  type: string
+                  description: "Alternatively, a replication can be setup for a single PVC"
+                interval:
+                  type: string
+                  description: "Replication Frequency, minimum is 60 seconds"
+            status:
+              type: object
+              properties:
+                replicationID:
+                  type: string
+                  description: "unique ID of replication"
+                lastAction:
+                  type: string
+                  description: "Last action performed by operator"
+                lastActionAt:
+                  type: string
+                  format: date-time
+                state:
+                  type: string
+                  description: "State of replication: Stopped, Running, Delayed, Failed"
+                backlog:
+                  type: integer
+                  description: "Number of snapshots waiting for or or in active replication"
+                dataBacklog:
+                  type: integer
+                  description: "Number of GB waiting for or in replication"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterUUID
+        - name: targetCluster
+          type: string
+          jsonPath: .spec.targetClusterUUID
+        - name: Pool
+          type: string
+          jsonPath: .spec.pool
+        - name: PVC
+          type: string
+          jsonPath: .spec.pvc
+        - name: Status
+          type: string
+          jsonPath: .status.state
+        - name: backlog
+          type: string
+          jsonPath: .status.backlog
+        - name: dataBacklog
+          type: string
+          jsonPath: .status.dataBacklog
+        - name: Interval
+          type: string
+          jsonPath: .spec.interval

@@ -1,0 +1,77 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: replications.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: synchreplications
+    singular: synchreplication
+    kind: Rackup
+    shortNames:
+      - srp
+
+  action: "stop" #resume #fail-over #fail-back
+  versions:
+    - name: 25.11.1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                clusterUUID:
+                  type: string
+                  description: "UUID of the cluster this replication belongs to or is restored to"
+                pool:
+                  type: string
+                  description: "All PVCs in this pool are subject to this replication"
+                pvc:
+                  type: string
+                  description: "Alternatively, a replication can be setup for a single PVC"
+            status:
+              type: object
+              properties:
+                synReplicationID:
+                  type: string
+                  description: "unique ID of replication"
+                lastAction:
+                  type: string
+                  description: "Last action performed by operator"
+                lastActionAt:
+                  type: string
+                  format: date-time
+                state:
+                  type: string
+                  description: "State of replication: Stopped, Running, Failed"
+                backlog:
+                  type: integer
+                  description: "Time of interruption (stop) of replication in seconds."
+                dataBacklog:
+                  type: integer
+                  description: "Number of GB waiting for or in replication"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterUUID
+        - name: Pool
+          type: string
+          jsonPath: .spec.pool
+        - name: PVC
+          type: string
+          jsonPath: .spec.pvc
+        - name: Status
+          type: string
+          jsonPath: .status.state
+        - name: backlog
+          type: string
+          jsonPath: .status.backlog
+        - name: dataBacklog
+          type: string
+          jsonPath: .status.dataBacklog

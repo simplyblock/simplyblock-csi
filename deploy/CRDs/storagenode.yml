@@ -1,0 +1,199 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: nodes.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    kind: StorageNode
+    plural: storage-nodes
+    singular: storage-node
+    shortNames:
+      - sbn
+  action: "restart" #support restart, suspend, shutdown, remove, get
+  versions:
+    - name: 25.11.1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: ["spec"]
+          properties:
+            spec:
+              type: object
+              description: "Specification for creating a storage node."
+              properties:
+                clusterUUID:
+                  type: string
+                useSeparateJournalDevice:
+                  type: boolean
+                MaxLVol:
+                  type: integer
+                MaxSize:
+                  type: string
+                  description: "Maximum size of logical volumes (e.g. 10Ti)"
+                spdkImage:
+                  type: string
+                mgmtIfc:
+                  type: string
+                coreIsolation:
+                  type: boolean
+                corePercentage:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                coreMask:
+                  type: string
+                  description: "Hexadecimal CPU mask, used only if corePercentage is not set."
+                pcieAllowList:
+                  type: array
+                  items:
+                    type: string
+                pcieDenyList:
+                  type: array
+                  items:
+                    type: string
+                pcieModel:
+                  type: string
+                driveSizeRange:
+                  type: string
+                  description: "e.g. '1TB-4TB'; requires pcieModel"
+                socketsToUse:
+                  type: integer
+                nodesPerSocket:
+                  type: integer
+                dataNIC:
+                  type: string
+                  description: "List of NIC names used for data traffic."
+                  items:
+                    type: string
+                haJmCount:
+                  type: integer
+                namespace:
+                  type: string
+
+                # Restart parameters
+                addPcieToAllowList:
+                  type: array
+                  description: "Add devices to allow list during restart"
+                  items:
+                    type: string
+                nodeAddr:
+                  type: string
+                nodeIp:
+                  type: string
+                force:
+                  type: boolean
+                includeStats:
+                  type: boolean
+                statsHistoryInSeconds:
+                  type: integer
+
+            status:
+              type: object
+              description: "Operator-reported runtime status."
+              properties:
+                uuid:
+                  type: string
+                health:
+                  type: string
+                state:
+                  type: string
+                  enum:
+                    - online
+                    - offline
+                    - schedulable
+                    - unreachable
+                    - in_restart
+                    - in_shutdown
+                    - suspended
+                devices:
+                  type: object
+                  properties:
+                    total:
+                      type: integer
+                    active:
+                      type: integer
+                capacity:
+                  type: object
+                  properties:
+                    totalBytes:
+                      type: string
+                    usedBytes:
+                      type: string
+                    usedPercent:
+                      type: integer
+                hugepagesAssigned:
+                  type: string
+                lvolsProvisioned:
+                  type: integer
+                secondaryNodeUUID:
+                  type: string
+                hostname:
+                  type: string
+                spdkPort:
+                  type: integer
+                lvolPort:
+                  type: integer
+                hublvolPort:
+                  type: integer
+                uptime:
+                  type: string
+                memory:
+                  type: string
+                workerHostname:
+                  type: string
+                mgmtIp:
+                  type: string
+                stats:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                    wiops:
+                      type: integer
+                    riops:
+                      type: integer
+                    wtp:
+                      type: integer
+                    rtp:
+                      type: integer
+                    capacityUtil:
+                      type: integer
+
+      subresources:
+        status: { }
+
+      additionalPrinterColumns:
+        - name: UUID
+          type: string
+        - name: Hostname
+          type: string
+          jsonPath: .status.hostname
+        - name: MgmtIP
+          type: string
+          jsonPath: .status.mgmtIp
+        - name: Status
+          type: string
+          jsonPath: .status.state
+        - name: Health
+          type: string
+          jsonPath: .status.health
+        - name: Uptime
+          type: string
+          jsonPath: .status.uptime
+        - name: TotalActiveDevices
+          type: string
+          jsonPath: .status.devices.active
+        - name: CapacityUsed%
+          type: integer
+          jsonPath: .status.capacity.usedPercent
+        - name: CapacityUsed
+          type: string
+          jsonPath: .status.capacity.usedBytes
+        - name: CapacityTotal
+          type: string
+          jsonPath: .status.capacity.totalBytes
+

@@ -1,0 +1,127 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: backups.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: backups
+    singular: backup
+    kind: Backup
+    shortNames:
+      - bkp
+
+  # create: takes one snapshot and then creates backups from the chain of snapshots of the PVC
+  #         as long as those snapshots do not have backups yet. Example:
+  #         s1->s2->s3->lvol1 is the chain of snapshot operations before the backup operation
+  #         and only s1 has an associated backup. Now when the CRD is applied, a new backup-id
+  #         is assigned and then a snapshot s4 is created. Then snapshots s4, s3, s2 are backed up.
+  #         (s1 has a backup already). If keepOnlineBackup, s4 is kept, otherwise its deleted after the operations.
+  # delete: deletes the chain of backups for that PVC. Snapshots are only deleted if they
+  #         were created for the backup.
+  # print-backups: print a list of PVC[s] with their snapshot and backup-ids:
+  # {PVC : {(snapshot-id, backup-id), ...}, PVC: {(snapshot-id, backup-id), ...} ...}
+  # It can be used to restore to a different cluster.
+  # if the backup list is available on this cluster (fdb), it will use it. If this is performed on
+  # another cluster, it requires a backup list input file (see above/below) to identify the backups
+  # in restore process, PVCs will be created from backed up data.
+  # if replacePVConRestore is set to True, it means the bound PVCs will be replaced with the
+  # version from the Backup. If set to False, another PVC will be created under a new name.
+
+  action: "print-backups" #print-backups #restore
+  versions:
+    - name: 25.10.5
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                clusterUUID:
+                  type: string
+                  description: "UUID of the cluster this backup belongs to or is restored to"
+                pool:
+                  type: string
+                  description: "Pool to snapshot and backup"
+                pvc:
+                  type: string
+                  description: "Alternatively to pool, an individual PVC can be backed up"
+                s3:
+                  type: object
+                  properties:
+                    bucket:
+                      type: string
+                    region:
+                      type: string
+                    accessKeySecret:
+                      type: string
+                    secretKeySecret:
+                      type: string
+                  description: "Optional S3 target"
+                filesystem:
+                  type: object
+                  properties:
+                    mountPoint:
+                      type: string
+                  description: "Optional filesystem target instead of S3"
+                retention:
+                  type: integer
+                  description: "Number of backups to keep"
+                keepOnlineBackup:
+                  type: boolean
+                  description: "Whether to keep the online snapshot after backup"
+                backupRestoreList:
+                  type: string
+                  description: "Filename and location for input json"
+                replacePVConRestore:
+                  type: boolean
+                  description: "True, if bound PVCs are to be replaced with backup version"
+            status:
+              type: object
+              properties:
+                scheduleID:
+                  type: string
+                  description: "UUID"
+                lastAction:
+                  type: string
+                  description: "Last action performed by operator"
+                lastActionAt:
+                  type: string
+                  format: date-time
+                state:
+                  type: string
+                  description: "State of backup: Pending, Running, Completed, Failed"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterUUID
+        - name: Pool
+          type: string
+          jsonPath: .spec.pool
+        - name: PVC
+          type: string
+          jsonPath: .spec.pool
+        - name: Target
+          type: string
+          jsonPath: .spec.s3.bucket
+        - name: Filesystem
+          type: string
+          jsonPath: .spec.filesystem.mountPoint
+        - name: Interval
+          type: string
+          jsonPath: .spec.interval
+        - name: Retention
+          type: integer
+          jsonPath: .spec.retention
+        - name: LastBackupDateTime
+          type: string
+          jsonPath: .status.DateTime
+        - name: LastBackupState
+          type: string
+          jsonPath: .status.state

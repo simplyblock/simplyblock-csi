@@ -1,0 +1,131 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: lvols.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: lvols
+    singular: lvol
+    kind: Rackup
+    shortNames:
+      - lvl
+
+  #create:
+  action: "get-status"
+  versions:
+    - name: 25.11.1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          spec:
+            type: object
+            properties:
+              namePVC:
+                type: string
+              includeStats:
+                type: boolean
+              statsHistoryInSeconds:
+                type: integer
+            status:
+              type: object
+              properties:
+                uuid:
+                  type: string
+                nodeUUID:
+                  type: string
+                hostname:
+                  type: string
+                clonedFromSnap:
+                  type: string
+                nqn:
+                  type: string
+                subsysPort:
+                  type: string
+                namespaceID:
+                  type: string
+                poolUUID:
+                  type: string
+                poolName:
+                  type: string
+                status:
+                  type: string
+                health:
+                  type: string
+                isCrypto:
+                  type: boolean
+                size:
+                  type: integer
+                utilization:
+                  type: integer
+                percentUtil:
+                  type: integer
+                createDt:
+                  type: date-time
+                updateDt:
+                  type: date-time
+                qosIOPS:
+                  type: integer
+                qosWTP:
+                  type: integer
+                qosRTP:
+                  type: integer
+                qosRWTP:
+                  type: integer
+                qosClass:
+                  type: integer
+                maxNamespacesPerSubsystem:
+                  type: integer
+                fabric:
+                  type: string
+
+                stats:
+                  type: array
+                  items:
+                          type: object
+                          properties:
+                            wiops:
+                              type: integer
+                            riops:
+                              type: integer
+                            wtp:
+                              type: integer
+                            rtp:
+                              type: integer
+                            capacityUtil:
+                              type: integer
+
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterUUID
+        - name: targetNode
+          type: string
+          jsonPath: .spec.targetNode
+        - name: Pool
+          type: string
+          jsonPath: .spec.pool
+        - name: PVC
+          type: string
+          jsonPath: .spec.pvc
+        - name: Status
+          type: string
+          jsonPath: .status.state
+        - name: Status
+          type: date-time
+          jsonPath: .status.startTime
+
+
+
+
+
+
+
+
+
+
+

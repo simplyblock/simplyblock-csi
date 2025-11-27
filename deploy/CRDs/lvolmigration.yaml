@@ -1,0 +1,78 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: lvolmigrations.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: lvolmigrations
+    singular: lvolmigration
+    kind: Rackup
+    shortNames:
+      - lmg
+
+  #create:
+
+  versions:
+    - name: 25.11.1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                clusterUUID:
+                  type: string
+                  description: "UUID of the cluster this replication belongs to or is restored to"
+                targetNode:
+                  type: string
+                  description: "node-id (uuid of target node)"
+                pool:
+                  type: string
+                  description: "All PVCs in this pool are subject to this migration"
+                pvc:
+                  type: string
+                  description: "Alternatively, a migration can be setup for a single PVC"
+            status:
+              type: object
+              properties:
+                migrationID:
+                  type: string
+                  description: "unique ID of migration"
+                lastAction:
+                  type: string
+                  description: "Last action performed by operator"
+                lastActionAt:
+                  type: string
+                  format: date-time
+                startTime:
+                  type: string
+                  format: date-time
+                state:
+                  type: string
+                  description: "State of migration: Running, Cleanup, Failed"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterUUID
+        - name: targetNode
+          type: string
+          jsonPath: .spec.targetNode
+        - name: Pool
+          type: string
+          jsonPath: .spec.pool
+        - name: PVC
+          type: string
+          jsonPath: .spec.pvc
+        - name: Status
+          type: string
+          jsonPath: .status.state
+        - name: Status
+          type: date-time
+          jsonPath: .status.startTime

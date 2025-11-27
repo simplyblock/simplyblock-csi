@@ -1,0 +1,114 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: backupschedules.simplyblock.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: backupscheduless
+    singular: backupschedule
+    kind: BackupSchedule
+    shortNames:
+      - bks
+
+  # delete-all-backups: must delete the online snapshots (if existent) and associated backups for that schedule
+  # list-all-backups: should output a json in the form of:
+  # {PVC : {(snapshot-id, backup-id), ...}, PVC: {(snapshot-id, backup-id), ...} ...}
+  # restore operation takes pool or PVC name.
+  # if the backup list is available on this cluster (fdb), it will use it. If this is performed on
+  # another cluster, it requires a backup list input file (see above/below) to uniquly identify the backups
+  # in restore process, PVCs will be created from backed up data.
+  # if replacePVConRestore is set to True, it means the bound PVCs will be replaced with the
+  # version from the Backup. If set to False, another PVC will be created under a new name.
+
+  action: "update-backup-schedule" #delete-all-backups-schedule #print-all-backups #restore
+  versions:
+    - name: 25.10.5
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                clusterUUID:
+                  type: string
+                  description: "UUID of the cluster this backup belongs to or is restored to"
+                pool:
+                  type: string
+                  description: "Pool to snapshot and backup"
+                pvc:
+                  type: string
+                  description: "Alternatively to pool, an individual PVC can be backed up"
+                s3:
+                  type: object
+                  properties:
+                    bucket:
+                      type: string
+                    region:
+                      type: string
+                    accessKeySecret:
+                      type: string
+                    secretKeySecret:
+                      type: string
+                  description: "Optional S3 target"
+                filesystem:
+                  type: object
+                  properties:
+                    mountPoint:
+                      type: string
+                  description: "Optional filesystem target instead of S3"
+                backupRestoreList:
+                  type: string
+                  description: "Filename and location for input json"
+                replacePVConRestore:
+                  type: boolean
+                  description: "True, if bound PVCs are to be replaced with backup version"
+            status:
+              type: object
+              properties:
+                backupID:
+                  type: array
+                  description: "UUID"
+                lastAction:
+                  type: string
+                  description: "Last action performed by operator"
+                lastActionAt:
+                  type: string
+                  format: date-time
+                state:
+                  type: string
+                  description: "State of backup: Pending, Running, Completed, Failed"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterUUID
+        - name: Pool
+          type: string
+          jsonPath: .spec.pool
+        - name: PVC
+          type: string
+          jsonPath: .spec.pvc
+        - name: Target
+          type: string
+          jsonPath: .spec.s3.bucket
+        - name: Filesystem
+          type: string
+          jsonPath: .spec.filesystem.mountPoint
+        - name: Interval
+          type: string
+          jsonPath: .spec.interval
+        - name: Retention
+          type: integer
+          jsonPath: .spec.retention
+        - name: LastBackupDateTime
+          type: string
+          jsonPath: .status.DateTime
+        - name: LastBackupState
+          type: string
+          jsonPath: .status.state

@@ -1,0 +1,224 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusters.simplyblock.example.com
+spec:
+  group: simplyblock.com
+  scope: Namespaced
+  names:
+    plural: storage-clusters
+    singular: storage-cluster
+    kind: SimplyBlockStorageCluster
+    shortNames:
+      - sbc
+  action: "update" #activate #get #upgrade
+  versions:
+    - name: v25.11.1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # === Create-only fields (reset to default when changed) ===
+                mgmtIfc:
+                  type: string
+                  description: "Management interface name (create-only)"
+                enableNodeAffinity:
+                  type: boolean
+                  description: "Enable node affinity for storage nodes (create-only)"
+                stripeWdata:
+                  type: integer
+                  description: "Stripe N value (1,2,4) - create only"
+                  enum: [1, 2, 4]
+                stripeWparity:
+                  type: integer
+                  description: "Stripe K value (0,1,2) - create only"
+                  enum: [0, 1, 2]
+                haType:
+                  type: string
+                  description: "Logical volume HA type (ha, single) - create only"
+                  enum: ["ha", "single"]
+                ClusterName:
+                  type: string
+                  description: "Optional cluster name at creation time"
+                GrafanaEndpoint:
+                  type: string
+                  description: "Grafana endpoint URL"
+                isSingleNode:
+                  type: boolean
+                  description: "For single node clusters only"
+                ingressHostSource:
+                  type: string
+                  description: "Ingress host source"
+                  enum: [ "hostip", "loadbalancer", "dns" ]
+                tlsSecretName:
+                  type: string
+                  description: "TLS secret for ingress HTTPS termination"
+                dnsName:
+                  type: string
+                  description: "Fully qualified DNS name (required if ingressHostSource=dns)"
+                strictNodeAntiAffinity:
+                  type: boolean
+                  description: "Enable strict node anti-affinity"
+                qpairCount:
+                  type: integer
+                  description: "NVMe/TCP transport qpair count per LV"
+
+                # === Updatable fields ===
+                qosClasses:
+                  type: string
+                  description: "comma separated list of up to 6 classes with names "
+                capWarn:
+                  type: integer
+                  description: "Capacity warning level in percent"
+                  default: 89
+                capCrit:
+                  type: integer
+                  description: "Capacity critical level in percent"
+                  default: 99
+                provCapWarn:
+                  type: integer
+                  description: "Provisioned capacity warning level"
+                  default: 250
+                provCapCrit:
+                  type: integer
+                  description: "Provisioned capacity critical level"
+                  default: 500
+                logDelInterval:
+                  type: string
+                  description: "Logging retention policy (e.g., 3d)"
+                  default: "3d"
+                metricsRetentionPeriod:
+                  type: string
+                  description: "Retention period for Prometheus metrics (e.g., 7d)"
+                  default: "7d"
+                clientQpairCount:
+                  type: integer
+                  description: "NVMe/TCP transport qpair count per LV for clients"
+                contactPoint:
+                  type: string
+                  description: "Email or webhook for alerts"
+                includeStats:
+                  type: boolean
+                statsHistoryInSeconds:
+                  type: integer
+                includeEventLog:
+                  type: boolean
+                eventLogEntries:
+                  type: integer
+
+            status:
+              type: object
+              properties:
+                UUID:
+                  type: string
+                  description: "Cluster UUID of the node"
+                health:
+                  type: boolean
+                  description: "cluster overall health"
+                mgmtNodes:
+                  type: integer
+                  description: "Number of management nodes"
+                storageNodes:
+                  type: integer
+                  description: "Number of storage nodes"
+                NQN:
+                  type: string
+                  description: "cluster NQN"
+                mgmtIp:
+                  type: string
+                  description: "Management IP address of the node"
+                state:
+                  type: string
+                  description: "Current state of the cluster"
+                  enum: ["UNREADY", "IN_ACTIVATION", "ACTIVE", "SUSPENDED", "DEGRADED"]
+                rebalancing:
+                  type: boolean
+                  description: "Indicates whether the cluster is currently rebalancing data"
+                clusterUUID:
+                  type: string
+                  description: "Cluster-generated unique identifier"
+                secretName:
+                  type: string
+                  description: "Kubernetes Secret containing cluster credentials"
+                disabledMonitoringStack:
+                  type: boolean
+                fdbconn:
+                  type: string
+                grafana_endpoint:
+                  type: string
+                graylog_endpoint:
+                  type: string
+                message:
+                  type: string
+                  description: "Optional status message from operator"
+                lastUpdated:
+                  type: string
+                  format: date-time
+                  description: "Timestamp of last status update"
+                created:
+                  type: string
+                  format: date-time
+                  description: "Timestamp of create"
+                stats:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                    wiops:
+                      type: integer
+                    riops:
+                      type: integer
+                    wtp:
+                      type: integer
+                    rtp:
+                      type: integer
+                    capacityUtil:
+                      type: integer
+                  eventLog:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                      created:
+                        type: date-time
+                      uuid:
+                        type: string
+                      eventType:
+                        type: string
+                      severity:
+                        type: string
+                      description:
+                        type: string
+                      storageID:
+                        type: string
+                      status:
+                        type: string
+
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: ClusterUUID
+          type: string
+          jsonPath: .status.UUID
+        - name: ClusterName
+          type: string
+          jsonPath: .spec.clusterName
+        - name: HA Type
+          type: string
+          jsonPath: .spec.haType
+        - name: State
+          type: string
+          jsonPath: .status.state
+        - name: Rebalancing
+          type: boolean
+          jsonPath: .status.rebalancing
+        - name: Last Updated
+          type: date
+          jsonPath: .status.lastUpdated
+
+
