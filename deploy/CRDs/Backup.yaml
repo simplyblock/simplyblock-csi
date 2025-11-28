@@ -20,16 +20,13 @@ spec:
   #         (s1 has a backup already). If keepOnlineBackup, s4 is kept, otherwise its deleted after the operations.
   # delete: deletes the chain of backups for that PVC. Snapshots are only deleted if they
   #         were created for the backup.
-  # print-backups: print a list of PVC[s] with their snapshot and backup-ids:
-  # {PVC : {(snapshot-id, backup-id), ...}, PVC: {(snapshot-id, backup-id), ...} ...}
-  # It can be used to restore to a different cluster.
   # if the backup list is available on this cluster (fdb), it will use it. If this is performed on
   # another cluster, it requires a backup list input file (see above/below) to identify the backups
   # in restore process, PVCs will be created from backed up data.
   # if replacePVConRestore is set to True, it means the bound PVCs will be replaced with the
   # version from the Backup. If set to False, another PVC will be created under a new name.
 
-  action: "print-backups" #print-backups #restore
+  action: "restore"
   versions:
     - name: 25.10.5
       served: true
@@ -95,6 +92,24 @@ spec:
                 state:
                   type: string
                   description: "State of backup: Pending, Running, Completed, Failed"
+                PVCs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      poolUUID:
+                        type: string
+                      backups:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            snapshotUUID:
+                              type: string
+                            backupID:
+                              type: string
       subresources:
         status: {}
       additionalPrinterColumns:

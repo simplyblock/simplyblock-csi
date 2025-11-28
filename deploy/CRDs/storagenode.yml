@@ -11,7 +11,7 @@ spec:
     singular: storage-node
     shortNames:
       - sbn
-  action: "restart" #support restart, suspend, shutdown, remove, get
+  action: "restart" #suspend, shutdown, remove
   versions:
     - name: 25.11.1
       served: true

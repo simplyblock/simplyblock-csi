@@ -11,7 +11,7 @@ spec:
     kind: SimplyBlockStorageCluster
     shortNames:
       - sbc
-  action: "update" #activate #get #upgrade
+  action: "activate" #activate #upgrade
   versions:
     - name: v25.11.1
       served: true

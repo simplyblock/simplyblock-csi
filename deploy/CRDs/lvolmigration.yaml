@@ -12,8 +12,6 @@ spec:
     shortNames:
       - lmg
 
-  #create:
-
   versions:
     - name: 25.11.1
       served: true

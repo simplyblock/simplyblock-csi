@@ -13,8 +13,7 @@ spec:
       - bks
 
   # delete-all-backups: must delete the online snapshots (if existent) and associated backups for that schedule
-  # list-all-backups: should output a json in the form of:
-  # {PVC : {(snapshot-id, backup-id), ...}, PVC: {(snapshot-id, backup-id), ...} ...}
+  # this CRD may be run in another cluster to restore the backups
   # restore operation takes pool or PVC name.
   # if the backup list is available on this cluster (fdb), it will use it. If this is performed on
   # another cluster, it requires a backup list input file (see above/below) to uniquly identify the backups
@@ -22,7 +21,7 @@ spec:
   # if replacePVConRestore is set to True, it means the bound PVCs will be replaced with the
   # version from the Backup. If set to False, another PVC will be created under a new name.
 
-  action: "update-backup-schedule" #delete-all-backups-schedule #print-all-backups #restore
+  action: "restore"
   versions:
     - name: 25.10.5
       served: true
@@ -82,6 +81,24 @@ spec:
                 state:
                   type: string
                   description: "State of backup: Pending, Running, Completed, Failed"
+                PVCs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      poolUUID:
+                        type: string
+                      backups:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            snapshotUUID:
+                              type: string
+                            backupID:
+                              type: string
       subresources:
         status: {}
       additionalPrinterColumns:

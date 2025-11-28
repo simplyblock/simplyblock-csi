@@ -11,7 +11,7 @@ spec:
     kind: Rackup
     shortNames:
       - tsk
-  action: "list" #cancel
+  action: "cancel"
   versions:
     - name: 25.11.1
       served: true

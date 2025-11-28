@@ -11,7 +11,7 @@ spec:
     kind: Pool
     shortNames:
       - pl
-  action: "update"
+
   versions:
     - name: 25.11.1
       served: true

@@ -12,7 +12,6 @@ spec:
     shortNames:
       - dev
 
-  #create:
   action: "get-status"
   versions:
     - name: 25.11.1
