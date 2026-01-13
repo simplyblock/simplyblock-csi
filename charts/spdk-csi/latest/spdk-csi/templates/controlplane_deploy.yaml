@@ -1,0 +1,793 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-admin-control
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simplyblock-admin-control
+  template:
+    metadata:
+      annotations:
+        log-collector/enabled: "true"
+        reloader.stakater.com/auto: "true"
+        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
+      labels:
+        app: simplyblock-admin-control
+    spec:
+      serviceAccountName: simplyblock-sa
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet 
+      containers:
+      - name: simplyblock-control
+        image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+        imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
+        command: ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]
+        env:
+        - name: LVOL_NVMF_PORT_START
+          value: "{{ .Values.ports.lvolNvmfPortStart }}"
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+{{- if .Values.observability.enabled }}
+        - name: MONITORING_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: simplyblock-grafana-secrets
+              key: MONITORING_SECRET
+{{- end }}
+        - name: SIMPLYBLOCK_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: simplyblock-config
+              key: LOG_LEVEL
+        volumeMounts:
+        - name: fdb-cluster-file
+          mountPath: /etc/foundationdb/fdb.cluster
+          subPath: fdb.cluster
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "600m"
+            memory: "1Gi"
+      volumes:
+      - name: fdb-cluster-file
+        configMap:
+          name: simplyblock-fdb-cluster-config
+          items:
+            - key: cluster-file
+              path: fdb.cluster
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-webappapi
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: simplyblock-webappapi
+  template:
+    metadata:
+      annotations:
+        log-collector/enabled: "true"
+        reloader.stakater.com/auto: "true"
+        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
+      labels:
+        app: simplyblock-webappapi
+    spec:
+      serviceAccountName: simplyblock-sa
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: simplyblock-admin-control
+              topologyKey: kubernetes.io/hostname       
+      containers:
+      - name: webappapi
+        image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+        imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
+        ports:
+        - containerPort: 5000
+        command: ["python", "simplyblock_web/app.py"]
+        env:
+        - name: SIMPLYBLOCK_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: simplyblock-config
+              key: LOG_LEVEL
+        - name: LVOL_NVMF_PORT_START
+          value: "{{ .Values.ports.lvolNvmfPortStart }}"
+        - name: ENABLE_MONITORING
+          value: "{{ .Values.observability.enabled }}"
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+{{- if .Values.observability.enabled }}
+        - name: MONITORING_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: simplyblock-grafana-secrets
+              key: MONITORING_SECRET
+{{- end }}
+        - name: FLASK_DEBUG
+          value: "False"
+        - name: FLASK_ENV
+          value: "production"
+        volumeMounts:
+        - name: fdb-cluster-file
+          mountPath: /etc/foundationdb/fdb.cluster
+          subPath: fdb.cluster
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "2Gi"
+      - name: fluent-bit
+        image: fluent/fluent-bit:1.8.11
+        volumeMounts:
+          - name: varlog
+            mountPath: /var/log
+          - name: config
+            mountPath: /fluent-bit/etc/
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "200Mi"
+          limits:
+            cpu: "200m"
+            memory: "400Mi"
+      volumes:
+      - name: fdb-cluster-file
+        configMap:
+          name: simplyblock-fdb-cluster-config
+          items:
+            - key: cluster-file
+              path: fdb.cluster
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: config
+        configMap:
+          name: simplyblock-fluent-bit-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-monitoring
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simplyblock-monitoring
+  template:
+    metadata:
+      annotations:
+        log-collector/enabled: "true"
+        reloader.stakater.com/auto: "true"
+        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
+      labels:
+        app: simplyblock-monitoring
+    spec:
+      serviceAccountName: simplyblock-sa
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: storage-node-monitor
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/storage_node_monitor.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: mgmt-node-monitor
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/mgmt_node_monitor.py"]
+          env:
+            - name: BACKEND_TYPE
+              value: "k8s"
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: lvol-stats-collector
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/lvol_stat_collector.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: main-distr-event-collector
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/main_distr_event_collector.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: capacity-and-stats-collector
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/capacity_and_stats_collector.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: capacity-monitor
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/cap_monitor.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: health-check
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/health_check_service.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: device-monitor
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/device_monitor.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: lvol-monitor
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/lvol_monitor.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: snapshot-monitor
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/snapshot_monitor.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+        - name: fluent-bit
+          image: fluent/fluent-bit:1.8.11
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+            - name: config
+              mountPath: /fluent-bit/etc/
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "200Mi"
+            limits:
+              cpu: "200m"
+              memory: "400Mi"
+
+      volumes:
+        - name: fdb-cluster-file
+          configMap:
+            name: simplyblock-fdb-cluster-config
+            items:
+              - key: cluster-file
+                path: fdb.cluster
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: config
+          configMap:
+            name: simplyblock-fluent-bit-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-tasks
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simplyblock-tasks
+  template:
+    metadata:
+      annotations:
+        log-collector/enabled: "true"
+        reloader.stakater.com/auto: "true"
+        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
+      labels:
+        app: simplyblock-tasks
+    spec:
+      serviceAccountName: simplyblock-sa
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: tasks-node-add-runner
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_node_add.py"]
+          env:
+            - name: LVOL_NVMF_PORT_START
+              value: "{{ .Values.ports.lvolNvmfPortStart }}"
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-restart
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_restart.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-migration
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_migration.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-failed-migration
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_failed_migration.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-cluster-status
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_cluster_status.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-new-device-migration
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_new_dev_migration.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-port-allow
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_port_allow.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-jc-comp-resume
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_jc_comp.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-sync-lvol-del
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_sync_lvol_del.py"]
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+          env:
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+        - name: fluent-bit
+          image: fluent/fluent-bit:1.8.11
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+            - name: config
+              mountPath: /fluent-bit/etc/
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "200Mi"
+            limits:
+              cpu: "200m"
+              memory: "400Mi"
+
+      volumes:
+        - name: fdb-cluster-file
+          configMap:
+            name: simplyblock-fdb-cluster-config
+            items:
+              - key: cluster-file
+                path: fdb.cluster
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: config
+          configMap:
+            name: simplyblock-fluent-bit-config
+
+---
+{{- if .Values.observability.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-graylog
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simplyblock-graylog
+  template:
+    metadata:
+      labels:
+        app: simplyblock-graylog
+    spec:      
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 1100
+        supplementalGroups:
+          - 0 
+      containers:
+        - name: graylog
+          image: graylog/graylog:5.0
+          command: ["/usr/bin/tini", "--"]
+          args: ["wait-for-it", "opensearch-cluster-master:9200", "--", "/docker-entrypoint.sh"]
+          env:
+            - name: GRAYLOG_NODE_ID_FILE
+              value: "/usr/share/graylog/data/config/node-id"
+            - name: GRAYLOG_PASSWORD_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: simplyblock-graylog-secret
+                  key: GRAYLOG_PASSWORD_SECRET
+            - name: GRAYLOG_ROOT_PASSWORD_SHA2
+              valueFrom:
+                secretKeyRef:
+                  name: simplyblock-graylog-secret
+                  key: GRAYLOG_ROOT_PASSWORD_SHA2
+            - name: GRAYLOG_HTTP_BIND_ADDRESS
+              value: "0.0.0.0:9000"
+            - name: GRAYLOG_HTTP_EXTERNAL_URI
+              value: "http://localhost/graylog/"
+            - name: GRAYLOG_ELASTICSEARCH_HOSTS
+              value: "http://opensearch-cluster-master:9200"
+            - name: GRAYLOG_MONGODB_URI
+              value: "mongodb://admin:{{ .Values.observability.secret }}@simplyblock-mongo-svc:27017/graylog"
+            - name: GRAYLOG_SKIP_PREFLIGHT_CHECKS
+              value: "true"
+            - name: GRAYLOG_ROTATION_STRATEGY
+              value: "time"
+            - name: GRAYLOG_RETENTION_STRATEGY
+              value: "delete"
+            - name: GRAYLOG_ELASTICSEARCH_MAX_NUMBER_OF_INDICES
+              valueFrom:
+                secretKeyRef:
+                  name: simplyblock-graylog-secret
+                  key: MAX_NUMBER_OF_INDICES
+            - name: GRAYLOG_ELASTICSEARCH_MAX_TIME_PER_INDEX
+              value: "1d"
+            - name: GRAYLOG_RING_SIZE
+              value: "4096"
+            - name: GRAYLOG_INPUTBUFFER_RING_SIZE
+              value: "8192"
+            - name: GRAYLOG_VERSIONCHECKS
+              value: "false"
+            - name: GRAYLOG_ELASTICSEARCH_REPLICAS
+              value: "1"
+            - name: GRAYLOG_MESSAGE_JOURNAL_MAX_SIZE
+              value: "10gb"
+          ports:
+            - containerPort: 5044
+            - containerPort: 5140
+              protocol: UDP
+            - containerPort: 5140
+            - containerPort: 5555
+            - containerPort: 5555
+              protocol: UDP
+            - containerPort: 12201
+            - containerPort: 12201
+              protocol: UDP
+            - containerPort: 13301
+            - containerPort: 13302
+          volumeMounts:
+            - mountPath: /usr/share/graylog/data/data
+              name: simplyblock-graylog-data
+            - mountPath: /usr/share/graylog/data/journal
+              name: simplyblock-graylog-journal
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "400m"
+              memory: "2Gi"
+      volumes:
+        - name: simplyblock-graylog-data
+          emptyDir: {}
+        - name: simplyblock-graylog-journal
+          emptyDir: {}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-thanos
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simplyblock-thanos
+  template:
+    metadata:
+      labels:
+        app: simplyblock-thanos
+    spec:
+      containers:
+        - name: thanos-store
+          image: thanosio/thanos:v0.31.0
+          args:
+            - store
+            - --grpc-address=0.0.0.0:10901
+            - --http-address=0.0.0.0:10902
+            - --objstore.config-file=/etc/thanos/objstore.yml
+            - --index-cache-size=500MB
+            - --chunk-pool-size=500MB
+          ports:
+            - name: grpc
+              containerPort: 10901
+            - name: http
+              containerPort: 10902
+          volumeMounts:
+            - name: objstore-config
+              mountPath: /etc/thanos
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "250m"
+              memory: "1Gi"
+
+        - name: thanos-query
+          image: thanosio/thanos:v0.31.0
+          args:
+            - query
+            - --grpc-address=0.0.0.0:10911
+            - --http-address=0.0.0.0:9091
+            - --store=simplyblock-thanos:10901
+            - --store=simplyblock-prometheus:10901
+          ports:
+            - containerPort: 9091
+              name: http
+            - containerPort: 10911
+              name: grpc
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "250m"
+              memory: "1Gi"
+
+        - name: thanos-compactor
+          image: thanosio/thanos:v0.31.0
+          args:
+            - compact
+            - --http-address=0.0.0.0:10922
+            - --data-dir=/data
+            - --objstore.config-file=/etc/thanos/objstore.yml
+            - --retention.resolution-raw=30d
+            - --retention.resolution-5m=60d
+            - --retention.resolution-1h=90d
+            - --compact.concurrency=1
+            - --wait
+          ports:
+            - containerPort: 10922
+              name: http
+          volumeMounts:
+            - name: objstore-config
+              mountPath: /etc/thanos
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "250m"
+              memory: "1Gi"
+
+      volumes:
+        - name: objstore-config
+          configMap:
+            name: simplyblock-objstore-config
+
+        - name: data
+          emptyDir: {}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-grafana
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simplyblock-grafana
+  template:
+    metadata:
+      labels:
+        app: simplyblock-grafana
+    spec:      
+      securityContext:
+        fsGroup: 472
+        supplementalGroups:
+          - 0
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.0.12
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: simplyblock-grafana-secrets
+                  key: MONITORING_SECRET
+            - name: GF_ALERTING_ENABLED
+              value: "true"
+            - name: GF_PATHS_PROVISIONING
+              value: "/etc/grafana/provisioning"
+            - name: GF_INSTALL_PLUGINS
+              value: "grafana-opensearch-datasource"
+            - name: GF_SERVER_ROOT_URL
+              value: "http://localhost/grafana"
+          volumeMounts:
+            - name: datasource-config
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: alerting-config
+              mountPath: /etc/grafana/provisioning/alerting
+            - name: dashboard-config
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboard-cluster
+              mountPath: /var/lib/grafana/dashboards/cluster.json
+              subPath: cluster.json
+            - name: dashboard-devices
+              mountPath: /var/lib/grafana/dashboards/devices.json
+              subPath: devices.json
+            - name: dashboard-lvols
+              mountPath: /var/lib/grafana/dashboards/lvols.json
+              subPath: lvols.json
+            - name: dashboard-nodes
+              mountPath: /var/lib/grafana/dashboards/nodes.json
+              subPath: nodes.json
+            - name: dashboard-pools
+              mountPath: /var/lib/grafana/dashboards/pools.json
+              subPath: pools.json
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: datasource-config
+          configMap:
+            name: simplyblock-grafana-datasource
+        - name: alerting-config
+          configMap:
+            name: simplyblock-grafana-alerting
+        - name: dashboard-config
+          configMap:
+            name: simplyblock-grafana-dashboard-config
+        - name: dashboard-cluster
+          configMap:
+            name: simplyblock-grafana-dashboard-cluster
+        - name: dashboard-devices
+          configMap:
+            name: simplyblock-grafana-dashboard-devices
+        - name: dashboard-lvols
+          configMap:
+            name: simplyblock-grafana-dashboard-lvols
+        - name: dashboard-nodes
+          configMap:
+            name: simplyblock-grafana-dashboard-nodes
+        - name: dashboard-pools
+          configMap:
+            name: simplyblock-grafana-dashboard-pools
+        - name: grafana-data
+          emptyDir: {}
+{{- end }}

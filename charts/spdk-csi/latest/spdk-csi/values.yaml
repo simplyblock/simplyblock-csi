@@ -158,24 +158,6 @@ node:
     key: 
     value:
 
-cachingnode:
-  create: false
-  nodeSelector:
-    key: type
-    value: simplyblock-cache
-  ifname: eth0
-  cpuMask: 
-  spdkMem:
-  spdkImage: 
-  multipathing: true
-  tolerations:
-    create: false
-    list:
-    - operator: Exists
-      effect:
-      key: 
-      value:
-
 storagenode:
   create: false
   ifname: eth0
@@ -224,3 +206,235 @@ storagenode:
         key: 
         value:
       
+
+
+observability:
+  enabled: false
+  secret: "sWbpOgba1bKnCfcPkVQi"
+  deletionInterval: "3d"
+  level: "DEBUG"
+  graylog:
+    rootPasswordSha2: "b87c15a8ae4736d771ca60a7cc2014baaeab19b11c31f5fedef9421958a403c9"
+    passwordSecret: "is6SP2EdWg0NdmVGv6CEp5hRHNL7BKVMFem4t9pouMqDQnHwXMSomas1qcbKSt5yISr8eBHv4Y7Dbswhyz84Ut0TW6kqsiPs"
+    maxNumberIndex: "3"
+    retentionPeriod: "7d"
+  grafana:
+    endpoint: ""
+    contactPoint: ""
+
+# image:
+#   simplyblock: 
+#     repository: "public.ecr.aws/simply-block/simplyblock"
+#     tag: "improved_user_experience"
+#     pullPolicy: "Always"
+
+ports:
+  lvolNvmfPortStart: 9100
+
+# storageclass:  
+#   allowedTopologyZones: []
+
+foundationdb:
+  multiAZ: false
+
+mongodb:
+  name: "simplyblock-mongodb"
+  deployment_name: "simplyblock-mongodb"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 300Mi
+    limits:
+      cpu: 250m
+      memory: 1Gi
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - mongodb
+          topologyKey: "kubernetes.io/hostname"
+
+opensearch:
+  fullnameOverride: "simplyblock-opensearch"
+  singleNode: true
+  replicas: 1
+
+  antiAffinity: "hard"
+  persistence:
+    enabled: true
+    storageClass: local-hostpath
+    size: 20Gi
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "3Gi"
+
+  extraEnvs:
+    - name: OPENSEARCH_JAVA_OPTS
+      value: "-Xms1g -Xmx1g"
+    - name: bootstrap.memory_lock
+      value: "true"
+    - name: action.auto_create_index
+      value: "false"
+    - name: plugins.security.ssl.http.enabled
+      value: "false"
+    - name: plugins.security.disabled
+      value: "true"
+
+  securityConfig:
+    enabled: false
+
+prometheus:
+  server:
+    fullnameOverride: simplyblock-prometheus
+    enabled: true
+    statefulSet:
+      enabled: true
+    name: simplyblock-prometheus
+    replicaCount: 1
+    podLabels:
+      app: simplyblock-prometheus
+    podAnnotations:
+      log-collector/enabled: "true"
+      reloader.stakater.com/auto: "true"
+      reloader.stakater.com/configmap: "sbcli-simplyblock-prometheus-config"
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - simplyblock-prometheus
+            topologyKey: "kubernetes.io/hostname"
+    service:
+      servicePort: 9090
+      type: ClusterIP
+      gRPC:
+        enabled: true
+        servicePort: 10901
+      additionalPorts:
+        - name: http-thanos
+          port: 10902
+          targetPort: 10902
+          protocol: TCP
+    securityContext:
+      fsGroup: 65534
+    persistentVolume:
+      enabled: true
+      size: 5Gi
+      storageClass: local-hostpath
+    extraArgs:
+      storage.tsdb.min-block-duration: 2h
+      storage.tsdb.max-block-duration: 2h
+    sidecarContainers:
+      thanos-sidecar:
+        image: thanosio/thanos:v0.31.0
+        args:
+          - sidecar
+          - --tsdb.path=/prometheus
+          - --prometheus.url=http://localhost:9090
+          - --objstore.config-file=/etc/thanos/objstore.yml
+        ports:
+          - name: grpc
+            containerPort: 10901
+          - name: http
+            containerPort: 10902
+        volumeMounts:
+          - name: storage-volume
+            mountPath: /prometheus
+          - name: objstore-config
+            mountPath: /etc/thanos
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "250m"
+            memory: "1Gi"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+    configMapOverrideName: simplyblock-prometheus-config
+    extraVolumes:
+      - name: objstore-config
+        configMap:
+          name: simplyblock-objstore-config
+  alertmanager:
+    enabled: false
+
+  prometheus-pushgateway:
+    enabled: false
+
+  prometheus-node-exporter:
+    enabled: false
+
+  kube-state-metrics:
+    enabled: false
+
+ingress:
+  enabled: false
+  ingressClassName: nginx
+  useDNS: false
+  host: ""
+  tlsSecret: 
+  controller:
+    hostNetwork: true  
+    dnsPolicy: ClusterFirstWithHostNet
+    service:
+      type: ClusterIP
+    extraArgs:
+      tcp-services-configmap: "simplyblock/simplyblock-tcp-services"
+    nodeSelector: {}
+
+
+simplyblock:
+  cluster:
+    clusterName: simplyblock-cluster
+    mgmtIfc: eth0
+    fabric: tcp
+    isSingleNode: false
+    enableNodeAffinity: false
+    strictNodeAntiAffinity: false
+    capWarn: 80
+    capCrit: 90
+    provCapWarn: 120
+    provCapCrit: 150
+
+  pool:
+    name: simplyblock-pool
+    capacityLimit: 100Gi
+
+  lvol:
+    name: simplyblock-lvol
+    
+  storageNodes:
+    name: simplyblock-node
+    clusterImage: public.ecr.aws/simply-block/simplyblock:improved_user_experience
+    mgmtIfc: eth0
+    maxLVol: 10
+    maxSize: 150G
+    partitions: 0
+    corePercentage: 65
+    spdkDebug: false
+    coreIsolation: false
+    workerNodes: []
+
+  devices:
+    name: simplyblock-devices
+
+  tasks:
+    name: simplyblock-task

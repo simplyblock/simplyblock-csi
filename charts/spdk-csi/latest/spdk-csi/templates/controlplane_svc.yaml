@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: simplyblock-webappapi
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: simplyblock-webappapi
+  ports:
+  - name: http
+    port: 5000
+    targetPort: 5000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    foundationdb.org/fdb-cluster-name: simplyblock-fdb-cluster
+  name: simplyblock-fdb-cluster-external
+  namespace: {{ .Release.Namespace }}
+spec:
+  clusterIP: None
+  selector:
+    foundationdb.org/fdb-process-class: storage
+  ports:
+  - port: 4501
+    targetPort: 4501
+    protocol: TCP
+
+---
+{{- if .Values.observability.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: simplyblock-graylog
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: simplyblock-graylog
+  ports:
+    - name: web
+      port: 9000
+      targetPort: 9000
+    - name: gelf-tcp
+      port: 12201
+      protocol: TCP
+      targetPort: 12201
+    - name: gelf-udp
+      port: 12201
+      protocol: UDP
+      targetPort: 12201
+  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: simplyblock-thanos
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: simplyblock-thanos
+  ports:
+    - name: store
+      port: 10901
+      targetPort: 10901
+    - name: query
+      port: 9091
+      targetPort: 9091
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: simplyblock-grafana
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: simplyblock-grafana
+  ports:
+    - name: grafana
+      port: 3000
+      targetPort: 3000
+{{- end }}

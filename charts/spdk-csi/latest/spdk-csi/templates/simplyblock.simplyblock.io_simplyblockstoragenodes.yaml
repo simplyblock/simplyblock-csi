@@ -1,0 +1,204 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: simplyblockstoragenodes.simplyblock.simplyblock.io
+spec:
+  group: simplyblock.simplyblock.io
+  names:
+    kind: SimplyBlockStorageNode
+    listKind: SimplyBlockStorageNodeList
+    plural: simplyblockstoragenodes
+    singular: simplyblockstoragenode
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SimplyBlockStorageNode is the Schema for the storagenodes API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of StorageNode
+            properties:
+              action:
+                enum:
+                - shutdown
+                - restart
+                - suspend
+                - resume
+                - remove
+                type: string
+              addPcieToAllowList:
+                description: restart params
+                items:
+                  type: string
+                type: array
+              clusterImage:
+                type: string
+              clusterName:
+                type: string
+              coreIsolation:
+                type: boolean
+              coreMask:
+                type: string
+              corePercentage:
+                format: int32
+                type: integer
+              dataNIC:
+                items:
+                  type: string
+                type: array
+              driveSizeRange:
+                type: string
+              force:
+                type: boolean
+              haJM:
+                type: boolean
+              haJmCount:
+                format: int32
+                type: integer
+              idDeviceByNQN:
+                type: boolean
+              jmPercent:
+                format: int32
+                type: integer
+              maxLVol:
+                format: int32
+                type: integer
+              maxSize:
+                type: string
+              mgmtIfc:
+                type: string
+              nodeAddr:
+                type: string
+              nodeUUID:
+                description: NodeUUID is required when action is specified
+                type: string
+              nodesPerSocket:
+                format: int32
+                type: integer
+              openShiftCluster:
+                type: boolean
+              partitions:
+                format: int32
+                type: integer
+              pcieAllowList:
+                items:
+                  type: string
+                type: array
+              pcieDenyList:
+                items:
+                  type: string
+                type: array
+              pcieModel:
+                type: string
+              socketsToUse:
+                format: int32
+                type: integer
+              spdkDebug:
+                type: boolean
+              spdkImage:
+                type: string
+              useSeparateJournalDevice:
+                type: boolean
+              workerNode:
+                type: string
+              workerNodes:
+                items:
+                  type: string
+                type: array
+            required:
+            - clusterName
+            type: object
+          status:
+            description: status defines the observed state of StorageNode
+            properties:
+              actionStatus:
+                properties:
+                  action:
+                    type: string
+                  message:
+                    type: string
+                  nodeUUID:
+                    type: string
+                  observedGeneration:
+                    format: int64
+                    type: integer
+                  state:
+                    type: string
+                  updatedAt:
+                    format: date-time
+                    type: string
+                type: object
+              nodes:
+                items:
+                  properties:
+                    cpu:
+                      format: int32
+                      type: integer
+                    devices:
+                      type: string
+                    health:
+                      type: boolean
+                    hostname:
+                      type: string
+                    lvol_port:
+                      format: int32
+                      type: integer
+                    memory:
+                      type: string
+                    mgmtIp:
+                      type: string
+                    nvmf_port:
+                      format: int32
+                      type: integer
+                    rpc_port:
+                      format: int32
+                      type: integer
+                    status:
+                      type: string
+                    uptime:
+                      type: string
+                    uuid:
+                      type: string
+                    volumes:
+                      format: int32
+                      type: integer
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: nodeUUID is required when action is specified
+          rule: '!(has(self.spec.action) && self.spec.action != "" && (!has(self.spec.nodeUUID)
+            || self.spec.nodeUUID == ""))'
+        - message: clusterImage, maxLVol, and workerNodes are required when action
+            is not specified
+          rule: (has(self.spec.action) && self.spec.action != "") || (has(self.spec.clusterImage)
+            && self.spec.clusterImage != "" && has(self.spec.maxLVol) && has(self.spec.workerNodes)
+            && size(self.spec.workerNodes) > 0)
+    served: true
+    storage: true
+    subresources:
+      status: {}

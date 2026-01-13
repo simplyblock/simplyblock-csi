@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: simplyblock-sa
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: simplyblock-role
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch","patch", "update"]
+  - apiGroups: ["", "apps"]
+    resources: ["pods", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["mongodbcommunity.mongodb.com"]
+    resources: ["mongodbcommunity"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["simplyblock.simplyblock.io"] 
+    resources: ["simplyblockpools/status", "simplyblocklvols/status", "simplyblockstorageclusters/status", "simplyblockstoragenodes/status", "simplyblockdevices/status", "simplyblocktasks/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["simplyblock.simplyblock.io"] 
+    resources: ["simplyblockpools", "simplyblocklvols", "simplyblockstorageclusters", "simplyblockstoragenodes", "simplyblockdevices", "simplyblocktasks"]
+    verbs: ["get","list" ,"patch", "update", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: simplyblock-binding
+subjects:
+  - kind: ServiceAccount
+    name: simplyblock-sa
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: simplyblock-role
+  apiGroup: rbac.authorization.k8s.io

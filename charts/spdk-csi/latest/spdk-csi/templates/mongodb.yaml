@@ -1,0 +1,56 @@
+{{- if .Values.observability.enabled }}
+apiVersion: mongodbcommunity.mongodb.com/v1
+kind: MongoDBCommunity
+metadata:
+  name: simplyblock-mongo
+  namespace: {{ .Release.Namespace }}
+spec:
+  members: 1
+  type: ReplicaSet
+  version: "7.0.5"
+  statefulSet:
+    spec:
+      volumeClaimTemplates:
+        - metadata:
+            name: data-volume
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            storageClassName: local-hostpath
+            resources:
+              requests:
+                storage: 5Gi
+        - metadata:
+            name: logs-volume
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            storageClassName: local-hostpath
+            resources:
+              requests:
+                storage: 5Gi
+  security:
+    authentication:
+      modes: ["SCRAM"]
+  users:
+    - name: admin
+      db: graylog
+      passwordSecretRef:
+        name: admin-password
+      roles:
+        - name: readWrite
+          db: graylog
+        - name: clusterAdmin
+          db: admin
+        - name: userAdminAnyDatabase
+          db: admin
+      scramCredentialsSecretName: my-scram
+  additionalMongodConfig:
+    storage.wiredTiger.engineConfig.journalCompressor: zlib
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: admin-password
+type: Opaque
+stringData:
+  password: {{ .Values.observability.secret }}
+{{- end }}

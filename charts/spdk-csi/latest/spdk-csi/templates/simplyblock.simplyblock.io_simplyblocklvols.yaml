@@ -1,0 +1,144 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: simplyblocklvols.simplyblock.simplyblock.io
+spec:
+  group: simplyblock.simplyblock.io
+  names:
+    kind: SimplyBlockLvol
+    listKind: SimplyBlockLvolList
+    plural: simplyblocklvols
+    singular: simplyblocklvol
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.lvols.length()
+      name: LVOLs
+      type: integer
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SimplyBlockLvol is the Schema for the simplyblocklvols API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of SimplyBlockLvol
+            properties:
+              clusterName:
+                type: string
+              poolName:
+                type: string
+            required:
+            - clusterName
+            - poolName
+            type: object
+          status:
+            description: status defines the observed state of SimplyBlockLvol
+            properties:
+              configured:
+                type: boolean
+              lvols:
+                items:
+                  properties:
+                    blobID:
+                      format: int64
+                      type: integer
+                    clonedFromSnap:
+                      type: string
+                    createDt:
+                      format: date-time
+                      type: string
+                    fabric:
+                      type: string
+                    ha:
+                      type: boolean
+                    health:
+                      type: boolean
+                    hostname:
+                      type: string
+                    isCrypto:
+                      type: boolean
+                    lvolName:
+                      type: string
+                    maxNamespacesPerSubsystem:
+                      format: int64
+                      type: integer
+                    namespaceID:
+                      format: int64
+                      type: integer
+                    nodeUUID:
+                      items:
+                        type: string
+                      type: array
+                    nqn:
+                      type: string
+                    poolName:
+                      type: string
+                    poolUUID:
+                      type: string
+                    pvcName:
+                      type: string
+                    qosClass:
+                      format: int64
+                      type: integer
+                    qosIOPS:
+                      format: int64
+                      type: integer
+                    qosRTP:
+                      format: int64
+                      type: integer
+                    qosRWTP:
+                      format: int64
+                      type: integer
+                    qosWTP:
+                      format: int64
+                      type: integer
+                    size:
+                      type: string
+                    snapName:
+                      type: string
+                    status:
+                      type: string
+                    stripeWdata:
+                      format: int64
+                      type: integer
+                    stripeWparity:
+                      format: int64
+                      type: integer
+                    subsysPort:
+                      format: int64
+                      type: integer
+                    updateDt:
+                      format: date-time
+                      type: string
+                    uuid:
+                      type: string
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

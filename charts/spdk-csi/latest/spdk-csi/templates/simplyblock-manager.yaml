@@ -1,0 +1,196 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-manager
+  labels:
+    control-plane: simplyblock-manager
+    app: simplyblock-manager
+spec:
+  selector:
+    matchLabels:
+      app: simplyblock-manager
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        control-plane: simplyblock-manager
+        app: simplyblock-manager
+    spec:
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      serviceAccountName: simplyblock-manager
+      containers:
+        - image: simplyblock/simplyblock-manager:main
+          imagePullPolicy: Always
+          name: manager
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            privileged: false
+      terminationGracePeriodSeconds: 10
+
+################# ROLE AND ROLE BINDING ##############################
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: simplyblock-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: simplyblock-manager-clusterrole
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - events
+  - persistentvolumeclaims
+  - pods
+  - pods/exec
+  - namespaces
+  - secrets
+  - services
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - daemonsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - "rbac.authorization.k8s.io"
+  resources:
+  - roles
+  - clusterroles
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - "rbac.authorization.k8s.io"
+  resources:
+  - rolebindings
+  - clusterrolebindings
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - simplyblock.simplyblock.io
+  resources:
+  - simplyblockpools
+  - simplyblocklvols
+  - simplyblockstorageclusters
+  - simplyblockstoragenodes
+  - simplyblockdevices
+  - simplyblocktasks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - simplyblock.simplyblock.io
+  resources:
+  - simplyblockpools/finalizers
+  - simplyblocklvols/finalizers
+  - simplyblockstorageclusters/finalizers
+  - simplyblockstoragenodes/finalizers
+  - simplyblockdevices/finalizers
+  - simplyblocktasks/finalizers
+  verbs:
+  - update
+  - delete
+- apiGroups:
+  - simplyblock.simplyblock.io
+  resources:
+  - simplyblockpools/status
+  - simplyblocklvols/status
+  - simplyblockstorageclusters/status
+  - simplyblockstoragenodes/status
+  - simplyblockdevices/status
+  - simplyblocktasks/status
+  verbs:
+  - get
+  - patch
+  - update
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  creationTimestamp: null
+  name: simplyblock-manager-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: simplyblock-manager-clusterrole
+subjects:
+- kind: ServiceAccount
+  name: simplyblock-manager
+  namespace: {{ .Release.Namespace }}
+  

@@ -1,0 +1,133 @@
+{{- if .Values.ingress.enabled }}
+  {{- if not .Values.ingress.useDNS }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: simplyblock-api-ingress
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: {{ .Values.ingress.ingressClassName | default "nginx" }}
+  rules:
+    - http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: simplyblock-webappapi
+                port:
+                  number: 5000
+---
+  {{- else if .Values.ingress.useDNS }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: simplyblock-api-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: {{ .Values.ingress.ingressClassName | default "nginx" }}
+  {{- if and .Values.ingress.tlsSecret (ne .Values.ingress.tlsSecret "") }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tlsSecret | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: simplyblock-webappapi
+                port:
+                  number: 5000
+  {{- end }}
+{{- end }}
+
+---
+{{- if .Values.ingress.enabled }}
+  {{- if not .Values.ingress.useDNS }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: simplyblock-monitoring-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: {{ .Values.ingress.ingressClassName | default "nginx" }}
+  rules:
+    - http:
+        paths:
+          - path: /opensearch(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: opensearch-cluster-master
+                port:
+                  number: 9200
+          - path: /grafana(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: simplyblock-grafana
+                port:
+                  number: 3000
+          - path: /graylog(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: simplyblock-graylog
+                port:
+                  number: 9000
+---
+  {{- else if .Values.ingress.useDNS }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: simplyblock-monitoring-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: {{ .Values.ingress.ingressClassName | default "nginx" }}
+  {{- if and .Values.ingress.tlsSecret (ne .Values.ingress.tlsSecret "") }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tlsSecret | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /opensearch(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: opensearch-cluster-master
+                port:
+                  number: 9200
+          - path: /grafana(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: simplyblock-grafana
+                port:
+                  number: 3000
+          - path: /graylog(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: simplyblock-graylog
+                port:
+                  number: 9000
+  {{- end }}
+{{- end }}
