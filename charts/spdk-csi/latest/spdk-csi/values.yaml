@@ -240,8 +240,8 @@ operator:
     fabric: tcp
 
     enableNodeAffinity: false
-    stripeWdata: 4
-    stripeWparity: 2
+    stripeWdata: 1
+    stripeWparity: 1
     haType:
     isSingleNode: false
     strictNodeAntiAffinity: false
