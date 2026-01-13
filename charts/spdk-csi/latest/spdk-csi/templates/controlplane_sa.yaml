@@ -1,3 +1,4 @@
+{{- if .Values.controlplane.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -41,3 +42,4 @@ roleRef:
   kind: ClusterRole
   name: simplyblock-role
   apiGroup: rbac.authorization.k8s.io
+{{- end }}

@@ -1,4 +1,5 @@
 ---
+{{- if .Values.controlplane.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,12 +29,12 @@ spec:
         command: ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]
         env:
         - name: LVOL_NVMF_PORT_START
-          value: "{{ .Values.ports.lvolNvmfPortStart }}"
+          value: "{{ .Values.controlplane.ports.lvolNvmfPortStart }}"
         - name: K8S_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-{{- if .Values.observability.enabled }}
+{{- if .Values.controlplane.observability.enabled }}
         - name: MONITORING_SECRET
           valueFrom:
             secretKeyRef:
@@ -112,7 +113,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-{{- if .Values.observability.enabled }}
+{{- if .Values.controlplane.observability.enabled }}
         - name: MONITORING_SECRET
           valueFrom:
             secretKeyRef:
@@ -363,7 +364,7 @@ spec:
           command: ["python", "simplyblock_core/services/tasks_runner_node_add.py"]
           env:
             - name: LVOL_NVMF_PORT_START
-              value: "{{ .Values.ports.lvolNvmfPortStart }}"
+              value: "{{ .Values.controlplane.ports.lvolNvmfPortStart }}"
 {{- with (include "simplyblock.commonContainer" . | fromYaml) }}
 {{ toYaml .env | nindent 12 }}
           volumeMounts:
@@ -497,7 +498,7 @@ spec:
             name: simplyblock-fluent-bit-config
 
 ---
-{{- if .Values.observability.enabled }}
+{{- if .Values.controlplane.observability.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -544,7 +545,7 @@ spec:
             - name: GRAYLOG_ELASTICSEARCH_HOSTS
               value: "http://opensearch-cluster-master:9200"
             - name: GRAYLOG_MONGODB_URI
-              value: "mongodb://admin:{{ .Values.observability.secret }}@simplyblock-mongo-svc:27017/graylog"
+              value: "mongodb://admin:{{ .Values.controlplane.observability.secret }}@simplyblock-mongo-svc:27017/graylog"
             - name: GRAYLOG_SKIP_PREFLIGHT_CHECKS
               value: "true"
             - name: GRAYLOG_ROTATION_STRATEGY
@@ -845,5 +846,6 @@ metadata:
   name: admin-password
 type: Opaque
 stringData:
-  password: {{ .Values.observability.secret }}
+  password: {{ .Values.controlplane.observability.secret }}
+{{- end }}
 {{- end }}

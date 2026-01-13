@@ -1,3 +1,4 @@
+{{- if .Values.controlplane.enabled }}
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -12,12 +13,13 @@ provisioner: hostpath.csi.k8s.io
 allowVolumeExpansion: true
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
-{{- if .Values.storageclass.allowedTopologyZones }}
+{{- if .Values.controlplane.storageclass.allowedTopologyZones }}
 allowedTopologies:
 - matchLabelExpressions:
   - key: topology.kubernetes.io/zone
     values:
-{{- range .Values.storageclass.allowedTopologyZones }}
+{{- range .Values.controlplane.storageclass.allowedTopologyZones }}
     - {{ . }}
+{{- end }}
 {{- end }}
 {{- end }}

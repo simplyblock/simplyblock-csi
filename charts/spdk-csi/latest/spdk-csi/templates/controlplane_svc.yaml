@@ -1,3 +1,4 @@
+{{- if .Values.controlplane.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -12,7 +13,7 @@ spec:
     targetPort: 5000
 
 ---
-{{- if .Values.observability.enabled }}
+{{- if .Values.controlplane.observability.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -64,4 +65,7 @@ spec:
     - name: grafana
       port: 3000
       targetPort: 3000
+{{- end }}
+{{- end }}
+
 {{- end }}

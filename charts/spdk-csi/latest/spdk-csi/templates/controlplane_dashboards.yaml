@@ -1,4 +1,4 @@
-{{- if .Values.observability.enabled }}
+{{- if .Values.controlplane.observability.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

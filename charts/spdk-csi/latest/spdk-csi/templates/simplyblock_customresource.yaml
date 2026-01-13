@@ -1,145 +1,197 @@
-{{- if .Values.simplyblock.cluster }}
+{{- if .Values.operator.enabled }}
+{{- if .Values.operator.cluster }}
 apiVersion: simplyblock.simplyblock.io/v1alpha1
 kind: SimplyBlockStorageCluster
 metadata:
-  name: {{ .Values.simplyblock.cluster.clusterName }}
+  name: {{ .Values.operator.cluster.clusterName }}
   namespace: {{ .Release.Namespace }}
 spec:
-  clusterName: {{ .Values.simplyblock.cluster.clusterName }}
+  clusterName: {{ .Values.operator.cluster.clusterName }}
 
-  {{- if .Values.simplyblock.cluster.mgmtIfc }}
-  mgmtIfc: {{ .Values.simplyblock.cluster.mgmtIfc }}
+  {{- if .Values.operator.cluster.mgmtIfc }}
+  mgmtIfc: {{ .Values.operator.cluster.mgmtIfc }}
   {{- end }}
 
-  {{- if .Values.simplyblock.cluster.fabric }}
-  fabric: {{ .Values.simplyblock.cluster.fabric }}
+  {{- if .Values.operator.cluster.fabric }}
+  fabric: {{ .Values.operator.cluster.fabric }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.cluster "isSingleNode" }}
-  isSingleNode: {{ .Values.simplyblock.cluster.isSingleNode }}
+  {{- if hasKey .Values.operator.cluster "isSingleNode" }}
+  isSingleNode: {{ .Values.operator.cluster.isSingleNode }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.cluster "enableNodeAffinity" }}
-  enableNodeAffinity: {{ .Values.simplyblock.cluster.enableNodeAffinity }}
+  {{- if hasKey .Values.operator.cluster "enableNodeAffinity" }}
+  enableNodeAffinity: {{ .Values.operator.cluster.enableNodeAffinity }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.cluster "strictNodeAntiAffinity" }}
-  strictNodeAntiAffinity: {{ .Values.simplyblock.cluster.strictNodeAntiAffinity }}
+  {{- if hasKey .Values.operator.cluster "strictNodeAntiAffinity" }}
+  strictNodeAntiAffinity: {{ .Values.operator.cluster.strictNodeAntiAffinity }}
   {{- end }}
 
-  {{- if .Values.simplyblock.cluster.capWarn }}
-  capWarn: {{ .Values.simplyblock.cluster.capWarn }}
+  {{- if hasKey .Values.operator.cluster "stripeWdata" }}
+  stripeWdata: {{ .Values.operator.cluster.stripeWdata }}
   {{- end }}
 
-  {{- if .Values.simplyblock.cluster.capCrit }}
-  capCrit: {{ .Values.simplyblock.cluster.capCrit }}
+  {{- if hasKey .Values.operator.cluster "stripeWparity" }}
+  stripeWparity: {{ .Values.operator.cluster.stripeWparity }}
   {{- end }}
 
-  {{- if .Values.simplyblock.cluster.provCapWarn }}
-  provCapWarn: {{ .Values.simplyblock.cluster.provCapWarn }}
+  {{- if hasKey .Values.operator.cluster "qpairCount" }}
+  qpairCount: {{ .Values.operator.cluster.qpairCount }}
   {{- end }}
 
-  {{- if .Values.simplyblock.cluster.provCapCrit }}
-  provCapCrit: {{ .Values.simplyblock.cluster.provCapCrit }}
+  {{- if hasKey .Values.operator.cluster "clientQpairCount" }}
+  clientQpairCount: {{ .Values.operator.cluster.clientQpairCount }}
+  {{- end }}
+
+  {{- if .Values.operator.cluster.haType }}
+  haType: {{ .Values.operator.cluster.haType }}
+  {{- end }}
+
+  {{- if .Values.operator.cluster.capWarn }}
+  capWarn: {{ .Values.operator.cluster.capWarn }}
+  {{- end }}
+
+  {{- if .Values.operator.cluster.capCrit }}
+  capCrit: {{ .Values.operator.cluster.capCrit }}
+  {{- end }}
+
+  {{- if .Values.operator.cluster.provCapWarn }}
+  provCapWarn: {{ .Values.operator.cluster.provCapWarn }}
+  {{- end }}
+
+  {{- if .Values.operator.cluster.provCapCrit }}
+  provCapCrit: {{ .Values.operator.cluster.provCapCrit }}
   {{- end }}
 {{- end }}
 
 ---
-{{- if .Values.simplyblock.pool }}
+{{- if .Values.operator.pool }}
 apiVersion: simplyblock.simplyblock.io/v1alpha1
 kind: SimplyBlockPool
 metadata:
-  name: {{ .Values.simplyblock.pool.name }}
+  name: {{ .Values.operator.pool.name }}
   namespace: {{ .Release.Namespace }}
 spec:
-  name: {{ .Values.simplyblock.pool.name }}
-  clusterName: {{ .Values.simplyblock.cluster.clusterName }}
+  name: {{ .Values.operator.pool.name }}
+  clusterName: {{ .Values.operator.cluster.clusterName }}
 
-  {{- if .Values.simplyblock.pool.capacityLimit }}
-  capacityLimit: {{ .Values.simplyblock.pool.capacityLimit | quote }}
+  {{- if .Values.operator.pool.capacityLimit }}
+  capacityLimit: {{ .Values.operator.pool.capacityLimit | quote }}
   {{- end }}
 {{- end }}
 
 ---
-{{- if .Values.simplyblock.lvol }}
+{{- if .Values.operator.lvol }}
 apiVersion: simplyblock.simplyblock.io/v1alpha1
 kind: SimplyBlockLvol
 metadata:
-  name: {{ .Values.simplyblock.lvol.name }}
+  name: {{ .Values.operator.lvol.name }}
   namespace: {{ .Release.Namespace }}
 spec:
-  clusterName: {{ .Values.simplyblock.cluster.clusterName }}
-  poolName: {{ .Values.simplyblock.pool.name }}
+  clusterName: {{ .Values.operator.cluster.clusterName }}
+  poolName: {{ .Values.operator.pool.name }}
+
+  {{- if hasKey .Values.operator.pool "qosIOPSLimit" }}
+  qosIOPSLimit: {{ .Values.operator.pool.qosIOPSLimit }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.pool "rwLimit" }}
+  rwLimit: {{ .Values.operator.pool.rwLimit }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.pool "rLimit" }}
+  rLimit: {{ .Values.operator.pool.rLimit }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.pool "wLimit" }}
+  wLimit: {{ .Values.operator.pool.wLimit }}
+  {{- end }}
 {{- end }}
 
 ---
-{{- if .Values.simplyblock.storageNodes }}
+{{- if .Values.operator.storageNodes }}
 apiVersion: simplyblock.simplyblock.io/v1alpha1
 kind: SimplyBlockStorageNode
 metadata:
-  name: {{ .Values.simplyblock.storageNodes.name }}
+  name: {{ .Values.operator.storageNodes.name }}
   namespace: {{ .Release.Namespace }}
 spec:
-  clusterName: {{ .Values.simplyblock.cluster.clusterName }}
+  clusterName: {{ .Values.operator.cluster.clusterName }}
 
-  {{- if .Values.simplyblock.storageNodes.clusterImage }}
-  clusterImage: {{ .Values.simplyblock.storageNodes.clusterImage }}
+  clusterImage: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}" 
+
+  {{- if .Values.operator.storageNodes.mgmtIfc }}
+  mgmtIfc: {{ .Values.operator.storageNodes.mgmtIfc }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.mgmtIfc }}
-  mgmtIfc: {{ .Values.simplyblock.storageNodes.mgmtIfc }}
+  {{- if .Values.operator.storageNodes.spdkImage }}
+  spdkImage: {{ .Values.operator.storageNodes.spdkImage }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.maxLVol }}
-  maxLVol: {{ .Values.simplyblock.storageNodes.maxLVol }}
+  {{- if .Values.operator.storageNodes.maxLVol }}
+  maxLVol: {{ .Values.operator.storageNodes.maxLVol }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.maxSize }}
-  maxSize: {{ .Values.simplyblock.storageNodes.maxSize | quote }}
+  {{- if .Values.operator.storageNodes.maxSize }}
+  maxSize: {{ .Values.operator.storageNodes.maxSize | quote }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.storageNodes "partitions" }}
-  partitions: {{ .Values.simplyblock.storageNodes.partitions }}
+  {{- if hasKey .Values.operator.storageNodes "partitions" }}
+  partitions: {{ .Values.operator.storageNodes.partitions }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.corePercentage }}
-  corePercentage: {{ .Values.simplyblock.storageNodes.corePercentage }}
+  {{- if .Values.operator.storageNodes.corePercentage }}
+  corePercentage: {{ .Values.operator.storageNodes.corePercentage }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.storageNodes "spdkDebug" }}
-  spdkDebug: {{ .Values.simplyblock.storageNodes.spdkDebug }}
+  {{- if hasKey .Values.operator.storageNodes "jmPercent" }}
+  jmPercent: {{ .Values.operator.storageNodes.jmPercent }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.storageNodes "coreIsolation" }}
-  coreIsolation: {{ .Values.simplyblock.storageNodes.coreIsolation }}
+  {{- if hasKey .Values.operator.storageNodes "haJM" }}
+  haJM: {{ .Values.operator.storageNodes.haJM }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.workerNodes }}
+  {{- if hasKey .Values.operator.storageNodes "spdkDebug" }}
+  spdkDebug: {{ .Values.operator.storageNodes.spdkDebug }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.storageNodes "idDeviceByNQN" }}
+  idDeviceByNQN: {{ .Values.operator.storageNodes.idDeviceByNQN }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.storageNodes "coreIsolation" }}
+  coreIsolation: {{ .Values.operator.storageNodes.coreIsolation }}
+  {{- end }}
+
+  {{- if .Values.operator.storageNodes.workerNodes }}
   workerNodes:
-  {{- range .Values.simplyblock.storageNodes.workerNodes }}
+  {{- range .Values.operator.storageNodes.workerNodes }}
     - {{ . }}
   {{- end }}
   {{- end }}
 {{- end }}
 
 ---
-{{- if .Values.simplyblock.devices }}
+{{- if .Values.operator.devices }}
 apiVersion: simplyblock.simplyblock.io/v1alpha1
 kind: SimplyBlockDevice
 metadata:
-  name: {{ .Values.simplyblock.devices.name }}
+  name: {{ .Values.operator.devices.name }}
   namespace: {{ .Release.Namespace }}
 spec:
-  clusterName: {{ .Values.simplyblock.cluster.clusterName }}
+  clusterName: {{ .Values.operator.cluster.clusterName }}
 {{- end }}
 
 ---
-{{- if .Values.simplyblock.tasks }}
+{{- if .Values.operator.tasks }}
 apiVersion: simplyblock.simplyblock.io/v1alpha1
 kind: SimplyBlockTask
 metadata:
-  name: {{ .Values.simplyblock.tasks.name }}
+  name: {{ .Values.operator.tasks.name }}
   namespace: {{ .Release.Namespace }}
 spec:
-  clusterName: {{ .Values.simplyblock.cluster.clusterName }}
+  clusterName: {{ .Values.operator.cluster.clusterName }}
+{{- end }}
 {{- end }}

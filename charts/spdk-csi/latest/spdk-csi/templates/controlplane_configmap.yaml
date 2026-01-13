@@ -1,3 +1,4 @@
+{{- if .Values.controlplane.enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -6,8 +7,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
 
 data:
-  LOG_LEVEL: {{ .Values.observability.level }}
-  LOG_DELETION_INTERVAL: {{ .Values.observability.deletionInterval }}
+  LOG_LEVEL: {{ .Values.controlplane.observability.level }}
+  LOG_DELETION_INTERVAL: {{ .Values.controlplane.observability.deletionInterval }}
 
 ---
 
@@ -119,7 +120,7 @@ data:
     type: FILESYSTEM
     config:
       directory: /mnt/thanos
-{{- if .Values.observability.enabled }}
+{{- if .Values.controlplane.observability.enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -903,7 +904,7 @@ data:
             type: slack
             settings:
               username: grafana_bot
-              url: '{{ .Values.observability.grafana.contactPoint }}'
+              url: '{{ .Values.controlplane.observability.grafana.contactPoint }}'
               title: |
                 '{{ "{{" }} template "slack.title" . {{ "}}" }}'
               text: |
@@ -944,4 +945,5 @@ data:
         options:
           path: /var/lib/grafana/dashboards
           foldersFromFilesStructure: true
+{{- end }}
 {{- end }}

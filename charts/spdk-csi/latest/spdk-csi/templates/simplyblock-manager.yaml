@@ -1,3 +1,4 @@
+{{- if .Values.operator.enabled }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -23,8 +24,8 @@ spec:
         fsGroup: 65532
       serviceAccountName: simplyblock-manager
       containers:
-        - image: simplyblock/simplyblock-manager:main
-          imagePullPolicy: Always
+        - image: "{{ .Values.image.operator.repository }}:{{ .Values.image.operator.tag }}"
+          imagePullPolicy: {{ .Values.image.operator.pullPolicy }}
           name: manager
           env:
             - name: WATCH_NAMESPACE
@@ -194,3 +195,4 @@ subjects:
   name: simplyblock-manager
   namespace: {{ .Release.Namespace }}
   
+{{- end }}
