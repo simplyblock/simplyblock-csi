@@ -102,13 +102,13 @@ spdkdev:
 # Configuration for the CSI to connect to the cluster
 csiConfig:
   simplybk:
-    uuid: 963c9d0a-4506-43c3-a722-0b7c8b157038
-    ip: https://o5ls1ykzbb.execute-api.eu-central-1.amazonaws.com
+    uuid:
+    ip:
 
 # Configuration for the csiSecret
 csiSecret:
   simplybk:
-    secret: 2BAbQTPEDi4o73VHymg2
+    secret:
   simplybkPvc:
     crypto_key1: N2IzNjk1MjY4ZTJhNjYxMWEyNWFjNGIxZWUxNWYyN2Y5YmY2ZWE5NzgzZGFkYTY2YTRhNzMwZWJmMDQ5MmJmZA==
     crypto_key2: Nzg1MDU2MzZjODEzM2Q5YmU0MmUzNDdmODI3ODViODFhODc5Y2Q4MTMzMDQ2ZjhmYzBiMzZmMTdiMDc4YWQwYw==
