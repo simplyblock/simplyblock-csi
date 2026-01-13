@@ -108,19 +108,19 @@ spec:
   capacityLimit: {{ .Values.operator.pool.capacityLimit | quote }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.pool "qosIOPSLimit" }}
+  {{- if .Values.operator.pool.qosIOPSLimit }}
   qosIOPSLimit: {{ .Values.operator.pool.qosIOPSLimit }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.pool "rwLimit" }}
+  {{- if .Values.operator.pool.rwLimit }}
   rwLimit: {{ .Values.operator.pool.rwLimit }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.pool "rLimit" }}
+  {{- if .Values.operator.pool.rLimit }}
   rLimit: {{ .Values.operator.pool.rLimit }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.pool "wLimit" }}
+  {{- if .Values.operator.pool.wLimit }}
   wLimit: {{ .Values.operator.pool.wLimit }}
   {{- end }}
 
@@ -136,22 +136,6 @@ metadata:
 spec:
   clusterName: {{ .Values.operator.cluster.clusterName }}
   poolName: {{ .Values.operator.pool.name }}
-
-  {{- if hasKey .Values.operator.pool "qosIOPSLimit" }}
-  qosIOPSLimit: {{ .Values.operator.pool.qosIOPSLimit }}
-  {{- end }}
-
-  {{- if hasKey .Values.operator.pool "rwLimit" }}
-  rwLimit: {{ .Values.operator.pool.rwLimit }}
-  {{- end }}
-
-  {{- if hasKey .Values.operator.pool "rLimit" }}
-  rLimit: {{ .Values.operator.pool.rLimit }}
-  {{- end }}
-
-  {{- if hasKey .Values.operator.pool "wLimit" }}
-  wLimit: {{ .Values.operator.pool.wLimit }}
-  {{- end }}
 {{- end }}
 
 ---

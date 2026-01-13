@@ -39,7 +39,7 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: public.ecr.aws/simply-block/simplyblock
-    tag: "25.10.4"
+    tag: "improved_user_experience" #"25.10.4"
     pullPolicy: Always
   storageNode:
     repository: simplyblock/storage-node-handler
@@ -283,7 +283,10 @@ operator:
     jmPercent: 30
     spdkDebug: false
     coreIsolation: false
-    workerNodes: []
+    workerNodes:
+      - vm02.simplyblock3.localdomain
+      - vm03.simplyblock3.localdomain
+      - vm04.simplyblock3.localdomain
     haJM: false
     idDeviceByNQN: false
     coreMask: 
@@ -295,7 +298,6 @@ operator:
     nodesPerSocket: 
     dataNIC: []
     haJmCount:
-
     openShiftCluster: false
 
   devices:
