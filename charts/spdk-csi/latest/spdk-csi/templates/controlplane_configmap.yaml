@@ -83,15 +83,6 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: simplyblock-tcp-services
-  namespace: {{ .Release.Namespace }}
-data:
-  "12202": "{{ .Release.Namespace }}/simplyblock-graylog:12201"
-  "4501": "{{ .Release.Namespace }}/simplyblock-fdb-cluster-external:4501"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: simplyblock-fdb-entrypoint-script
   namespace: {{ .Release.Namespace }}
 data:

@@ -385,22 +385,6 @@ prometheus:
   kube-state-metrics:
     enabled: false
 
-ingress:
-  enabled: false
-  ingressClassName: nginx
-  useDNS: false
-  host: ""
-  tlsSecret: 
-  controller:
-    hostNetwork: true  
-    dnsPolicy: ClusterFirstWithHostNet
-    service:
-      type: ClusterIP
-    extraArgs:
-      tcp-services-configmap: "simplyblock/simplyblock-tcp-services"
-    nodeSelector: {}
-
-
 simplyblock:
   cluster:
     clusterName: simplyblock-cluster
