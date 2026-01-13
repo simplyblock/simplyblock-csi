@@ -31,6 +31,7 @@ spec:
         {{ .Values.node.nodeSelector.key }}: {{ .Values.node.nodeSelector.value }}
       {{- end }}
       hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       {{- if .Values.node.tolerations.create }}
       tolerations:
       {{- range .Values.node.tolerations.list }}
