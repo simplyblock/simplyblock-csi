@@ -208,7 +208,7 @@ storagenode:
       
 
 controlplane:
-  enabled: false
+  enabled: true
   observability:
     enabled: false
     secret: "sWbpOgba1bKnCfcPkVQi"
@@ -233,7 +233,7 @@ controlplane:
     multiAZ: false
 
 operator:
-  enabled: false
+  enabled: true
   cluster:
     clusterName: simplyblock-cluster
     mgmtIfc: eth0

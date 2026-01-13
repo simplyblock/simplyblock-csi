@@ -107,7 +107,7 @@ spec:
   {{- if .Values.operator.pool.capacityLimit }}
   capacityLimit: {{ .Values.operator.pool.capacityLimit | quote }}
   {{- end }}
-  
+
   {{- if hasKey .Values.operator.pool "qosIOPSLimit" }}
   qosIOPSLimit: {{ .Values.operator.pool.qosIOPSLimit }}
   {{- end }}
@@ -209,49 +209,49 @@ spec:
   {{- if hasKey .Values.operator.storageNodes "coreIsolation" }}
   coreIsolation: {{ .Values.operator.storageNodes.coreIsolation }}
   {{- end }}
-  {{- if .Values.simplyblock.storageNodes.coreMask }}
-  coreMask: {{ .Values.simplyblock.storageNodes.coreMask }}
+  {{- if .Values.operator.storageNodes.coreMask }}
+  coreMask: {{ .Values.operator.storageNodes.coreMask }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.pcieAllowList }}
+  {{- if .Values.operator.storageNodes.pcieAllowList }}
   pcieAllowList:
-  {{- range .Values.simplyblock.storageNodes.pcieAllowList }}
+  {{- range .Values.operator.storageNodes.pcieAllowList }}
     - {{ . }}
   {{- end }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.pcieDenyList }}
+  {{- if .Values.operator.storageNodes.pcieDenyList }}
   pcieDenyList:
-  {{- range .Values.simplyblock.storageNodes.pcieDenyList }}
+  {{- range .Values.operator.storageNodes.pcieDenyList }}
     - {{ . }}
   {{- end }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.pcieModel }}
-  pcieModel: {{ .Values.simplyblock.storageNodes.pcieModel }}
+  {{- if .Values.operator.storageNodes.pcieModel }}
+  pcieModel: {{ .Values.operator.storageNodes.pcieModel }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.driveSizeRange }}
-  driveSizeRange: {{ .Values.simplyblock.storageNodes.driveSizeRange }}
+  {{- if .Values.operator.storageNodes.driveSizeRange }}
+  driveSizeRange: {{ .Values.operator.storageNodes.driveSizeRange }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.storageNodes "socketsToUse" }}
-  socketsToUse: {{ .Values.simplyblock.storageNodes.socketsToUse }}
+  {{- if hasKey .Values.operator.storageNodes "socketsToUse" }}
+  socketsToUse: {{ .Values.operator.storageNodes.socketsToUse }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.storageNodes "nodesPerSocket" }}
-  nodesPerSocket: {{ .Values.simplyblock.storageNodes.nodesPerSocket }}
+  {{- if hasKey .Values.operator.storageNodes "nodesPerSocket" }}
+  nodesPerSocket: {{ .Values.operator.storageNodes.nodesPerSocket }}
   {{- end }}
 
-  {{- if .Values.simplyblock.storageNodes.dataNIC }}
+  {{- if .Values.operator.storageNodes.dataNIC }}
   dataNIC:
-  {{- range .Values.simplyblock.storageNodes.dataNIC }}
+  {{- range .Values.operator.storageNodes.dataNIC }}
     - {{ . }}
   {{- end }}
   {{- end }}
 
-  {{- if hasKey .Values.simplyblock.storageNodes "haJmCount" }}
-  haJmCount: {{ .Values.simplyblock.storageNodes.haJmCount }}
+  {{- if hasKey .Values.operator.storageNodes "haJmCount" }}
+  haJmCount: {{ .Values.operator.storageNodes.haJmCount }}
   {{- end }}
 
   {{- if .Values.operator.storageNodes.workerNodes }}

@@ -106,9 +106,9 @@ spec:
               name: simplyblock-config
               key: LOG_LEVEL
         - name: LVOL_NVMF_PORT_START
-          value: "{{ .Values.ports.lvolNvmfPortStart }}"
+          value: "{{ .Values.controlplane.ports.lvolNvmfPortStart }}"
         - name: ENABLE_MONITORING
-          value: "{{ .Values.observability.enabled }}"
+          value: "{{ .Values.controlplane.observability.enabled }}"
         - name: K8S_NAMESPACE
           valueFrom:
             fieldRef:

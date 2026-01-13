@@ -67,5 +67,3 @@ spec:
       targetPort: 3000
 {{- end }}
 {{- end }}
-
-{{- end }}
