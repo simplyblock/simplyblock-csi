@@ -48,6 +48,34 @@ spec:
   haType: {{ .Values.operator.cluster.haType }}
   {{- end }}
 
+  {{- if hasKey .Values.operator.cluster "distrBs" }}
+  distrBs: {{ .Values.operator.cluster.distrBs }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "distrChunkBs" }}
+  distrChunkBs: {{ .Values.operator.cluster.distrChunkBs }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "blkSize" }}
+  blkSize: {{ .Values.operator.cluster.blkSize }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "pageSizeInBlocks" }}
+  pageSizeInBlocks: {{ .Values.operator.cluster.pageSizeInBlocks }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "maxQueueSize" }}
+  maxQueueSize: {{ .Values.operator.cluster.maxQueueSize }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "inflightIOThreshold" }}
+  inflightIOThreshold: {{ .Values.operator.cluster.inflightIOThreshold }}
+  {{- end }}
+
+  {{- if .Values.operator.cluster.qosClasses }}
+  qosClasses: {{ .Values.operator.cluster.qosClasses | quote }}
+  {{- end }}
+
   {{- if .Values.operator.cluster.capWarn }}
   capWarn: {{ .Values.operator.cluster.capWarn }}
   {{- end }}
@@ -79,6 +107,23 @@ spec:
   {{- if .Values.operator.pool.capacityLimit }}
   capacityLimit: {{ .Values.operator.pool.capacityLimit | quote }}
   {{- end }}
+  
+  {{- if hasKey .Values.operator.pool "qosIOPSLimit" }}
+  qosIOPSLimit: {{ .Values.operator.pool.qosIOPSLimit }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.pool "rwLimit" }}
+  rwLimit: {{ .Values.operator.pool.rwLimit }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.pool "rLimit" }}
+  rLimit: {{ .Values.operator.pool.rLimit }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.pool "wLimit" }}
+  wLimit: {{ .Values.operator.pool.wLimit }}
+  {{- end }}
+
 {{- end }}
 
 ---
@@ -163,6 +208,50 @@ spec:
 
   {{- if hasKey .Values.operator.storageNodes "coreIsolation" }}
   coreIsolation: {{ .Values.operator.storageNodes.coreIsolation }}
+  {{- end }}
+  {{- if .Values.simplyblock.storageNodes.coreMask }}
+  coreMask: {{ .Values.simplyblock.storageNodes.coreMask }}
+  {{- end }}
+
+  {{- if .Values.simplyblock.storageNodes.pcieAllowList }}
+  pcieAllowList:
+  {{- range .Values.simplyblock.storageNodes.pcieAllowList }}
+    - {{ . }}
+  {{- end }}
+  {{- end }}
+
+  {{- if .Values.simplyblock.storageNodes.pcieDenyList }}
+  pcieDenyList:
+  {{- range .Values.simplyblock.storageNodes.pcieDenyList }}
+    - {{ . }}
+  {{- end }}
+  {{- end }}
+
+  {{- if .Values.simplyblock.storageNodes.pcieModel }}
+  pcieModel: {{ .Values.simplyblock.storageNodes.pcieModel }}
+  {{- end }}
+
+  {{- if .Values.simplyblock.storageNodes.driveSizeRange }}
+  driveSizeRange: {{ .Values.simplyblock.storageNodes.driveSizeRange }}
+  {{- end }}
+
+  {{- if hasKey .Values.simplyblock.storageNodes "socketsToUse" }}
+  socketsToUse: {{ .Values.simplyblock.storageNodes.socketsToUse }}
+  {{- end }}
+
+  {{- if hasKey .Values.simplyblock.storageNodes "nodesPerSocket" }}
+  nodesPerSocket: {{ .Values.simplyblock.storageNodes.nodesPerSocket }}
+  {{- end }}
+
+  {{- if .Values.simplyblock.storageNodes.dataNIC }}
+  dataNIC:
+  {{- range .Values.simplyblock.storageNodes.dataNIC }}
+    - {{ . }}
+  {{- end }}
+  {{- end }}
+
+  {{- if hasKey .Values.simplyblock.storageNodes "haJmCount" }}
+  haJmCount: {{ .Values.simplyblock.storageNodes.haJmCount }}
   {{- end }}
 
   {{- if .Values.operator.storageNodes.workerNodes }}

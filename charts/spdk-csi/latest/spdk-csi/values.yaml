@@ -242,32 +242,32 @@ operator:
     enableNodeAffinity: false
     stripeWdata: 4
     stripeWparity: 2
-    haType: ""
+    haType:
     isSingleNode: false
     strictNodeAntiAffinity: false
 
-    qpairCount: 128
-    distrBs: 4096
-    distrChunkBs: 65536
-    blkSize: 4096
-    pageSizeInBlocks: 256
-    maxQueueSize: 1024
-    inflightIOThreshold: 512
-    clientQpairCount: 64
+    qpairCount:
+    distrBs:
+    distrChunkBs:
+    blkSize:
+    pageSizeInBlocks:
+    maxQueueSize:
+    inflightIOThreshold:
+    clientQpairCount:
 
-    qosClasses: ""
-    capWarn: 80
-    capCrit: 90
-    provCapWarn: 120
-    provCapCrit: 150
+    qosClasses:
+    capWarn:
+    capCrit:
+    provCapWarn:
+    provCapCrit:
 
   pool:
     name: simplyblock-pool
-    capacityLimit: 100Gi  
-    qosIOPSLimit: 0
-    rwLimit: 0
-    rLimit: 0
-    wLimit: 0
+    capacityLimit: 
+    qosIOPSLimit: 
+    rwLimit:
+    rLimit:
+    wLimit:
 
   lvol:
     name: simplyblock-lvol
@@ -286,13 +286,13 @@ operator:
     workerNodes: []
     haJM: false
     idDeviceByNQN: false
-    coreMask: ""
+    coreMask: 
     pcieAllowList: []
     pcieDenyList: []
-    pcieModel: ""
-    driveSizeRange: ""
-    socketsToUse: 1
-    nodesPerSocket: 1
+    pcieModel:
+    driveSizeRange:
+    socketsToUse: 
+    nodesPerSocket: 
     dataNIC: []
     haJmCount:
 
