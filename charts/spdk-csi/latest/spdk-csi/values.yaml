@@ -47,7 +47,7 @@ image:
     pullPolicy: Always
   operator:
     repository: simplyblock/simplyblock-manager
-    tag: remove_cr_object_finalizers
+    tag: support_toleration_snode_cr
     pullPolicy: Always
   mgmtAPI:
     repository: python

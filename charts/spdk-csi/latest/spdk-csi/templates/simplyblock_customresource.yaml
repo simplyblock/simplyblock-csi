@@ -244,15 +244,23 @@ spec:
     - {{ . }}
   {{- end }}
   {{- end }}
+
   {{- if and .Values.operator.storageNodes.tolerations .Values.operator.storageNodes.tolerations.create }}
   tolerations:
   {{- range .Values.operator.storageNodes.tolerations.list }}
-    - {{- if hasKey . "key" }}key: {{ .key | quote }}{{- end }}
-      {{- if hasKey . "operator" }}operator: {{ .operator }}{{- end }}
-      {{- if hasKey . "value" }}value: {{ .value | quote }}{{- end }}
-      {{- if hasKey . "effect" }}effect: {{ .effect }}{{- end }}
+    - {{- if .key }}
+      key: {{ .key | quote }}
+      {{- end }}
+      operator: {{ default "Exists" .operator }}
+      {{- if .value }}
+      value: {{ .value | quote }}
+      {{- end }}
+      {{- if .effect }}
+      effect: {{ .effect }}
+      {{- end }}
   {{- end }}
   {{- end }}
+
 {{- end }}
 
 ---
