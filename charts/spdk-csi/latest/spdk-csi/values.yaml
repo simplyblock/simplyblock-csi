@@ -47,7 +47,7 @@ image:
     pullPolicy: Always
   operator:
     repository: simplyblock/simplyblock-manager
-    tag: main
+    tag: remove_cr_object_finalizers
     pullPolicy: Always
   mgmtAPI:
     repository: python
@@ -76,7 +76,7 @@ controller:
     value:
 
 storageclass:
-  create: true
+  create: false
   volumeBindingMode: WaitForFirstConsumer
   zoneClusterMap: {}
   allowedTopologyZones: []
@@ -299,6 +299,13 @@ operator:
     dataNIC: []
     haJmCount:
     openShiftCluster: false
+    tolerations:
+      create: true
+      list:
+      - operator: Exists
+        effect:
+        key: 
+        value:
 
   devices:
     name: simplyblock-devices
