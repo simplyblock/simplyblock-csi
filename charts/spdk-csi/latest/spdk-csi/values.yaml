@@ -210,7 +210,7 @@ storagenode:
 controlplane:
   enabled: true
   observability:
-    enabled: true
+    enabled: false
     secret: "sWbpOgba1bKnCfcPkVQi"
     deletionInterval: "3d"
     level: "DEBUG"

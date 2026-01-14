@@ -541,7 +541,7 @@ spec:
             - name: GRAYLOG_HTTP_BIND_ADDRESS
               value: "0.0.0.0:9000"
             - name: GRAYLOG_HTTP_EXTERNAL_URI
-              value: "http://localhost/graylog/"
+              value: "http://localhost:9000/"
             - name: GRAYLOG_ELASTICSEARCH_HOSTS
               value: "http://opensearch-cluster-master:9200"
             - name: GRAYLOG_MONGODB_URI
@@ -739,7 +739,7 @@ spec:
             - name: GF_INSTALL_PLUGINS
               value: "grafana-opensearch-datasource"
             - name: GF_SERVER_ROOT_URL
-              value: "http://localhost/grafana"
+              value: "http://localhost:3000"
           volumeMounts:
             - name: datasource-config
               mountPath: /etc/grafana/provisioning/datasources
