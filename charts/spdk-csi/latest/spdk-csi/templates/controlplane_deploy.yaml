@@ -627,9 +627,9 @@ spec:
             - --index-cache-size=500MB
             - --chunk-pool-size=500MB
           ports:
-            - name: grpc
+            - name: store-grpc
               containerPort: 10901
-            - name: http
+            - name: store-http
               containerPort: 10902
           volumeMounts:
             - name: objstore-config
@@ -654,9 +654,9 @@ spec:
             - --store=simplyblock-prometheus:10901
           ports:
             - containerPort: 9091
-              name: http
+              name: query-http
             - containerPort: 10911
-              name: grpc
+              name: query-grpc
           resources:
             requests:
               cpu: "100m"
@@ -679,7 +679,7 @@ spec:
             - --wait
           ports:
             - containerPort: 10922
-              name: http
+              name: compact-http
           volumeMounts:
             - name: objstore-config
               mountPath: /etc/thanos

@@ -210,7 +210,7 @@ storagenode:
 controlplane:
   enabled: true
   observability:
-    enabled: false
+    enabled: true
     secret: "sWbpOgba1bKnCfcPkVQi"
     deletionInterval: "3d"
     level: "DEBUG"
@@ -354,8 +354,6 @@ opensearch:
       memory: "3Gi"
 
   extraEnvs:
-    - name: OPENSEARCH_JAVA_OPTS
-      value: "-Xms1g -Xmx1g"
     - name: bootstrap.memory_lock
       value: "true"
     - name: action.auto_create_index
