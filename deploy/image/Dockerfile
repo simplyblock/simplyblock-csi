@@ -20,5 +20,9 @@ COPY spdkcsi /usr/local/bin/spdkcsi
 RUN apk update && \
     apk add nvme-cli open-iscsi e2fsprogs xfsprogs blkid xfsprogs-extra e2fsprogs-extra util-linux
 
+RUN useradd -ms /bin/bash simplyblock
+RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+USER simplyblock
+
 ENTRYPOINT ["/usr/local/bin/spdkcsi"]
 
