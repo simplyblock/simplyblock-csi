@@ -14,8 +14,7 @@ RUN dnf -y update && \
         e2fsprogs \
         xfsprogs \
         util-linux \
-        sudo \
-    && dnf clean all
+        sudo
 
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
