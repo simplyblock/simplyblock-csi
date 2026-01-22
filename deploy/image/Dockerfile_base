@@ -15,9 +15,7 @@ RUN dnf -y update && \
         xfsprogs \
         util-linux \
         sudo \
-        rpm \
-        redhat-release \
-        redhat-release-notes
+        rpm
 
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
