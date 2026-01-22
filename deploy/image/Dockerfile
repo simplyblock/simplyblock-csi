@@ -4,7 +4,7 @@
 #
 # XXX: pin alpine to 3.8 with e2fsprogs-1.44
 # e2fsprogs-1.45+ crashes my test vm when running mkfs.ext4
-FROM alpine:3.18
+FROM fedora:43
 LABEL name="simplyblock"
 LABEL vendor="Simplyblock"
 LABEL version="1.0.0"
@@ -17,13 +17,18 @@ COPY LICENSE /licenses/LICENSE
 
 COPY spdkcsi /usr/local/bin/spdkcsi
 
-RUN apk update && \
-    apk add nvme-cli open-iscsi e2fsprogs xfsprogs blkid xfsprogs-extra e2fsprogs-extra util-linux
+RUN dnf -y update && \
+    dnf -y install \
+        nvme-cli \
+        iscsi-initiator-utils \
+        e2fsprogs \
+        xfsprogs \
+        util-linux \
+        sudo \
+    && dnf clean all
 
-RUN useradd -r -u 10001 -g root simplyblock && \
-    chown -R 10001:0 /usr/local/bin/spdkcsi /licenses && \
-    chmod -R g+rwX /usr/local/bin/spdkcsi /licenses
-
-USER 10001
+RUN useradd -ms /bin/bash simplyblock
+RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+USER simplyblock
 
 ENTRYPOINT ["/usr/local/bin/spdkcsi"]
