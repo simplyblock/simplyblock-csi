@@ -1,0 +1,22 @@
+FROM fedora:43
+LABEL name="simplyblock"
+LABEL vendor="Simplyblock"
+LABEL version="1.0.0"
+LABEL release="1"
+LABEL summary="Simplyblock csi driver component"
+LABEL description="Simplyblock csi driver container"
+LABEL maintainer="developers@simplyblock.io"
+
+RUN dnf -y update && \
+    dnf -y install \
+        nvme-cli \
+        iscsi-initiator-utils \
+        e2fsprogs \
+        xfsprogs \
+        util-linux \
+        sudo \
+    && dnf clean all
+
+RUN useradd -ms /bin/bash simplyblock
+RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+USER simplyblock

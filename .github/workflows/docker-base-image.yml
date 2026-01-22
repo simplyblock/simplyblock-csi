@@ -1,0 +1,49 @@
+name: Docker Base Image Build
+
+on:
+  schedule:
+    - cron: '0 5 * * SUN'  # Sundays at 5am
+  workflow_dispatch:
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@master
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_GEOFFREY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_GEOFFREY }}
+        aws-region: us-east-1
+
+    - name: Login to ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      with:
+        registry-type: public
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Build & Push
+      run: |
+        SHORT_SHA=$(echo ${{ env.SHA }} | head -c 8)
+
+        docker buildx ls
+        docker buildx create --name mybuilder --bootstrap --use
+        docker buildx build --platform linux/amd64,linux/arm64 -t simplyblock/spdkcsi:base_image \
+        -t public.ecr.aws/simply-block/spdkcsi:base_image -f deploy/image/Dockerfile_base . --push
+
+        echo "::notice title=Docker.com::simplyblock/spdkcsi:base_image
+        echo "::notice title=AWS-ECR::public.ecr.aws/simply-block/spdkcsi:base_image
