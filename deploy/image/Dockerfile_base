@@ -15,7 +15,10 @@ RUN dnf -y update && \
         xfsprogs \
         util-linux \
         sudo \
-        rpm
+        rpm 
+        
+RUN wget https://registry.access.redhat.com/ubi9/ubi-minimal:9.3 -O /tmp/ubi-minimal.rpm && \
+    rpm -ivh --nodigest --nofiledigest /tmp/ubi-minimal.rpm
 
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
