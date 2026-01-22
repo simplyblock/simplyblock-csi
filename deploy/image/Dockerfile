@@ -4,7 +4,8 @@
 #
 # XXX: pin alpine to 3.8 with e2fsprogs-1.44
 # e2fsprogs-1.45+ crashes my test vm when running mkfs.ext4
-FROM fedora:43
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3
+
 LABEL name="simplyblock"
 LABEL vendor="Simplyblock"
 LABEL version="1.0.0"
@@ -17,15 +18,14 @@ COPY LICENSE /licenses/LICENSE
 
 COPY spdkcsi /usr/local/bin/spdkcsi
 
-RUN dnf -y update && \
-    dnf -y install \
+RUN microdnf install -y \
         nvme-cli \
         iscsi-initiator-utils \
         e2fsprogs \
         xfsprogs \
         util-linux \
         sudo \
-    && dnf clean all
+    && microdnf clean all
 
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
