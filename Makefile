@@ -43,6 +43,7 @@ all: spdkcsi lint test
 spdkcsi:
 	@echo === building spdkcsi binary
 	@CGO_ENABLED=0 GOARCH=$(GOARCH) GOOS=linux go build -buildvcs=false -o $(OUT_DIR)/spdkcsi ./cmd/
+	cp LICENSE $(OUT_DIR)/LICENSE
 
 # static code check, text lint
 # lint: golangci yamllint shellcheck mdl codespell
