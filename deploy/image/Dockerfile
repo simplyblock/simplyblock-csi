@@ -1,15 +1,61 @@
-# SPDX-License-Identifier: Apache-2.0
-# Copyright (c) Arm Limited and Contributors
-# Copyright (c) Intel Corporation
-#
-# XXX: pin alpine to 3.8 with e2fsprogs-1.44
-# e2fsprogs-1.45+ crashes my test vm when running mkfs.ext4
-FROM simplyblock/spdkcsi:base_image
+FROM fedora:43 AS builder
 
-COPY LICENSE /licenses/LICENSE
+RUN dnf -y update && \
+    dnf -y install \
+        nvme-cli \
+        iscsi-initiator-utils \
+        e2fsprogs \
+        e2fsprogs-extra \
+        xfsprogs \
+        xfsprogs-extra \
+        util-linux \
+        && dnf -y clean all
 
-COPY spdkcsi /usr/local/bin/spdkcsi
+RUN mkdir -p /out/bin /out/lib && \
+    for bin in \
+        /usr/sbin/nvme \
+        /usr/sbin/iscsiadm \
+        /usr/sbin/iscsid \
+        /usr/sbin/mkfs.ext4 \
+        /usr/sbin/fsck.ext4 \
+        /usr/sbin/resize2fs \
+        /usr/sbin/mkfs.xfs \
+        /usr/sbin/xfs_growfs \
+        /usr/sbin/blkid \
+        /usr/bin/uuidgen \
+    ; do \
+        cp -v $bin /out/bin/ ; \
+        ldd $bin | awk '/=>/ {print $3}' | xargs -I{} cp -v {} /out/lib/ || true ; \
+    done && \
+    cp -v /lib64/ld-linux-x86-64.so.2 /out/lib/
+
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal
+
+LABEL name="simplyblock" \
+      vendor="Simplyblock" \
+      version="1.0.0" \
+      release="1" \
+      summary="Simplyblock csi driver component" \
+      description="Simplyblock csi driver container" \
+      maintainer="developers@simplyblock.io"
+
+RUN microdnf -y update && \
+    microdnf -y install \
+        kmod \
+        util-linux \
+        sudo \
+        coreutils \
+        bash \
+        rpm \
+        && microdnf -y clean all
+
+COPY --from=builder /out/bin/ /usr/sbin/
+COPY --from=builder /out/lib/ /lib64/
+
+RUN /usr/sbin/nvme version || true
+
+RUN useradd -m -s /bin/bash simplyblock && \
+    echo "simplyblock ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 USER simplyblock
-
-ENTRYPOINT ["/usr/local/bin/spdkcsi"]

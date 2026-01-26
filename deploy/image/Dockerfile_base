@@ -15,19 +15,8 @@ RUN dnf -y update && \
         xfsprogs \
         util-linux \
         sudo \
-        rpm \
-        wget
+        rpm 
 
-ARG TARGETPLATFORM
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-        echo "ARM64 version"; \
-    	wget https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-clients-7.3.69-1.el9.aarch64.rpm; \
-        rpm -ivh --nodigest --nofiledigest foundationdb-clients-7* ; \
-    else \
-        echo "AMD64 version"; \
-        wget https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-clients-7.3.69-1.el7.x86_64.rpm; \
-        rpm -ivh --nodigest --nofiledigest foundationdb-clients-7* ; \
-    fi
 
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
