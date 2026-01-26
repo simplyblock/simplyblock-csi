@@ -7,10 +7,16 @@ ARG PKGS="nvme-cli libnvme \
           xfsprogs inih \
           util-linux"
 
-RUN dnf -y download --resolve --alldeps --destdir=/rpms \
+RUN dnf -y download \
+      --resolve --alldeps \
+      --setopt=install_weak_deps=False \
+      --setopt=best=False \
+      --destdir=/rpms \
+      --arch=x86_64,noarch \
       -x "centos*-release*" \
-      -x "*crypto-policies*" \
-      -x "coreutils*" \
+      -x "centos-stream-release*" \
+      -x "centos-release*" \
+      -x "fips-provider-next*" \
       -x "openssl*provider*" \
       $PKGS && \
     dnf -y clean all
