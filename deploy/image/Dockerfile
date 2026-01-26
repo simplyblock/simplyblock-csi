@@ -6,9 +6,16 @@ ARG PKGS="nvme-cli libnvme \
           e2fsprogs e2fsprogs-libs \
           xfsprogs inih \
           util-linux"
-RUN dnf -y download --destdir=/rpms --arch=x86_64,noarch $PKGS && dnf -y clean all
 
-FROM registry.access.redhat.com/ubi9/ubi
+RUN dnf -y download --resolve --alldeps --destdir=/rpms \
+      -x "centos*-release*" \
+      -x "*crypto-policies*" \
+      -x "coreutils*" \
+      -x "openssl*provider*" \
+      $PKGS && \
+    dnf -y clean all
+
+FROM registry.access.redhat.com/ubi9/ubi:9.3
 
 LABEL name="simplyblock" \
       vendor="Simplyblock" \
@@ -19,11 +26,11 @@ LABEL name="simplyblock" \
       maintainer="developers@simplyblock.io"
 
 RUN dnf -y update && \
-    dnf -y install kmod sudo bash util-linux && \
+    dnf -y install --setopt=install_weak_deps=False kmod sudo bash rpm util-linux && \
     dnf -y clean all
 
 COPY --from=rpms /rpms /tmp/rpms
-RUN dnf -y install --setopt=install_weak_deps=False --allowerasing /tmp/rpms/*.rpm && \
+RUN dnf -y install --disablerepo="*" --allowerasing /tmp/rpms/*.rpm && \
     rm -rf /tmp/rpms && \
     dnf -y clean all
 
