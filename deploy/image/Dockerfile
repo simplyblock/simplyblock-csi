@@ -4,7 +4,10 @@ RUN dnf -y install dnf-plugins-core && mkdir -p /rpms
 
 ARG PKGS="nvme-cli iscsi-initiator-utils e2fsprogs xfsprogs util-linux"
 
-RUN repoquery --requires --resolve --recursive --archlist=x86_64,noarch $PKGS \
+RUN dnf -y repoquery \
+      --requires --resolve --recursive \
+      --arch=x86_64,noarch \
+      $PKGS \
     | sort -u > /tmp/closure.txt && \
     dnf -y download --destdir=/rpms --arch=x86_64,noarch $(cat /tmp/closure.txt) && \
     dnf -y download --destdir=/rpms --arch=x86_64,noarch $PKGS && \
