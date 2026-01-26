@@ -1,5 +1,4 @@
-FROM fedora:43 AS builder
-
+FROM quay.io/centos/centos:stream9 AS builder
 RUN dnf -y update && \
     dnf -y install \
         nvme-cli \
@@ -24,10 +23,10 @@ RUN mkdir -p /out/bin /out/lib && \
     ; do \
         cp -v $bin /out/bin/ ; \
         ldd $bin | awk '/=>/ {print $3}' | xargs -I{} cp -v {} /out/lib/ || true ; \
-    done && \
-    cp -v /lib64/ld-linux-x86-64.so.2 /out/lib/
-
-
+        interp=$(readelf -l $bin | awk '/interpreter/ {print $NF}' | tr -d ']'); \
+        [ -n "$interp" ] && cp -v "$interp" /out/lib/ || true ; \
+    done
+    
 FROM registry.access.redhat.com/ubi9/ubi-minimal
 
 LABEL name="simplyblock" \
