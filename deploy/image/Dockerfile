@@ -51,7 +51,13 @@ COPY --from=builder /out/lib/ /lib64/
 
 RUN /usr/sbin/nvme version || true
 
+COPY LICENSE /licenses/LICENSE
+
+COPY spdkcsi /usr/local/bin/spdkcsi
+
 RUN useradd -m -s /bin/bash simplyblock && \
     echo "simplyblock ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 USER simplyblock
+
+ENTRYPOINT ["/usr/local/bin/spdkcsi"]
