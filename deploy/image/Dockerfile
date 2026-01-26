@@ -13,7 +13,7 @@ RUN dnf -y repoquery \
     dnf -y download --destdir=/rpms --arch=x86_64,noarch $PKGS && \
     dnf -y clean all
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal
+FROM registry.access.redhat.com/ubi9/ubi
 
 LABEL name="simplyblock" \
       vendor="Simplyblock" \
@@ -23,19 +23,14 @@ LABEL name="simplyblock" \
       description="Simplyblock csi driver container" \
       maintainer="developers@simplyblock.io"
 
-RUN microdnf -y update && \
-    microdnf -y install \
-      kmod \
-      sudo \
-      bash \
-      rpm \
-      util-linux \
-    && microdnf -y clean all
+RUN dnf -y update && \
+    dnf -y install kmod sudo bash util-linux && \
+    dnf -y clean all
 
 COPY --from=rpms /rpms /tmp/rpms
-RUN microdnf -y localinstall /tmp/rpms/*.rpm && \
+RUN dnf -y install /tmp/rpms/*.rpm && \
     rm -rf /tmp/rpms && \
-    microdnf -y clean all
+    dnf -y clean all
 
 COPY LICENSE /licenses/LICENSE
 COPY spdkcsi /usr/local/bin/spdkcsi
