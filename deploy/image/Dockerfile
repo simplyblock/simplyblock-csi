@@ -1,17 +1,8 @@
 FROM quay.io/centos/centos:stream9 AS rpms
 
 RUN dnf -y install dnf-plugins-core && mkdir -p /rpms
-
 ARG PKGS="nvme-cli iscsi-initiator-utils e2fsprogs xfsprogs util-linux"
-
-RUN dnf -y repoquery \
-      --requires --resolve --recursive \
-      --arch=x86_64,noarch \
-      $PKGS \
-    | sort -u > /tmp/closure.txt && \
-    dnf -y download --destdir=/rpms --arch=x86_64,noarch $(cat /tmp/closure.txt) && \
-    dnf -y download --destdir=/rpms --arch=x86_64,noarch $PKGS && \
-    dnf -y clean all
+RUN dnf -y download --destdir=/rpms --arch=x86_64,noarch $PKGS && dnf -y clean all
 
 FROM registry.access.redhat.com/ubi9/ubi
 
@@ -28,7 +19,7 @@ RUN dnf -y update && \
     dnf -y clean all
 
 COPY --from=rpms /rpms /tmp/rpms
-RUN dnf -y install /tmp/rpms/*.rpm && \
+RUN dnf -y install --allowerasing /tmp/rpms/*.rpm && \
     rm -rf /tmp/rpms && \
     dnf -y clean all
 
