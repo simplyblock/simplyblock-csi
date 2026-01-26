@@ -1,13 +1,13 @@
 FROM quay.io/centos/centos:stream9 AS rpms
 
-RUN dnf -y install dnf-plugins-core && \
-    mkdir -p /rpms && \
-    dnf -y download --resolve --destdir=/rpms \
-      nvme-cli \
-      iscsi-initiator-utils \
-      e2fsprogs \
-      xfsprogs \
-      util-linux && \
+RUN dnf -y install dnf-plugins-core && mkdir -p /rpms
+
+ARG PKGS="nvme-cli iscsi-initiator-utils e2fsprogs xfsprogs util-linux"
+
+RUN repoquery --requires --resolve --recursive --archlist=x86_64,noarch $PKGS \
+    | sort -u > /tmp/closure.txt && \
+    dnf -y download --destdir=/rpms --arch=x86_64,noarch $(cat /tmp/closure.txt) && \
+    dnf -y download --destdir=/rpms --arch=x86_64,noarch $PKGS && \
     dnf -y clean all
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal
@@ -30,7 +30,9 @@ RUN microdnf -y update && \
     && microdnf -y clean all
 
 COPY --from=rpms /rpms /tmp/rpms
-RUN rpm -Uvh /tmp/rpms/*.rpm && rm -rf /tmp/rpms
+RUN microdnf -y localinstall /tmp/rpms/*.rpm && \
+    rm -rf /tmp/rpms && \
+    microdnf -y clean all
 
 COPY LICENSE /licenses/LICENSE
 COPY spdkcsi /usr/local/bin/spdkcsi
