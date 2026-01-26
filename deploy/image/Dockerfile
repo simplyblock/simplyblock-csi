@@ -5,9 +5,7 @@ RUN dnf -y update && \
         nvme-cli \
         iscsi-initiator-utils \
         e2fsprogs \
-        e2fsprogs-extra \
         xfsprogs \
-        xfsprogs-extra \
         util-linux \
         && dnf -y clean all
 
