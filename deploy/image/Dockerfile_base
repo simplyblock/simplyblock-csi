@@ -14,6 +14,8 @@ RUN dnf -y update && \
         e2fsprogs \
         xfsprogs \
         util-linux \
+        kmod \ 
+        wget \
         sudo \
         rpm 
 
