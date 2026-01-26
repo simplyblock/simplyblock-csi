@@ -45,7 +45,6 @@ RUN microdnf -y update && \
         kmod \
         util-linux \
         sudo \
-        coreutils \
         bash \
         rpm \
         && microdnf -y clean all
