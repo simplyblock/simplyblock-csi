@@ -95,7 +95,7 @@ spec:
             exec:
               command:
                 [
-                  "/bin/sh", "-c",
+                  "sudo", "/bin/sh", "-c",
                   "modprobe nvme-tcp || echo failed to modprobe nvme-tcp && \
                   modprobe nvme-rdma || echo failed to modprobe nvme-rdma && \
                   if [ ! -f /var/lib/nvme/hostid ]; then uuidgen > /var/lib/nvme/hostid; fi && \
