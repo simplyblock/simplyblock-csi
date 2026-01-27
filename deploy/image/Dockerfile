@@ -11,5 +11,5 @@ COPY spdkcsi /usr/local/bin/spdkcsi
 RUN chmod 777 /usr/local/bin/spdkcsi
 
 USER simplyblock
-ENTRYPOINT ["/usr/local/bin/spdkcsi"]
+ENTRYPOINT ["sudo", "/usr/local/bin/spdkcsi"]
 
