@@ -11,7 +11,8 @@ USER simplyblock
 WORKDIR /app
 
 COPY spdkcsi .
-RUN chmod +x /app/spdkcsi
+RUN sudo chown simplyblock:simplyblock /app/spdkcsi
+RUN sudo chmod +x /app/spdkcsi
 
 ENTRYPOINT ["/app/spdkcsi"]
 
