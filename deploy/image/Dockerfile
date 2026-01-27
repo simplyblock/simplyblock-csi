@@ -6,10 +6,12 @@
 # e2fsprogs-1.45+ crashes my test vm when running mkfs.ext4
 FROM simplyblock/spdkcsi:base_image_rhel
 
-USER root
-COPY spdkcsi /usr/local/bin/spdkcsi
-RUN chmod 777 /usr/local/bin/spdkcsi
 
 USER simplyblock
-ENTRYPOINT ["sudo", "-E", "/usr/local/bin/spdkcsi"]
+WORKDIR /app
+
+COPY spdkcsi .
+RUN chmod +x /app/spdkcsi
+
+ENTRYPOINT ["/app/spdkcsi"]
 
