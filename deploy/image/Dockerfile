@@ -14,5 +14,4 @@ COPY spdkcsi .
 RUN sudo chown simplyblock:simplyblock /app/spdkcsi
 RUN sudo chmod +x /app/spdkcsi
 
-ENTRYPOINT ["/app/spdkcsi"]
-
+ENTRYPOINT ["sudo", "-E", "/app/spdkcsi"]
