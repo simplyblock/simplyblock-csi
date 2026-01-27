@@ -1,4 +1,4 @@
-FROM redhat/ubi10:latest
+FROM redhat/ubi9:latest
 LABEL name="simplyblock"
 LABEL vendor="Simplyblock"
 LABEL version="1.0.0"
@@ -6,15 +6,11 @@ LABEL release="1"
 LABEL summary="Simplyblock csi driver component"
 LABEL description="Simplyblock csi driver container"
 LABEL maintainer="developers@simplyblock.io"
+COPY LICENSE /licenses/LICENSE
 
-RUN yum -y update && \
-    yum -y install \
-        nvme-cli \
-        iscsi-initiator-utils \
-        e2fsprogs \
-        xfsprogs \
-        util-linux \
-        sudo
+RUN dnf install -y https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/x86_64/getPackage/oraclelinux-release-el9-1.0-26.el9.x86_64.rpm
+RUN dnf update -y --nogpgcheck
+RUN dnf install -y nvme-cli iscsi-initiator-utils e2fsprogs xfsprogs util-linux kmod wget sudo rpm --nogpgcheck
 
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
