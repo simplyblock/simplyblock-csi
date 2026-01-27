@@ -29,7 +29,7 @@ data:
       "clusters": [
         {
           "cluster_id": "{{ .Values.csiConfig.simplybk.uuid }}",
-          "workers": []
+          "workers": {{ toJson (default (list) .Values.storagenode.workers) }}
         }
       ]
     }

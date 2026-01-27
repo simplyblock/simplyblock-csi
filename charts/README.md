@@ -191,6 +191,7 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.sizeRange`               | The NVMe SSD device size range separated by - (e.g: `500G-1T`)                                                                                                 | `<empty>`                                                                |  |
 | `storagenode.coresPercentage`            | The percentage of cores to be used for spdk                                                                                                 | `<empty>`                                                                |  |
 | `storagenode.ubuntuHost`                 | Set to true if the worker node runs Ubuntu and needs the nvme-tcp kernel module installed                                                                                                 | `false`                                                                |  |
+| `storagenode.workers`                    | the list of worker nodes to be used as storage nodes                                                                                                 | `<empty>`                                                                |  |
 | `storagenode.openShiftCluster`           | Set to true if the worker node runs OpenShift and needs core isolation                                                                                                 | `false`                                                                |  |
 
 

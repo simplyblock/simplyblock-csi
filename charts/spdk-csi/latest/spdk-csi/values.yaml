@@ -198,6 +198,7 @@ storagenode:
   coresPercentage:
   ubuntuHost: false
   openShiftCluster: false
+  workers:
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node
