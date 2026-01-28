@@ -126,6 +126,9 @@ spec:
           {{- with (default list $.Values.storagenode.pciBlocked) }}
           - "--pci-blocked={{ join "," . }}"
           {{- end }}
+          {{- with (default list $.Values.storagenode.deviceNames) }}
+          - "--nvme-devices={{ join "," . }}"
+          {{- end }} 
           {{- if $.Values.storagenode.socketsToUse }}
           - "--sockets-to-use={{ $.Values.storagenode.socketsToUse }}"
           {{- end }}
@@ -134,7 +137,7 @@ spec:
           {{- end }}
           {{- if $.Values.storagenode.deviceModel }}
           - "--device-model={{ $.Values.storagenode.deviceModel }}"
-          {{- end }}
+          {{- end }} 
           {{- if $.Values.storagenode.sizeRange }}
           - "--size-range={{ $.Values.storagenode.sizeRange }}"
           {{- end }}
