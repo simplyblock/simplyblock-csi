@@ -192,7 +192,7 @@ storagenode:
   pciAllowed:
   pciBlocked:
   deviceNames:
-  format4k: true
+  format4k: false
   socketsToUse: 
   nodesPerSocket:
   deviceModel:

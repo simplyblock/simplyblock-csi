@@ -58,6 +58,8 @@ spec:
           value: "{{ .Values.storagenode.dataNics }}"
         - name: SPDKIMAGE
           value: "{{ .Values.storagenode.spdkImage }}"
+        - name: FORMAT4K
+          value: "{{ .Values.storagenode.format4k }}"
         - name: HAJMCOUNT
           value: "{{ .Values.storagenode.haJMCount }}"
         - name: NAMESPACE
