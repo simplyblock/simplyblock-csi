@@ -191,6 +191,8 @@ storagenode:
   dataNics:
   pciAllowed:
   pciBlocked:
+  deviceNames:
+  format4k: false
   socketsToUse: 
   nodesPerSocket:
   deviceModel:
