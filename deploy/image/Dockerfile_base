@@ -1,4 +1,4 @@
-FROM fedora:43
+FROM redhat/ubi9:latest
 LABEL name="simplyblock"
 LABEL vendor="Simplyblock"
 LABEL version="1.0.0"
@@ -6,15 +6,19 @@ LABEL release="1"
 LABEL summary="Simplyblock csi driver component"
 LABEL description="Simplyblock csi driver container"
 LABEL maintainer="developers@simplyblock.io"
+COPY LICENSE /licenses/LICENSE
 
-RUN dnf -y update && \
-    dnf -y install \
-        nvme-cli \
-        iscsi-initiator-utils \
-        e2fsprogs \
-        xfsprogs \
-        util-linux \
-        sudo
+ARG TARGETPLATFORM
+RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
+        echo "ARM64 version"; \ 
+        dnf install -y https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/aarch64/getPackage/oraclelinux-release-el9-1.0-26.el9.aarch64.rpm ; \
+    else \
+        echo "AMD64 version"; \
+        dnf install -y https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/x86_64/getPackage/oraclelinux-release-el9-1.0-26.el9.x86_64.rpm ; \
+    fi
+
+RUN dnf update -y  --nogpgcheck
+RUN dnf install -y nvme-cli iscsi-initiator-utils e2fsprogs xfsprogs util-linux kmod wget sudo rpm --nogpgcheck
 
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
