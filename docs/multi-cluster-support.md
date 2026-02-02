@@ -126,7 +126,7 @@ allowedTopologies:
 
 > **Tip:** The keys inside `region_cluster_map` must match the region labels present on your Kubernetes nodes (typically `topology.kubernetes.io/region`). You can include as many region as needed, each pointing to the cluster ID defined in `simplyblock-csi-secret-v2`.
 
-Stateful workloads can then rely on standard pod topology hints, for example a StatefulSet with `podAntiAffinity` that spreads replicas across zones. When a PVC is created, the scheduler selects the desired zone, the CSI driver resolves the cluster ID from the map, and the volume is provisioned on the correct Simplyblock backend.
+Stateful workloads can then rely on standard pod topology hints, for example a StatefulSet with `podAntiAffinity` that spreads replicas across zones or regions. When a PVC is created, the scheduler selects the desired zone or region, the CSI driver resolves the cluster ID from the map, and the volume is provisioned on the correct Simplyblock backend.
 
 ### Configuring Multi Storage Cluster Support
 In addition to multi-cluster connectivity via the `simplyblock-csi-secret-v2` secret, the Simplyblock Storage Controller also supports multi storage cluster configuration using a dedicated ConfigMap named `simplyblock-clusters`.
