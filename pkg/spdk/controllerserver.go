@@ -153,13 +153,13 @@ func parseStringMap(raw, paramName string) (map[string]string, error) {
 	}
 
 	normalized := make(map[string]string, len(parsed))
-	for k, v := range parsed {
-		k = strings.TrimSpace(k)
-		v = strings.TrimSpace(v)
-		if k == "" || v == "" {
+	for key, value := range parsed {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
 			continue
 		}
-		normalized[k] = v
+		normalized[key] = value
 	}
 
 	if len(normalized) == 0 {
