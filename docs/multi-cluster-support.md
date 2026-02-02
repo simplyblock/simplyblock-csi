@@ -118,7 +118,7 @@ volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 allowedTopologies:
 - matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
+  - key: topology.kubernetes.io/region
     values:
     - us-east-1
     - us-west-2
