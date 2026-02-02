@@ -491,6 +491,11 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		stagingPath = devicePath
 
 		fsType = ""
+
+		if err := ns.ensureCleanTargetPath(targetPath); err != nil {
+			return status.Errorf(codes.Internal, "Could not cleanup mount target %q: %v", targetPath, err)
+		}
+
 		if err = ns.MakeFile(targetPath); err != nil {
 			if removeErr := os.Remove(targetPath); removeErr != nil {
 				return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, removeErr)
@@ -559,6 +564,33 @@ func (ns *nodeServer) MakeFile(path string) error {
 	}
 	if err := newFile.Close(); err != nil {
 		return fmt.Errorf("failed to close file %s: %w", path, err)
+	}
+	return nil
+}
+
+// ensureCleanTargetPath makes sure targetPath is not a mountpoint and is removed.
+// idempotent
+func (ns *nodeServer) ensureCleanTargetPath(targetPath string) error {
+	isMount, err := ns.mounter.IsMountPoint(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if mount.IsCorruptedMnt(err) {
+			isMount = true
+		} else {
+			return err
+		}
+	}
+
+	if isMount {
+		if err := ns.mounter.Unmount(targetPath); err != nil {
+			_ = osexec.Command("umount", "-l", targetPath).Run()
+		}
+	}
+
+	if err := os.RemoveAll(targetPath); err != nil && !os.IsNotExist(err) {
+		return err
 	}
 	return nil
 }
