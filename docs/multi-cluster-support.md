@@ -74,9 +74,9 @@ type: Opaque
 
 ### Using multi cluster
 
-#### With the `zone_cluster_map` or `region_cluster_map` parameter you can publish a single StorageClass that targets multiple Simplyblock clusters. A minimal example:
+With the `zone_cluster_map` or `region_cluster_map` parameter you can publish a single StorageClass that targets multiple Simplyblock clusters. A minimal example:
 
-##### Zone-based mapping (zone → cluster)
+#### Zone-based mapping (zone → cluster)
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -100,7 +100,7 @@ allowedTopologies:
 > **Tip:** The keys inside `zone_cluster_map` must match the zone labels present on your Kubernetes nodes (typically `topology.kubernetes.io/zone`). You can include as many zones as needed, each pointing to the cluster ID defined in `simplyblock-csi-secret-v2`.
 
 
-##### Region-based mapping (region → cluster)
+#### Region-based mapping (region → cluster)
 
 Use this when your Simplyblock backend is accessible across all zones within a region, or when you want a coarser placement policy than zones.
 
