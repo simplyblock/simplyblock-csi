@@ -547,7 +547,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 
 	createVolReq := util.CreateLVolData{
 		LvolName:     req.GetName(),
-		Size:         fmt.Sprintf("%dM", sizeMiB),
+		Size:         fmt.Sprintf("%dMiB", sizeMiB),
 		LvsName:      params["pool_name"],
 		Fabric:       params["fabric"],
 		MaxRWIOPS:    params["qos_rw_iops"],
@@ -588,7 +588,8 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		size = 1024 * 1024 * 1024
 	}
 
-	sizeMiB := util.ToMiB(size)
+	sizeGiB := util.ToGiB(size)
+	sizeMiB := sizeGiB * 1024
 	vol := csi.Volume{
 		CapacityBytes: sizeMiB * 1024 * 1024,
 		VolumeContext: req.GetParameters(),
