@@ -547,7 +547,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 
 	createVolReq := util.CreateLVolData{
 		LvolName:     req.GetName(),
-		Size:         fmt.Sprintf("%d", sizeMiB),
+		Size:         fmt.Sprintf("%dM", sizeMiB),
 		LvsName:      params["pool_name"],
 		Fabric:       params["fabric"],
 		MaxRWIOPS:    params["qos_rw_iops"],
@@ -587,9 +587,11 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		klog.Warningln("invalid volume size, resize to 1G")
 		size = 1024 * 1024 * 1024
 	}
-	sizeMiB := size //util.ToMiB(size)
+
+	sizeGiB := util.ToGiB(size)
+	sizeMiB := sizeGiB * 1024
 	vol := csi.Volume{
-		CapacityBytes: sizeMiB, //sizeMiB * 1024 * 1024,
+		CapacityBytes: sizeMiB * 1024 * 1024,
 		VolumeContext: req.GetParameters(),
 		ContentSource: req.GetVolumeContentSource(),
 	}
@@ -915,7 +917,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	snapshotName := req.GetName()
 	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
-	newSize := fmt.Sprintf("%d", sizeMiB)
+	newSize := fmt.Sprintf("%dM", sizeMiB)
 	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
@@ -957,7 +959,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to create snapshot, srcVolumeID: %s snapshotName: %s err: %v", srcVolumeID, snapshotName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	newSize := fmt.Sprintf("%d", sizeMiB)
+	newSize := fmt.Sprintf("%dM", sizeMiB)
 	klog.Infof("CloneSnapshot : snapshotName=%s", snapshotName)
 	snapshot, err := getSnapshot(snapshotID)
 	if err != nil {
