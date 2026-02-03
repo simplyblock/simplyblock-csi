@@ -588,8 +588,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		size = 1024 * 1024 * 1024
 	}
 
-	sizeGiB := util.ToGiB(size)
-	sizeMiB := sizeGiB * 1024
+	sizeMiB := util.ToMiB(size)
 	vol := csi.Volume{
 		CapacityBytes: sizeMiB * 1024 * 1024,
 		VolumeContext: req.GetParameters(),
