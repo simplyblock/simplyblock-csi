@@ -364,7 +364,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 			if err != nil {
 				// go on checking device status in case caused by duplicated request
-				klog.Warningf("command %v failed: %s", cmdLine, err)
+				klog.Errorf("command %v failed: %s", cmdLine, err)
 				lastErr = err
 				continue
 			}
