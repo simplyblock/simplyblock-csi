@@ -58,6 +58,12 @@ func ToMiB(bytes int64) int64 {
 	return (bytes + mi - 1) / mi
 }
 
+// round up bytes to gigabytes
+func ToGiB(bytes int64) int64 {
+	const gi = int64(1024 * 1024 * 1024)
+	return (bytes + gi - 1) / gi
+}
+
 // ${env:-def}
 func FromEnv(env, def string) string {
 	s := os.Getenv(env)

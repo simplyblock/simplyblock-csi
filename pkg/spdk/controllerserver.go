@@ -325,7 +325,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 		if region := regionFromSegments(selection.topology); region != "" {
 			csiVolume.VolumeContext[topologyKeyRegionStable] = region
-		  }
+		}
 	}
 
 	return &csi.CreateVolumeResponse{Volume: csiVolume}, nil
@@ -587,7 +587,9 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		klog.Warningln("invalid volume size, resize to 1G")
 		size = 1024 * 1024 * 1024
 	}
-	sizeMiB := util.ToMiB(size)
+
+	sizeGiB := util.ToGiB(size)
+	sizeMiB := sizeGiB * 1024
 	vol := csi.Volume{
 		CapacityBytes: sizeMiB * 1024 * 1024,
 		VolumeContext: req.GetParameters(),
