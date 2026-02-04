@@ -373,7 +373,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 		if connected == 0 {
 			return "", fmt.Errorf(
-				"all NVMe paths offline for NQN %s (primary and secondary unavailable): last error: %v",
+				"failed to connect to any NVMe path for NQN %s: error: %v",
 				nvmf.nqn, lastErr,
 			)
 		}
