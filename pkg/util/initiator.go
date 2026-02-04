@@ -352,6 +352,9 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			return "", err
 		}
 
+		connected := 0
+		var lastErr error
+
 		for i, conn := range nvmf.connections {
 			cmdLine := []string{
 				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
@@ -361,9 +364,18 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 			if err != nil {
 				// go on checking device status in case caused by duplicated request
-				klog.Errorf("command %v failed: %s", cmdLine, err)
-				return "", err
+				klog.Warningf("command %v failed: %s", cmdLine, err)
+				lastErr = err
+				continue
 			}
+
+			connected++
+		}
+		if connected == 0 {
+			return "", fmt.Errorf(
+				"all NVMe paths offline for NQN %s (primary and secondary unavailable): last error: %v",
+				nvmf.nqn, lastErr,
+			)
 		}
 	}
 
