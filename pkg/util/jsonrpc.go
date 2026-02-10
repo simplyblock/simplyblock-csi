@@ -350,10 +350,12 @@ func (client *RPCClient) cloneSnapshot(snapshotID, cloneName, newSize, pvcName s
 	params := struct {
 		SnapshotID string `json:"snapshot_id"`
 		CloneName  string `json:"clone_name"`
+		NewSize    string `json:"new_size"`
 		PVCName    string `json:"pvc_name,omitempty"`
 	}{
 		SnapshotID: snapshotID,
 		CloneName:  cloneName,
+		NewSize:    newSize,
 		PVCName:    pvcName,
 	}
 
@@ -507,7 +509,6 @@ try_request:
 	}
 	return response.Results, nil
 }
-
 
 // errorMatches checks if the error message from the full error
 func errorMatches(errFull, errJSON error) bool {
