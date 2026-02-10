@@ -66,6 +66,7 @@ type initiatorNVMf struct {
 	ctrlLossTmo    string
 	model          string
 	nsId           string
+	hostIface      string
 }
 
 // initiatorCache is an implementation of NVMf cache initiator
@@ -185,6 +186,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			ctrlLossTmo:    volumeContext["ctrlLossTmo"],
 			model:          volumeContext["model"],
 			nsId:           volumeContext["nsId"],
+			hostIface:      volumeContext["hostIface"],
 		}, nil
 
 	case "cache":
@@ -361,6 +363,11 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 				"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
 				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 			}
+
+			if nvmf.hostIface != "" {
+				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
+			}
+			
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 			if err != nil {
 				// go on checking device status in case caused by duplicated request
