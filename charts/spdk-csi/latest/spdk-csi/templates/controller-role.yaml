@@ -1,14 +1,9 @@
-{{- if or .Values.cachingnode.create .Values.storagenode.create -}}
+{{- if .Values.storagenode.create -}}
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: simplyblock-pod-listing-role-binding
 subjects:
-{{- if .Values.cachingnode.create }}
-- kind: ServiceAccount
-  name: simplyblock-caching-node-service-account
-  namespace: {{ .Release.Namespace }}
-{{- end }}
 {{- if .Values.storagenode.create }}
 - kind: ServiceAccount
   name: simplyblock-storage-node-service-account
