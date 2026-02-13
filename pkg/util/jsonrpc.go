@@ -439,6 +439,9 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 	data := []byte(`{}`)
 	var err error
 
+	// Normalize the path to avoid double slashes when building URLs
+	path = strings.TrimLeft(path, "/")
+
 	if args != nil {
 		data, err = json.Marshal(args)
 		if err != nil {
