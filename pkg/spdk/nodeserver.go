@@ -47,8 +47,6 @@ import (
 	"github.com/spdk/spdk-csi/pkg/util"
 )
 
-const blkGetSize64 = 0x80081272
-
 type nodeServer struct {
 	*csicommon.DefaultNodeServer
 	mounter       mount.Interface
@@ -715,6 +713,10 @@ func ioctlBlkGetSize64(path string) (uint64, error) {
 	}
 	defer f.Close()
 
+	// blkGetSize64 is the Linux BLKGETSIZE64 ioctl code.
+	// It returns the total size (in bytes) of a block device.
+	var blkGetSize64 = 0x80081272
+	
 	var size uint64
 	_, _, errno := unix.Syscall(
 		unix.SYS_IOCTL,
