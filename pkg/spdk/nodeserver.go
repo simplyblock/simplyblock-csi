@@ -24,6 +24,11 @@ import (
 	"strconv"
 	"time"
 
+	"path/filepath"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -194,8 +199,78 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 	return segments
 }
 
-func (ns *nodeServer) NodeGetVolumeStats(_ context.Context, _ *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	volID := req.GetVolumeId()
+	volumePath := req.GetVolumePath()
+
+	if volID == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume_id is required")
+	}
+	if volumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume_path is required")
+	}
+
+	st, err := os.Stat(volumePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Error(codes.NotFound, "volume_path not found")
+		}
+		return nil, status.Errorf(codes.Internal, "stat volume_path %q: %v", volumePath, err)
+	}
+
+	if st.IsDir() {
+		var s unix.Statfs_t
+		if err := unix.Statfs(volumePath, &s); err != nil {
+			return nil, status.Errorf(codes.Internal, "statfs %q: %v", volumePath, err)
+		}
+
+		totalBytes := int64(s.Blocks) * int64(s.Bsize)
+		availBytes := int64(s.Bavail) * int64(s.Bsize)
+		usedBytes := totalBytes - availBytes
+		if usedBytes < 0 {
+			usedBytes = 0
+		}
+
+		totalInodes := int64(s.Files)
+		availInodes := int64(s.Ffree)
+		usedInodes := totalInodes - availInodes
+		if usedInodes < 0 {
+			usedInodes = 0
+		}
+
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:      csi.VolumeUsage_BYTES,
+					Total:     totalBytes,
+					Used:      usedBytes,
+					Available: availBytes,
+				},
+				{
+					Unit:      csi.VolumeUsage_INODES,
+					Total:     totalInodes,
+					Used:      usedInodes,
+					Available: availInodes,
+				},
+			},
+		}, nil
+	}
+
+	sizeBytes, err := getBlockSizeBytes(volumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "get block size for %q: %v", volumePath, err)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Unit:      csi.VolumeUsage_BYTES,
+				Total:     int64(sizeBytes),
+				Used:      0,
+				Available: int64(sizeBytes),
+			},
+		},
+	}, nil
 }
 
 func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -335,6 +410,13 @@ func (ns *nodeServer) NodeGetCapabilities(_ context.Context, _ *csi.NodeGetCapab
 				Type: &csi.NodeServiceCapability_Rpc{
 					Rpc: &csi.NodeServiceCapability_RPC{
 						Type: csi.NodeServiceCapability_RPC_VOLUME_CONDITION,
+					},
+				},
+			},
+			{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 					},
 				},
 			},
@@ -607,4 +689,43 @@ func getStagingTargetPath(req interface{}) string {
 		klog.Warningf("invalid request %T", vr)
 	}
 	return ""
+}
+
+func getBlockSizeBytes(volumePath string) (uint64, error) {
+	if size, err := ioctlBlkGetSize64(volumePath); err == nil && size > 0 {
+		return size, nil
+	}
+
+	rp, err := filepath.EvalSymlinks(volumePath)
+	if err == nil && rp != "" && rp != volumePath {
+		if size, err2 := ioctlBlkGetSize64(rp); err2 == nil && size > 0 {
+			return size, nil
+		}
+	}
+
+	return 0, fmt.Errorf("BLKGETSIZE64 ioctl failed for %q", volumePath)
+}
+
+func ioctlBlkGetSize64(path string) (uint64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	// blkGetSize64 is the Linux BLKGETSIZE64 ioctl code.
+	// It returns the total size (in bytes) of a block device.
+	var blkGetSize64 = 0x80081272
+	
+	var size uint64
+	_, _, errno := unix.Syscall(
+		unix.SYS_IOCTL,
+		f.Fd(),
+		uintptr(blkGetSize64),
+		uintptr(unsafe.Pointer(&size)),
+	)
+	if errno != 0 {
+		return 0, errno
+	}
+	return size, nil
 }
