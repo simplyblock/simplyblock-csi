@@ -55,7 +55,7 @@ spec:
         - name: ENABLETESTDEVICE
           value: "false"
         - name: DATANICS
-          value: "{{ .Values.storagenode.dataNics }}"
+          value: "{{ .Values.storagenode.dataNic }}"
         - name: SPDKIMAGE
           value: "{{ .Values.storagenode.spdkImage }}"
         - name: FORMAT4K
