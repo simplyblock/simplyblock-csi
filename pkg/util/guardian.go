@@ -64,6 +64,9 @@ type Guardian struct {
 	// lvolID -> set(podUID)
 	lvolPods map[string]map[string]struct{}
 
+	// lvolID -> clusterID (derived from NQN)
+	lvolCluster map[string]string
+
 	// lvolID -> first time observed "broken"
 	lvolBrokenAt map[string]time.Time
 
@@ -71,7 +74,7 @@ type Guardian struct {
 	lastRestart map[string]time.Time
 
 	// cluster transition state
-	clusterWasInactive bool
+	clusterWasInactive map[string]bool
 }
 
 // StartGuardian starts the guardian loop in a goroutine.
@@ -108,9 +111,10 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 		cfg:                cfg,
 		cs:                 cs,
 		lvolPods:           map[string]map[string]struct{}{},
+		lvolCluster:        map[string]string{},
 		lvolBrokenAt:       map[string]time.Time{},
 		lastRestart:        map[string]time.Time{},
-		clusterWasInactive: true,
+		clusterWasInactive: map[string]bool{},
 	}
 
 	klog.Infof("Guardian started node=%s poll=%s backoff=%s minBrokenFor=%s dryRun=%v",
@@ -123,7 +127,7 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 // RegisterPublish records that a volume (identified by NQN) is published to a pod via targetPath.
 // Call this from NodePublishVolume.
 func (g *Guardian) RegisterPublish(nqn string, targetPath string) {
-	lvolID := lvolIDFromNQN(nqn)
+	clusterID, lvolID := getLvolIDFromNQN(nqn)
 	podUID := podUIDFromTargetPath(targetPath)
 	if lvolID == "" || podUID == "" {
 		return
@@ -136,22 +140,26 @@ func (g *Guardian) RegisterPublish(nqn string, targetPath string) {
 		g.lvolPods[lvolID] = map[string]struct{}{}
 	}
 	g.lvolPods[lvolID][podUID] = struct{}{}
+	g.lvolCluster[lvolID] = clusterID
+
+	if _, ok := g.clusterWasInactive[clusterID]; !ok {
+		g.clusterWasInactive[clusterID] = true
+	}
 
 	g.persistLocked()
 }
 
 // RegisterUnpublish removes mapping. Call from NodeUnpublishVolume.
 func (g *Guardian) RegisterUnpublish(nqn string, targetPath string) {
-	lvolID := lvolIDFromNQN(nqn)
 	podUID := podUIDFromTargetPath(targetPath)
-	if lvolID == "" || podUID == "" {
+	if podUID == "" {
 		return
 	}
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	if set := g.lvolPods[lvolID]; set != nil {
+	for lvolID, set := range g.lvolPods {
 		delete(set, podUID)
 		if len(set) == 0 {
 			delete(g.lvolPods, lvolID)
@@ -190,9 +198,19 @@ func (g *Guardian) MarkBrokenLvol(lvolID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	clusterID := g.lvolCluster[lvolID]
+	if clusterID == "" {
+		klog.Warningf("Guardian: MarkBrokenLvol(%s) ignored: clusterID unknown (not published yet?)", lvolID)
+		return
+	}
+
 	if _, exists := g.lvolBrokenAt[lvolID]; !exists {
 		g.lvolBrokenAt[lvolID] = time.Now().UTC()
-		klog.Warningf("Guardian marked lvol broken: %s", lvolID)
+		klog.Warningf("Guardian marked lvol broken: cluster=%s lvol=%s", clusterID, lvolID)
+	}
+
+	if _, ok := g.clusterWasInactive[clusterID]; !ok {
+		g.clusterWasInactive[clusterID] = true
 	}
 
 	g.persistLocked()
@@ -214,22 +232,20 @@ func (g *Guardian) loop(ctx context.Context) {
 }
 
 func (g *Guardian) tick(ctx context.Context) {
-	active := g.isClusterActive()
-
-	if !active {
-		g.clusterWasInactive = true
+	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
+	var clusters ClustersInfo
+	if err := ParseJSONFile(secretFile, &clusters); err != nil {
+		klog.Errorf("Guardian: parse clusters secret failed: %v", err)
 		return
 	}
-
-	if !g.clusterWasInactive {
+	if len(clusters.Clusters) == 0 {
 		return
 	}
-	g.clusterWasInactive = false
 
 	g.mu.Lock()
-	broken := make(map[string]time.Time, len(g.lvolBrokenAt))
+	lvolBrokenAt := make(map[string]time.Time, len(g.lvolBrokenAt))
 	for lvolID, ts := range g.lvolBrokenAt {
-		broken[lvolID] = ts
+		lvolBrokenAt[lvolID] = ts
 	}
 	lvolPods := make(map[string][]string, len(g.lvolPods))
 	for lvolID, set := range g.lvolPods {
@@ -237,31 +253,80 @@ func (g *Guardian) tick(ctx context.Context) {
 			lvolPods[lvolID] = append(lvolPods[lvolID], podUID)
 		}
 	}
+	lvolCluster := make(map[string]string, len(g.lvolCluster))
+	for lvolID, cid := range g.lvolCluster {
+		lvolCluster[lvolID] = cid
+	}
+	clusterWasInactive := make(map[string]bool, len(g.clusterWasInactive))
+	for cid, v := range g.clusterWasInactive {
+		clusterWasInactive[cid] = v
+	}
 	g.mu.Unlock()
 
-	if len(broken) == 0 {
+	if len(lvolBrokenAt) == 0 {
+	}
+
+	justBecameActive := map[string]bool{} // clusterID -> true
+	for _, c := range clusters.Clusters {
+		cid := c.ClusterID
+		if cid == "" {
+			continue
+		}
+
+		active, err := g.isClusterActiveByID(cid)
+		if err != nil {
+			active = false
+		}
+
+		wasInactive := clusterWasInactive[cid] 
+		if !active {
+			clusterWasInactive[cid] = true
+			continue
+		}
+
+		if wasInactive {
+			justBecameActive[cid] = true
+		}
+		clusterWasInactive[cid] = false
+	}
+
+	g.mu.Lock()
+	for cid, v := range clusterWasInactive {
+		g.clusterWasInactive[cid] = v
+	}
+	g.mu.Unlock()
+
+	if len(justBecameActive) == 0 {
 		return
 	}
 
 	now := time.Now().UTC()
-	actionable := []string{}
-	for lvolID, ts := range broken {
-		if now.Sub(ts) >= g.cfg.MinBrokenFor {
-			actionable = append(actionable, lvolID)
+	actionableByCluster := map[string][]string{}
+	for lvolID, ts := range lvolBrokenAt {
+		if now.Sub(ts) < g.cfg.MinBrokenFor {
+			continue
 		}
+		cid := lvolCluster[lvolID]
+		if cid == "" {
+			continue
+		}
+		if !justBecameActive[cid] {
+			continue
+		}
+		actionableByCluster[cid] = append(actionableByCluster[cid], lvolID)
 	}
-	if len(actionable) == 0 {
+
+	if len(actionableByCluster) == 0 {
 		return
 	}
 
-	klog.Warningf("Guardian: cluster active; attempting restarts for broken lvols=%v", actionable)
+	klog.Warningf("Guardian: clusters back active=%v; evaluating restarts", keysBoolMap(justBecameActive))
 
 	pods, err := g.listRunningPodsOnNode(ctx, g.cfg.NodeName)
 	if err != nil {
 		klog.Errorf("Guardian: list pods failed: %v", err)
 		return
 	}
-
 	uidToPod := map[string]v1.Pod{}
 	for _, p := range pods.Items {
 		uidToPod[string(p.UID)] = p
@@ -269,44 +334,47 @@ func (g *Guardian) tick(ctx context.Context) {
 
 	restarted := 0
 
-	for _, lvolID := range actionable {
-		podUIDs := lvolPods[lvolID]
-		for _, podUID := range podUIDs {
-			pod, ok := uidToPod[podUID]
-			if !ok {
-				continue
-			}
+	for cid, lvolIDs := range actionableByCluster {
+		klog.Warningf("Guardian: cluster %s active; attempting restarts for broken lvols=%v", cid, lvolIDs)
 
-			if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
-				continue
-			}
-			if !controllerManaged(&pod) {
-				continue
-			}
-			if last, ok := g.getLastRestart(podUID); ok && time.Since(last) < g.cfg.RestartBackoff {
-				continue
-			}
-
-			klog.Warningf("Guardian: restarting pod %s/%s (uid=%s) due to broken lvol=%s",
-				pod.Namespace, pod.Name, podUID, lvolID)
-
-			if !g.cfg.DryRun {
-				err := g.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
-					GracePeriodSeconds: &g.cfg.GraceSeconds,
-				})
-				if err != nil && !apierrors.IsNotFound(err) {
-					klog.Errorf("Guardian: delete pod %s/%s failed: %v", pod.Namespace, pod.Name, err)
+		for _, lvolID := range lvolIDs {
+			for _, podUID := range lvolPods[lvolID] {
+				pod, ok := uidToPod[podUID]
+				if !ok {
 					continue
 				}
+
+				if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
+					continue
+				}
+				if !controllerManaged(&pod) {
+					continue
+				}
+				if last, ok := g.getLastRestart(podUID); ok && time.Since(last) < g.cfg.RestartBackoff {
+					continue
+				}
+
+				klog.Warningf("Guardian: restarting pod %s/%s (uid=%s) due to broken lvol=%s cluster=%s",
+					pod.Namespace, pod.Name, podUID, lvolID, cid)
+
+				if !g.cfg.DryRun {
+					err := g.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+						GracePeriodSeconds: &g.cfg.GraceSeconds,
+					})
+					if err != nil && !apierrors.IsNotFound(err) {
+						klog.Errorf("Guardian: delete pod %s/%s failed: %v", pod.Namespace, pod.Name, err)
+						continue
+					}
+				}
+
+				g.setLastRestart(podUID)
+				restarted++
 			}
 
-			g.setLastRestart(podUID)
-			restarted++
+			g.mu.Lock()
+			delete(g.lvolBrokenAt, lvolID)
+			g.mu.Unlock()
 		}
-
-		g.mu.Lock()
-		delete(g.lvolBrokenAt, lvolID)
-		g.mu.Unlock()
 	}
 
 	if restarted > 0 {
@@ -314,46 +382,27 @@ func (g *Guardian) tick(ctx context.Context) {
 	}
 }
 
-func (g *Guardian) isClusterActive() bool {
-	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
-
-	var clusters ClustersInfo
-	if err := ParseJSONFile(secretFile, &clusters); err != nil {
-		klog.Errorf("Guardian: parse clusters secret failed: %v", err)
-		return false
+func (g *Guardian) isClusterActiveByID(clusterID string) (bool, error) {
+	node, err := NewsimplyBlockClient(clusterID)
+	if err != nil {
+		return false, err
 	}
 
-	for _, c := range clusters.Clusters {
-		if c.ClusterID == "" {
-			continue
-		}
-
-		node, err := NewsimplyBlockClient(c.ClusterID)
-		if err != nil {
-			continue
-		}
-
-		resp, err := node.Client.CallSBCLI("GET", "/cluster", nil)
-		if err != nil {
-			klog.Errorf("Guardian: failed to fetch cluster status for %s: %v", c.ClusterID, err)
-			return false
-		}
-
-		var status []ClusterStatus
-		data, _ := json.Marshal(resp)
-		if err := json.Unmarshal(data, &status); err != nil {
-			klog.Errorf("Guardian: failed to unmarshal cluster status for %s: %v", c.ClusterID, err)
-			return false
-		}
-
-		if len(status) == 0 {
-			return false
-		}
-
-		return strings.ToLower(status[0].Status) == "active"
+	resp, err := node.Client.CallSBCLI("GET", "/cluster", nil)
+	if err != nil {
+		return false, err
 	}
 
-	return false
+	var status []ClusterStatus
+	data, _ := json.Marshal(resp)
+	if err := json.Unmarshal(data, &status); err != nil {
+		return false, err
+	}
+	if len(status) == 0 {
+		return false, fmt.Errorf("empty cluster status response")
+	}
+
+	return strings.ToLower(status[0].Status) == "active", nil
 }
 
 func (g *Guardian) listRunningPodsOnNode(ctx context.Context, nodeName string) (*v1.PodList, error) {
@@ -403,14 +452,6 @@ func podUIDFromTargetPath(p string) string {
 	return rest[:j]
 }
 
-func lvolIDFromNQN(nqn string) string {
-	parts := strings.Split(nqn, ":lvol:")
-	if len(parts) != 2 {
-		return ""
-	}
-	return strings.TrimSpace(parts[1])
-}
-
 func (g *Guardian) persistLocked() {
 	if g.cfg.StatePath == "" {
 		return
@@ -445,4 +486,14 @@ func (g *Guardian) persistLocked() {
 	if err := os.WriteFile(g.cfg.StatePath, b, 0o600); err != nil {
 		klog.Errorf("Guardian: write state: %v", err)
 	}
+}
+
+func keysBoolMap(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k, v := range m {
+		if v {
+			out = append(out, k)
+		}
+	}
+	return out
 }
