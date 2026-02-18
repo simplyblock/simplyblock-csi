@@ -146,11 +146,7 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 	ns.xpuConnClient = xpuConnClient
 	ns.xpuTargetType = xpuTargetType
 
-	nodeName := os.Getenv("NODE_NAME")
-	if nodeName == "" {
-		nodeName = ns.Driver.GetNodeID()
-	}
-
+	nodeName := ns.Driver.GetNodeID()
 	gcfg := util.NewDefaultGuardianConfig(nodeName)
 	guardian, gerr := util.StartGuardian(context.Background(), gcfg)
 	if gerr != nil {
