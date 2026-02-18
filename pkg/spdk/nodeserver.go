@@ -55,6 +55,7 @@ type nodeServer struct {
 	xpuTargetType string
 	kvmPciBridges int
 	kubeClient    kubernetes.Interface
+	guardian      *util.Guardian
 }
 
 func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
@@ -145,7 +146,24 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 	ns.xpuConnClient = xpuConnClient
 	ns.xpuTargetType = xpuTargetType
 
-	go util.MonitorConnection()
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName == "" {
+		nodeName = ns.Driver.GetNodeID()
+	}
+
+	gcfg := util.NewDefaultGuardianConfig(nodeName)
+	guardian, gerr := util.StartGuardian(context.Background(), gcfg)
+	if gerr != nil {
+		klog.Errorf("failed to start guardian: %v", gerr)
+	} else {
+		ns.guardian = guardian
+	}
+
+	go util.MonitorConnection(func(lvolID string) {
+		if ns.guardian != nil {
+			ns.guardian.MarkBrokenLvol(lvolID)
+		}
+	})
 
 	return ns, nil
 }
@@ -373,6 +391,11 @@ func (ns *nodeServer) NodePublishVolume(_ context.Context, req *csi.NodePublishV
 		klog.Errorf("failed to publish volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	if ns.guardian != nil {
+		ns.guardian.RegisterPublish(req.VolumeContext["nqn"], req.TargetPath)
+	}
+
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -386,6 +409,11 @@ func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpubl
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", req.GetTargetPath(), err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	if ns.guardian != nil {
+		ns.guardian.RegisterUnpublishByTargetPath(req.TargetPath)
+	}
+
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -716,7 +744,7 @@ func ioctlBlkGetSize64(path string) (uint64, error) {
 	// blkGetSize64 is the Linux BLKGETSIZE64 ioctl code.
 	// It returns the total size (in bytes) of a block device.
 	var blkGetSize64 = 0x80081272
-	
+
 	var size uint64
 	_, _, errno := unix.Syscall(
 		unix.SYS_IOCTL,
