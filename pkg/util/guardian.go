@@ -409,7 +409,9 @@ func (g *Guardian) isClusterActiveByID(clusterID string) (bool, error) {
 		return false, fmt.Errorf("empty cluster status response")
 	}
 
-	return strings.ToLower(status[0].Status) == "active", nil
+	s := strings.ToLower(status[0].Status)
+
+	return s == "active" || s == "degraded", nil
 }
 
 func (g *Guardian) listRunningPodsOnNode(ctx context.Context, nodeName string) (*v1.PodList, error) {
