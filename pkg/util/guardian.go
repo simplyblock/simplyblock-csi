@@ -41,7 +41,7 @@ type ClusterStatus struct {
 func NewDefaultGuardianConfig(nodeName string) GuardianConfig {
 	return GuardianConfig{
 		NodeName:        nodeName,
-		PollInterval:    5 * time.Second,
+		PollInterval:    5 * time.Minute,
 		RestartBackoff:  10 * time.Minute,
 		GraceSeconds:    0,
 		OptInLabelKey:   "simplyblock.io/auto-restart-on-pathloss",
@@ -83,7 +83,7 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 		return nil, fmt.Errorf("guardian requires NodeName")
 	}
 	if cfg.PollInterval <= 0 {
-		cfg.PollInterval = 5 * time.Second
+		cfg.PollInterval = 5 * time.Minute
 	}
 	if cfg.RestartBackoff <= 0 {
 		cfg.RestartBackoff = 10 * time.Minute
@@ -263,9 +263,6 @@ func (g *Guardian) tick(ctx context.Context) {
 	}
 	g.mu.Unlock()
 
-	if len(lvolBrokenAt) == 0 {
-	}
-
 	justBecameActive := map[string]bool{} // clusterID -> true
 	for _, c := range clusters.Clusters {
 		cid := c.ClusterID
@@ -278,7 +275,7 @@ func (g *Guardian) tick(ctx context.Context) {
 			active = false
 		}
 
-		wasInactive := clusterWasInactive[cid] 
+		wasInactive := clusterWasInactive[cid]
 		if !active {
 			clusterWasInactive[cid] = true
 			continue
