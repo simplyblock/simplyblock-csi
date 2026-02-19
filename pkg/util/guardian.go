@@ -19,13 +19,15 @@ import (
 )
 
 type GuardianConfig struct {
-	NodeName        string
-	PollInterval    time.Duration
-	RestartBackoff  time.Duration
-	GraceSeconds    int64
-	OptInLabelKey   string
-	OptInLabelValue string
-	DryRun          bool
+	NodeName         string
+	PollInterval     time.Duration
+	RestartBackoff   time.Duration
+	GraceSeconds     int64
+	OptInLabelKey    string
+	OptInLabelValue  string
+	OptOutLabelKey   string
+	OptOutLabelValue string
+	DryRun           bool
 
 	// Minimum time a lvol must remain "broken" before we restart pods after cluster is active.
 	MinBrokenFor time.Duration
@@ -40,15 +42,17 @@ type ClusterStatus struct {
 // NewDefaultGuardianConfig returns sane defaults.
 func NewDefaultGuardianConfig(nodeName string) GuardianConfig {
 	return GuardianConfig{
-		NodeName:        nodeName,
-		PollInterval:    5 * time.Minute,
-		RestartBackoff:  10 * time.Minute,
-		GraceSeconds:    0,
-		OptInLabelKey:   "simplyblock.io/auto-restart-on-pathloss",
-		OptInLabelValue: "true",
-		DryRun:          false,
-		MinBrokenFor:    30 * time.Second,
-		StatePath:       "/var/run/simplyblock/guardian/state.json",
+		NodeName:         nodeName,
+		PollInterval:     5 * time.Minute,
+		RestartBackoff:   10 * time.Minute,
+		GraceSeconds:     0,
+		OptInLabelKey:    "simplyblock.io/auto-restart-on-pathloss",
+		OptInLabelValue:  "true",
+		OptOutLabelKey:   "simplyblock.io/guardian-disable",
+		OptOutLabelValue: "true",
+		DryRun:           false,
+		MinBrokenFor:     30 * time.Second,
+		StatePath:        "/var/run/simplyblock/guardian/state.json",
 	}
 }
 
@@ -343,7 +347,11 @@ func (g *Guardian) tick(ctx context.Context) {
 					continue
 				}
 
-				if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
+				// if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
+				// 	continue
+				// }
+				
+				if pod.Labels[g.cfg.OptOutLabelKey] == g.cfg.OptOutLabelValue {
 					continue
 				}
 				if !controllerManaged(&pod) {
