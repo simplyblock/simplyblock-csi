@@ -335,6 +335,7 @@ func (g *Guardian) tick(ctx context.Context) {
 		klog.Warningf("Guardian: cluster %s active; attempting restarts for broken lvols=%v", cid, lvolIDs)
 
 		for _, lvolID := range lvolIDs {
+			klog.Warningf("Guardian debug: lvol=%s podUIDs=%v", lvolID, lvolPods[lvolID])
 			for _, podUID := range lvolPods[lvolID] {
 				pod, ok := uidToPod[podUID]
 				if !ok {
