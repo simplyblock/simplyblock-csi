@@ -274,9 +274,11 @@ func (g *Guardian) tick(ctx context.Context) {
 			continue
 		}
 
-		active, err := g.isClusterActiveByID(cid)
+		active, realStatus, err := g.isClusterActiveByID(cid)
 		if err != nil {
+			klog.Warningf("Guardian: cluster status check failed cluster=%s err=%v (treating as inactive)", cid, err)
 			active = false
+			realStatus = "unknown"
 		}
 
 		wasInactive := clusterWasInactive[cid]
@@ -287,6 +289,8 @@ func (g *Guardian) tick(ctx context.Context) {
 
 		if wasInactive {
 			justBecameActive[cid] = true
+			klog.Warningf("Guardian: cluster=%s transitioned to %s; will evaluate pod restarts", cid, realStatus)
+
 		}
 		clusterWasInactive[cid] = false
 	}
@@ -350,7 +354,7 @@ func (g *Guardian) tick(ctx context.Context) {
 				// if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
 				// 	continue
 				// }
-				
+
 				if pod.Labels[g.cfg.OptOutLabelKey] == g.cfg.OptOutLabelValue {
 					continue
 				}
@@ -389,29 +393,29 @@ func (g *Guardian) tick(ctx context.Context) {
 	}
 }
 
-func (g *Guardian) isClusterActiveByID(clusterID string) (bool, error) {
+func (g *Guardian) isClusterActiveByID(clusterID string) (ok bool, realStatus string, err error) {
 	node, err := NewsimplyBlockClient(clusterID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 
 	resp, err := node.Client.CallSBCLI("GET", "/cluster", nil)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 
 	var status []ClusterStatus
 	data, _ := json.Marshal(resp)
 	if err := json.Unmarshal(data, &status); err != nil {
-		return false, err
+		return false, "", err
 	}
 	if len(status) == 0 {
-		return false, fmt.Errorf("empty cluster status response")
+		return false, "", fmt.Errorf("empty cluster status response")
 	}
 
-	s := strings.ToLower(status[0].Status)
-
-	return s == "active" || s == "degraded", nil
+	realStatus = strings.ToLower(strings.TrimSpace(status[0].Status))
+	ok = (realStatus == "active" || realStatus == "degraded")
+	return ok, realStatus, nil
 }
 
 func (g *Guardian) listRunningPodsOnNode(ctx context.Context, nodeName string) (*v1.PodList, error) {
