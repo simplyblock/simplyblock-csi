@@ -351,13 +351,14 @@ func (g *Guardian) tick(ctx context.Context) {
 					continue
 				}
 
-				// if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
+				if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
+					continue
+				}
+
+				// if pod.Labels[g.cfg.OptOutLabelKey] == g.cfg.OptOutLabelValue {
 				// 	continue
 				// }
 
-				if pod.Labels[g.cfg.OptOutLabelKey] == g.cfg.OptOutLabelValue {
-					continue
-				}
 				if !controllerManaged(&pod) {
 					continue
 				}
