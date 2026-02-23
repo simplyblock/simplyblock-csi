@@ -51,9 +51,20 @@ func NewDefaultGuardianConfig(nodeName string) GuardianConfig {
 		OptOutLabelKey:   "simplyblock.io/guardian-disable",
 		OptOutLabelValue: "true",
 		DryRun:           false,
-		MinBrokenFor:     30 * time.Second,
-		StatePath:        "/var/run/simplyblock/guardian/state.json",
+		MinBrokenFor: parseDurationFromEnv(
+			"GUARDIAN_MIN_BROKEN_FOR",
+			30*time.Second,
+		),
+		StatePath: "/var/run/simplyblock/guardian/state.json",
 	}
+}
+
+type guardianState struct {
+	LvolPods           map[string][]string  `json:"lvolPods"`
+	LvolBrokenAt       map[string]time.Time `json:"lvolBrokenAt"`
+	LvolCluster        map[string]string    `json:"lvolCluster"`
+	LastRestart        map[string]time.Time `json:"lastRestart,omitempty"`
+	ClusterWasInactive map[string]bool      `json:"clusterWasInactive,omitempty"`
 }
 
 // Guardian tracks which pod uses which lvol and restarts affected pods
@@ -79,6 +90,62 @@ type Guardian struct {
 
 	// cluster transition state
 	clusterWasInactive map[string]bool
+}
+
+func (g *Guardian) loadState() {
+	if g.cfg.StatePath == "" {
+		return
+	}
+
+	b, err := os.ReadFile(g.cfg.StatePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			klog.Infof("Guardian: no prior state found at %s", g.cfg.StatePath)
+			return
+		}
+		klog.Warningf("Guardian: failed to read state file %s: %v", g.cfg.StatePath, err)
+		return
+	}
+
+	var st guardianState
+	if err := json.Unmarshal(b, &st); err != nil {
+		klog.Warningf("Guardian: failed to unmarshal state file %s: %v", g.cfg.StatePath, err)
+		return
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Restore lvolPods as a set(map[string]struct{})
+	g.lvolPods = map[string]map[string]struct{}{}
+	for lvolID, podUIDs := range st.LvolPods {
+		if g.lvolPods[lvolID] == nil {
+			g.lvolPods[lvolID] = map[string]struct{}{}
+		}
+		for _, uid := range podUIDs {
+			g.lvolPods[lvolID][uid] = struct{}{}
+		}
+	}
+
+	if st.LvolBrokenAt != nil {
+		g.lvolBrokenAt = st.LvolBrokenAt
+	}
+
+	if st.LvolCluster != nil {
+		g.lvolCluster = st.LvolCluster
+	}
+
+	if st.LastRestart != nil {
+		g.lastRestart = st.LastRestart
+	}
+
+	if st.ClusterWasInactive != nil {
+		g.clusterWasInactive = st.ClusterWasInactive
+	}
+
+	klog.Infof("Guardian: loaded state: lvolPods=%d broken=%d lvolCluster=%d lastRestart=%d",
+		len(g.lvolPods), len(g.lvolBrokenAt), len(g.lvolCluster), len(g.lastRestart),
+	)
 }
 
 // StartGuardian starts the guardian loop in a goroutine.
@@ -124,6 +191,8 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 	klog.Infof("Guardian started node=%s poll=%s backoff=%s minBrokenFor=%s dryRun=%v",
 		cfg.NodeName, cfg.PollInterval, cfg.RestartBackoff, cfg.MinBrokenFor, cfg.DryRun)
 
+	g.loadState()
+
 	go g.loop(ctx)
 	return g, nil
 }
@@ -154,25 +223,6 @@ func (g *Guardian) RegisterPublish(nqn string, targetPath string) {
 }
 
 // RegisterUnpublish removes mapping. Call from NodeUnpublishVolume.
-func (g *Guardian) RegisterUnpublish(nqn string, targetPath string) {
-	podUID := podUIDFromTargetPath(targetPath)
-	if podUID == "" {
-		return
-	}
-
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	for lvolID, set := range g.lvolPods {
-		delete(set, podUID)
-		if len(set) == 0 {
-			delete(g.lvolPods, lvolID)
-		}
-	}
-
-	g.persistLocked()
-}
-
 func (g *Guardian) RegisterUnpublishByTargetPath(targetPath string) {
 	podUID := podUIDFromTargetPath(targetPath)
 	if podUID == "" {
@@ -186,6 +236,9 @@ func (g *Guardian) RegisterUnpublishByTargetPath(targetPath string) {
 		delete(set, podUID)
 		if len(set) == 0 {
 			delete(g.lvolPods, lvolID)
+			delete(g.lvolCluster, lvolID)
+			delete(g.lvolBrokenAt, lvolID)
+
 		}
 	}
 
@@ -471,26 +524,33 @@ func (g *Guardian) persistLocked() {
 		return
 	}
 
-	type state struct {
-		LvolPods     map[string][]string  `json:"lvolPods"`
-		LvolBrokenAt map[string]time.Time `json:"lvolBrokenAt"`
-	}
-
-	out := state{
-		LvolPods:     map[string][]string{},
-		LvolBrokenAt: map[string]time.Time{},
+	st := guardianState{
+		LvolPods:           map[string][]string{},
+		LvolBrokenAt:       map[string]time.Time{},
+		LvolCluster:        map[string]string{},
+		LastRestart:        map[string]time.Time{},
+		ClusterWasInactive: map[string]bool{},
 	}
 
 	for lvolID, set := range g.lvolPods {
 		for podUID := range set {
-			out.LvolPods[lvolID] = append(out.LvolPods[lvolID], podUID)
+			st.LvolPods[lvolID] = append(st.LvolPods[lvolID], podUID)
 		}
 	}
 	for lvolID, t := range g.lvolBrokenAt {
-		out.LvolBrokenAt[lvolID] = t
+		st.LvolBrokenAt[lvolID] = t
+	}
+	for lvolID, cid := range g.lvolCluster {
+		st.LvolCluster[lvolID] = cid
+	}
+	for uid, t := range g.lastRestart {
+		st.LastRestart[uid] = t
+	}
+	for cid, v := range g.clusterWasInactive {
+		st.ClusterWasInactive[cid] = v
 	}
 
-	b, err := json.MarshalIndent(out, "", "  ")
+	b, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		klog.Errorf("Guardian: marshal state: %v", err)
 		return

@@ -344,3 +344,13 @@ func LookupXPUContext(path string) (map[string]string, error) {
 func CleanUpXPUContext(path string) error {
 	return cleanUpContext(path, xpuContextFileName)
 }
+
+func parseDurationFromEnv(key string, def time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+		klog.Warningf("Guardian: invalid duration %s=%q, using default %s", key, v, def)
+	}
+	return def
+}
