@@ -325,6 +325,8 @@ func (g *Guardian) tick(ctx context.Context) {
 	lvolCluster := make(map[string]string, len(g.lvols))
 	clusterWasInactive := make(map[string]bool, len(g.clusterWasInactive))
 
+	klog.Infof("Guardian: tick started Guard content=%v", g.lvols)
+
 	for lvolID, st := range g.lvols {
 		if st == nil {
 			continue
