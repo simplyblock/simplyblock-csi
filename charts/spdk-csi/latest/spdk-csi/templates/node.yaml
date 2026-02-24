@@ -132,6 +132,8 @@ spec:
         - name: host-modules
           mountPath: /lib/modules
           readOnly: true
+        - name: guardian-state
+          mountPath: /var/run/simplyblock/guardian
       volumes:
       - name: socket-dir
         hostPath:
@@ -162,6 +164,10 @@ spec:
       - name: host-modules
         hostPath:
           path: /lib/modules
+      - name: guardian-state
+        hostPath:
+          path: /var/lib/simplyblock/guardian
+          type: DirectoryOrCreate
       - name: csi-nodeserver-config
         configMap:
           name: simplyblock-csi-nodeservercm
