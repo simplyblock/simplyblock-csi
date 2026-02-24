@@ -346,7 +346,10 @@ func (g *Guardian) tick(ctx context.Context) {
 	}
 	g.mu.Unlock()
 
+	activeNow := map[string]bool{}
+
 	justBecameActive := map[string]bool{} // clusterID -> true
+
 	for _, c := range clusters.Clusters {
 		cid := c.ClusterID
 		if cid == "" {
@@ -366,6 +369,8 @@ func (g *Guardian) tick(ctx context.Context) {
 			continue
 		}
 
+		activeNow[cid] = true
+
 		if wasInactive {
 			justBecameActive[cid] = true
 			klog.Warningf("Guardian: cluster=%s transitioned to %s; will evaluate pod restarts", cid, realStatus)
@@ -380,7 +385,7 @@ func (g *Guardian) tick(ctx context.Context) {
 	}
 	g.mu.Unlock()
 
-	if len(justBecameActive) == 0 {
+	if len(activeNow) == 0 {
 		return
 	}
 
@@ -394,7 +399,7 @@ func (g *Guardian) tick(ctx context.Context) {
 		if cid == "" {
 			continue
 		}
-		if !justBecameActive[cid] {
+		if !activeNow[cid] {
 			continue
 		}
 		actionableByCluster[cid] = append(actionableByCluster[cid], lvolID)
@@ -404,7 +409,10 @@ func (g *Guardian) tick(ctx context.Context) {
 		return
 	}
 
-	klog.Warningf("Guardian: clusters back active=%v; evaluating restarts", keysBoolMap(justBecameActive))
+	klog.Warningf(
+		"Guardian: evaluating restarts; activeNow=%v justBecameActive=%v actionable=%v",
+		keysBoolMap(activeNow), keysBoolMap(justBecameActive), actionableByCluster,
+	)
 
 	pods, err := g.listRunningPodsOnNode(ctx, g.cfg.NodeName)
 	if err != nil {
