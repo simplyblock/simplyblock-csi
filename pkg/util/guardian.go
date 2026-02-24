@@ -325,9 +325,6 @@ func (g *Guardian) tick(ctx context.Context) {
 	lvolCluster := make(map[string]string, len(g.lvols))
 	clusterWasInactive := make(map[string]bool, len(g.clusterWasInactive))
 
-	klog.Infof("Guardian: tick started Guard content=%v", g.lvols)
-	klog.Infof("Guardian: tick started lvols=%s", dumpJSON(g.lvols))
-
 	for lvolID, st := range g.lvols {
 		if st == nil {
 			continue
@@ -456,6 +453,7 @@ func (g *Guardian) tick(ctx context.Context) {
 				klog.Warningf("Guardian: restarting pod %s/%s (uid=%s) due to broken lvol=%s cluster=%s",
 					pod.Namespace, pod.Name, podUID, lvolID, cid)
 
+				deleted := false
 				if !g.cfg.DryRun {
 					err := g.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
 						GracePeriodSeconds: &g.cfg.GraceSeconds,
@@ -464,17 +462,19 @@ func (g *Guardian) tick(ctx context.Context) {
 						klog.Errorf("Guardian: delete pod %s/%s failed: %v", pod.Namespace, pod.Name, err)
 						continue
 					}
+					deleted = true
 				}
 
-				g.setLastRestart(podUID)
-				restarted++
+				if deleted {
+					g.setLastRestart(podUID)
+					restarted++
+
+					g.mu.Lock()
+					g.removePodFromLvolLocked(lvolID, podUID)
+					g.mu.Unlock()
+				}
 			}
 
-			g.mu.Lock()
-			if st := g.lvols[lvolID]; st != nil {
-				st.BrokenAt = time.Time{}
-			}
-			g.mu.Unlock()
 		}
 	}
 
@@ -617,10 +617,13 @@ func keysBoolMap(m map[string]bool) []string {
 	return out
 }
 
-func dumpJSON(v any) string {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return fmt.Sprintf("json_error=%v", err)
+func (g *Guardian) removePodFromLvolLocked(lvolID, podUID string) {
+	st := g.lvols[lvolID]
+	if st == nil || st.PodUIDs == nil {
+		return
 	}
-	return string(b)
+	delete(st.PodUIDs, podUID)
+	if len(st.PodUIDs) == 0 {
+		delete(g.lvols, lvolID)
+	}
 }
