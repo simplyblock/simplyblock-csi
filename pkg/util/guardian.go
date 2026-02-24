@@ -338,6 +338,7 @@ func (g *Guardian) tick(ctx context.Context) {
 		}
 		for podUID := range st.PodUIDs {
 			lvolPods[lvolID] = append(lvolPods[lvolID], podUID)
+			klog.Infof("Guardian: podUID =%v", podUID)
 		}
 	}
 	for cid, v := range g.clusterWasInactive {
