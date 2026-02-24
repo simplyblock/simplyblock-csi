@@ -326,6 +326,7 @@ func (g *Guardian) tick(ctx context.Context) {
 	clusterWasInactive := make(map[string]bool, len(g.clusterWasInactive))
 
 	klog.Infof("Guardian: tick started Guard content=%v", g.lvols)
+	klog.Infof("Guardian: tick started lvols=%s", dumpJSON(g.lvols))
 
 	for lvolID, st := range g.lvols {
 		if st == nil {
@@ -605,4 +606,12 @@ func keysBoolMap(m map[string]bool) []string {
 		}
 	}
 	return out
+}
+
+func dumpJSON(v any) string {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("json_error=%v", err)
+	}
+	return string(b)
 }
