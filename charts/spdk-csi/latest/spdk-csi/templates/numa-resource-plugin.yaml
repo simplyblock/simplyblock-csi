@@ -3,14 +3,14 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: simplyblock-simplyblock-numa-resource-plugin
+  name: simplyblock-numa-resource-plugin
   namespace: kube-system
-  
+
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: simplyblock-simplyblock-numa-resource-plugin-config
+  name: simplyblock-numa-resource-plugin-config
   namespace: kube-system
 data:
   # Capacity per NUMA node (default: 100)
