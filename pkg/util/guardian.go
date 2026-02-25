@@ -335,7 +335,6 @@ func (g *Guardian) tick(ctx context.Context) {
 		}
 		for podUID := range st.PodUIDs {
 			lvolPods[lvolID] = append(lvolPods[lvolID], podUID)
-			klog.Infof("Guardian: podUID =%v", podUID)
 		}
 	}
 	for cid, v := range g.clusterWasInactive {
@@ -405,11 +404,6 @@ func (g *Guardian) tick(ctx context.Context) {
 	if len(actionableByCluster) == 0 {
 		return
 	}
-
-	klog.Warningf(
-		"Guardian: evaluating restarts; activeNow=%v justBecameActive=%v actionable=%v",
-		keysBoolMap(activeNow), keysBoolMap(justBecameActive), actionableByCluster,
-	)
 
 	pods, err := g.listRunningPodsOnNode(ctx, g.cfg.NodeName)
 	if err != nil {
@@ -605,16 +599,6 @@ func (g *Guardian) persistLocked() {
 	if err := os.WriteFile(g.cfg.StatePath, b, 0o600); err != nil {
 		klog.Errorf("Guardian: write state: %v", err)
 	}
-}
-
-func keysBoolMap(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k, v := range m {
-		if v {
-			out = append(out, k)
-		}
-	}
-	return out
 }
 
 func (g *Guardian) removePodFromLvolLocked(lvolID, podUID string) {
