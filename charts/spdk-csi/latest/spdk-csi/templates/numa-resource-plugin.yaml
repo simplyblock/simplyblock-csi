@@ -36,6 +36,22 @@ spec:
     spec:
       serviceAccountName: simplyblock-numa-resource-plugin
       priorityClassName: system-node-critical
+      {{- $dsList := .Values.storagenode.daemonsets | default (list) -}}
+      {{- if gt (len $dsList) 0 }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ (index $dsList 0).nodeSelector.key | quote }}
+                operator: In
+                values:
+                {{- range $i, $ds := $dsList }}
+                {{- if and $ds.nodeSelector $ds.nodeSelector.value }}
+                - {{ $ds.nodeSelector.value | quote }}
+                {{- end }}
+                {{- end }}
+      {{- end }}
       tolerations:
         # Run on all nodes including control plane
         - operator: Exists
