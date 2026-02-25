@@ -49,6 +49,10 @@ image:
     repository: simplyblock/caching-node-handler
     tag: v0.1.0
     pullPolicy: Always
+  numaResource:
+    repository: simplyblock/numa-resource-plugin
+    tag: latest
+    pullPolicy: Always
   mgmtAPI:
     repository: python
     tag: "3.10"
@@ -199,6 +203,7 @@ storagenode:
   sizeRange:
   coresPercentage:
   ubuntuHost: false
+  enableCpuTopology: false
   openShiftCluster: false
   multiCluster:
     enable: false

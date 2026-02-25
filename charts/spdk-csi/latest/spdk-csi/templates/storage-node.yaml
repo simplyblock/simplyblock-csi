@@ -166,6 +166,8 @@ spec:
           value: "{{ $.Values.storagenode.ubuntuHost }}"
         - name: OPENSHIFT_CLUSTER
           value: "{{ $.Values.storagenode.openShiftCluster }}"
+        - name: CPU_TOPOLOGY_ENABLED
+          value: "{{ $.Values.storagenode.enableCpuTopology }}"
         - name: HOSTNAME
           valueFrom:
             fieldRef:
