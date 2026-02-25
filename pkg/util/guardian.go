@@ -625,5 +625,6 @@ func (g *Guardian) removePodFromLvolLocked(lvolID, podUID string) {
 	delete(st.PodUIDs, podUID)
 	if len(st.PodUIDs) == 0 {
 		delete(g.lvols, lvolID)
+		delete(g.lastRestart, podUID)
 	}
 }
