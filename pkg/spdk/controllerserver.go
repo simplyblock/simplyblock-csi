@@ -477,7 +477,7 @@ func getBoolParameter(params map[string]string, key string) bool {
 	return exists && (valueStr == "true" || valueStr == "True")
 }
 
-func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, sizeMiB int64) (*util.CreateLVolData, error) {
+func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, capacityBytes int64) (*util.CreateLVolData, error) {
 	params := req.GetParameters()
 
 	distrNdcs, err := getIntParameter(params, "distr_ndcs", 1)
@@ -547,7 +547,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 
 	createVolReq := util.CreateLVolData{
 		LvolName:     req.GetName(),
-		Size:         fmt.Sprintf("%dM", sizeMiB),
+		Size:         strconv.FormatInt(capacityBytes, 10),
 		LvsName:      params["pool_name"],
 		Fabric:       params["fabric"],
 		MaxRWIOPS:    params["qos_rw_iops"],
@@ -588,10 +588,9 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		size = 1024 * 1024 * 1024
 	}
 
-	sizeGiB := util.ToGiB(size)
-	sizeMiB := sizeGiB * 1024
+	capacityBytes := util.AlignToGiBBytes(size)
 	vol := csi.Volume{
-		CapacityBytes: sizeMiB * 1024 * 1024,
+		CapacityBytes: capacityBytes,
 		VolumeContext: req.GetParameters(),
 		ContentSource: req.GetVolumeContentSource(),
 	}
@@ -604,7 +603,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	if req.GetVolumeContentSource() != nil {
-		clonedVolume, clonedErr := cs.handleVolumeContentSource(req, poolName, &vol, sizeMiB)
+		clonedVolume, clonedErr := cs.handleVolumeContentSource(req, poolName, &vol, capacityBytes)
 		if clonedErr != nil {
 			return nil, clonedErr
 		}
@@ -613,7 +612,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	createVolReq, err := prepareCreateVolumeReq(ctx, req, sizeMiB)
+	createVolReq, err := prepareCreateVolumeReq(ctx, req, capacityBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -708,6 +707,10 @@ func (cs *controllerServer) unpublishVolume(volumeID string) error {
 func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	updatedSize := req.GetCapacityRange().GetRequiredBytes()
+
+	// Simplyblock backends are GiB aligned, so we round up to GiB.
+	capacityBytes := util.AlignToGiBBytes(updatedSize)
+
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
 		return nil, err
@@ -718,13 +721,13 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 		return nil, err
 	}
 
-	_, err = sbclient.ResizeVolume(spdkVol.lvolID, updatedSize)
+	_, err = sbclient.ResizeVolume(spdkVol.lvolID, capacityBytes)
 	if err != nil {
 		klog.Errorf("failed to resize lvol, LVolID: %s err: %v", spdkVol.lvolID, err)
 		return nil, err
 	}
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         updatedSize,
+		CapacityBytes:         capacityBytes,
 		NodeExpansionRequired: true,
 	}, nil
 }
@@ -885,19 +888,19 @@ func newControllerServer(d *csicommon.CSIDriver) (*controllerServer, error) {
 	return &server, nil
 }
 
-func (cs *controllerServer) handleVolumeContentSource(req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeContentSource(req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	volumeSource := req.GetVolumeContentSource()
 	switch volumeSource.GetType().(type) {
 	case *csi.VolumeContentSource_Snapshot:
-		return cs.handleSnapshotSource(volumeSource.GetSnapshot(), req, poolName, vol, sizeMiB)
+		return cs.handleSnapshotSource(volumeSource.GetSnapshot(), req, poolName, vol, sizeBytes)
 	case *csi.VolumeContentSource_Volume:
-		return cs.handleVolumeSource(volumeSource.GetVolume(), req, poolName, vol, sizeMiB)
+		return cs.handleVolumeSource(volumeSource.GetVolume(), req, poolName, vol, sizeBytes)
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
 	}
 }
 
-func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	if snapshot == nil {
 		return nil, nil
 	}
@@ -917,7 +920,8 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	snapshotName := req.GetName()
 	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
-	newSize := fmt.Sprintf("%dM", sizeMiB)
+	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
+	newSize := strconv.FormatInt(sizeBytes, 10)
 	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
@@ -929,7 +933,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	return vol, nil
 }
 
-func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	if srcVolume == nil {
 		return nil, nil
 	}
@@ -959,7 +963,8 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to create snapshot, srcVolumeID: %s snapshotName: %s err: %v", srcVolumeID, snapshotName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	newSize := fmt.Sprintf("%dM", sizeMiB)
+	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
+	newSize := strconv.FormatInt(sizeBytes, 10)
 	klog.Infof("CloneSnapshot : snapshotName=%s", snapshotName)
 	snapshot, err := getSnapshot(snapshotID)
 	if err != nil {

@@ -335,16 +335,11 @@ func (client *RPCClient) resizeVolume(lvolID string, size int64) (bool, error) {
 		LvolID:  lvolID,
 		NewSize: size,
 	}
-	var result bool
-	out, err := client.CallSBCLI("PUT", "/lvol/resize/"+lvolID, &params)
+	_, err := client.CallSBCLI("PUT", "/lvol/resize/"+lvolID, &params)
 	if err != nil {
 		return false, err
 	}
-	result, ok := out.(bool)
-	if !ok {
-		return false, fmt.Errorf("failed to convert the response to bool type. Interface: %v", out)
-	}
-	return result, nil
+	return true, nil
 }
 
 // cloneSnapshot clones a snapshot
@@ -477,6 +472,7 @@ try_request:
 	defer resp.Body.Close()
 
 	var response struct {
+		Status  *bool  `json:"status"`
 		Result  any    `json:"result"`
 		Results any    `json:"results"`
 		Error   string `json:"error"`
@@ -486,6 +482,10 @@ try_request:
 	if decodeErr != nil {
 		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %w",
 			method, resp.StatusCode, decodeErr)
+	}
+
+	if response.Status != nil && !*response.Status {
+		return nil, fmt.Errorf("%s: %s", method, response.Error)
 	}
 
 	// --- Backward compatibility fallback ---
