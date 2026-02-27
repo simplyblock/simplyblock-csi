@@ -1,4 +1,4 @@
-{{- if and .Values.storagenode.create .Values.storagenode.enableCpuTopology -}}
+{{- if and .Values.storagenode.create .Values.storagenode.enableCpuTopology  .Values.storagenode.enableDevicePlugin -}}
 ---
 apiVersion: v1
 kind: ServiceAccount

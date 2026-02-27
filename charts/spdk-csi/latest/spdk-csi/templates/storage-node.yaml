@@ -170,8 +170,6 @@ spec:
           value: "{{ $.Values.storagenode.enableCpuTopology }}"
         - name: SKIP_KUBELET_CONFIGURATION
           value: "{{ $.Values.storagenode.skipKubeletConfiguration }}"
-        - name: SKIP_K8S_DEVICE_PLUGIN_DEPLOY
-          value: "{{ $.Values.storagenode.skipDevicePluginDeploy }}"
         {{- if $.Values.storagenode.reservedSystemCpu }}
         - name: RESERVED_SYSTEM_CPUS
           value: "{{ $.Values.storagenode.reservedSystemCpu }}"
