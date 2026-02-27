@@ -204,7 +204,10 @@ storagenode:
   coresPercentage:
   ubuntuHost: false
   enableCpuTopology: false
+  skipDevicePluginDeploy: false
+  skipKubeletConfiguration: false
   openShiftCluster: false
+  reservedSystemCpu:
   multiCluster:
     enable: false
     clusters:
