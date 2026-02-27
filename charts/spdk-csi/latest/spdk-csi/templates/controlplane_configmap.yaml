@@ -1,0 +1,949 @@
+{{- if .Values.controlplane.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-config
+  namespace: {{ .Release.Namespace }}
+
+data:
+  LOG_LEVEL: {{ .Values.controlplane.observability.level }}
+  LOG_DELETION_INTERVAL: {{ .Values.controlplane.observability.deletionInterval }}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-fluent-bit-config
+  namespace: {{ .Release.Namespace }}
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        1
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*.log
+        Parser            docker
+        Tag               kube.*
+        Exclude_Path      /var/log/containers/*fluent-bit*.log
+        Refresh_Interval  5
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+        DB                /tmp/flb_kube.db
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log           On
+        Merge_Log_Key       log
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude Off
+
+    [FILTER]
+        Name      lua
+        Match     kube.*
+        script    filter.lua
+        call      filter_tagged_pods
+
+    [OUTPUT]
+        Name          gelf
+        Match         *
+        Host          simplyblock-graylog
+        Port          12201
+        Mode          tcp
+        Gelf_Short_Message_Key log
+
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+  filter.lua: |
+    function filter_tagged_pods(tag, timestamp, record)
+        if record["kubernetes"] ~= nil then
+            local annotations = record["kubernetes"]["annotations"]
+            if annotations ~= nil and annotations["log-collector/enabled"] == "true" then
+                return 1, record
+            end
+        end
+        return -1, record
+    end
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-simplyblock-prometheus-config
+  labels:
+    app: simplyblock-prometheus
+  namespace: {{ .Release.Namespace }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      external_labels:
+        monitor: 'codelab-monitor'
+
+    scrape_configs:
+
+      - job_name: 'cluster_metrics'
+        static_configs:
+          - targets: ['simplyblock-webappapi:5000']
+        honor_labels: true
+        metrics_path: '/api/v1/cluster/metrics'
+        basic_auth:
+          username:
+          password:
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-objstore-config
+  labels:
+    app: simplyblock-thanos
+  namespace: {{ .Release.Namespace }}
+data:
+  objstore.yml: |
+    type: FILESYSTEM
+    config:
+      directory: /mnt/thanos
+{{- if .Values.controlplane.observability.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-grafana-datasource
+  labels:
+    app: simplyblock-grafana
+  namespace: {{ .Release.Namespace }}
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Thanos
+      type: prometheus
+      url: http://simplyblock-thanos:9091
+      isDefault: true
+      access: proxy
+      uid: PBFA97CFB590B2093
+      editable: true
+    - name: GRAYLOG
+      type: elasticsearch
+      url: http://opensearch-cluster-master:9200
+      isDefault: false
+      access: proxy
+      uid: graylog_uid
+      editable: true
+      jsonData:
+        index: '*'
+        interval: Hourly
+        timeField: 'timestamp'
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-grafana-alerting
+  namespace: {{ .Release.Namespace }}
+data:
+  alert_rules.yaml: |
+    apiVersion: 1
+    groups:
+        - orgId: 1
+          name: grafana_folder
+          folder: grafana_folder
+          interval: 1m
+          rules:
+            - uid: a8d58d98-ebb7-4868-a790-feaf096d0371
+              title: Device_status_online_to_unavailable
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: device_status_code
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 2
+                                - 4
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params: []
+                          reducer:
+                            params: []
+                            type: avg
+                          type: query
+                    datasource:
+                        name: Expression
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    hide: false
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule checks for device unavailability.
+                summary: '"Device {{ "{{" }} $labels.device {{ "}}" }} in storage node {{ "{{" }} $labels.snode {{ "}}" }} is unavailable".'
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: ed2d58d6-ea9c-43c4-ba0c-167d2341aab6
+              title: Device_status_online_to_read_only
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: device_status_code
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 5
+                                - 7
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - C
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule checks for devices read-only state
+                summary: Device {{ "{{" }} $labels.device {{ "}}" }} on snode {{ "{{" }} $labels.snode {{ "}}" }} is now read-only.
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: a0a4c959-2afb-4bf6-a640-791b7b532e7c
+              title: Cluster_status_online_to_degraded
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: cluster_status_code
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 10
+                                - 12
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - C
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule alerts on cluster degraded state
+                summary: Cluster {{ "{{" }} $labels.cluster {{ "}}" }} is in degraded state
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: ff20be71-e41f-4095-903e-cb53614aa305
+              title: Cluster_status_online_to_suspended
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: cluster_status_code
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 9
+                                - 11
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - C
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule alerts for cluster suspended state
+                summary: Cluster {{ "{{" }} $labels.cluster {{ "}}" }} is in suspended state
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: a21f2558-2847-4295-a289-1466d18c6eaf
+              title: StorageNode_status_online_to_unreachable
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: snode_status_code
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 19
+                                - 21
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - C
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule alerts for unreachable storage nodes.
+                summary: storage node {{ "{{" }} $labels.snode {{ "}}" }} in cluster {{ "{{" }} $labels.cluster {{ "}}" }} is unreachable
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: f3c9d7b6-5a82-4e1d-b7c3-89f2a4e61d4b
+              title: StorageNode_status_online_to_down
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: snode_status_code
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 39
+                                - 41
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - C
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule alerts for down storage nodes.
+                summary: storage node {{ "{{" }} $labels.snode {{ "}}" }} in cluster {{ "{{" }} $labels.cluster {{ "}}" }} is down
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: a8f1c3d2-7b45-4e98-923f-61d4b7f2c89a
+              title: StorageNode_health_check_false
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: snode_health_check
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - -1
+                                - 1 
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - C
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 2m
+              annotations:
+                description: The rule alerts for unhealthy storage nodes.
+                summary: storage node {{ "{{" }} $labels.snode {{ "}}" }} in cluster {{ "{{" }} $labels.cluster {{ "}}" }} is unhealthy
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: e582398b-6ab8-444a-8d2e-5e35715bd58a
+              title: Cluster_provisioned_capacity_reached
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: cluster_prov_cap_crit
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: B
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: cluster_size_prov_util
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: B
+                    useBackend: false
+                - refId: D  
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    expression: $A <= $B
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: D
+                    type: math
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 0
+                            type: gt
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - D
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: D
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule alerts about cluster provisioned capacity reached
+                summary: Cluster {{ "{{" }} $labels.cluster {{ "}}" }} provisioned capacity reached
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: cbae9efa-8fbb-4507-a621-c0e4a14d3484
+              title: Cluster_absolute_capacity_reached
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: cluster_cap_crit
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: B
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: cluster_size_util
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: B
+                    useBackend: false
+                - refId: D  
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    expression: $A <= $B
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: D
+                    type: math
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 0
+                            type: gt
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - D
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: D
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule alerts about cluster absolute capacity reached.
+                summary: Cluster {{ "{{" }} $labels.cluster {{ "}}" }} absolute capacity reached
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: bd752874-f5c3-4c43-a553-0443eaa3560c
+              title: Lvol_status_online_to_offline
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: lvol_status_code
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                        - evaluator:
+                            params:
+                                - 1
+                                - 3
+                            type: within_range
+                          operator:
+                            type: and
+                          query:
+                            params:
+                                - C
+                          reducer:
+                            params: []
+                            type: last
+                          type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 2m
+              annotations:
+                description: The rule alerts for offline lvols.
+                summary: lvol {{ "{{" }} $labels.lvol {{ "}}" }} in cluster {{ "{{" }} $labels.cluster {{ "}}" }} is offline
+              labels:
+                app: simplyblock
+              isPaused: false
+            - uid: f2d58d12-4b5e-4c8c-9aef-73e06c097e18
+              title: Root Filesystem Low Space Alert
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: PBFA97CFB590B2093
+                  model:
+                    disableTextWrap: false
+                    editorMode: builder
+                    expr: |
+                      (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / 
+                      node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) * 100
+                    fullMetaSearch: false
+                    includeNullMetadata: true
+                    instant: true
+                    intervalMs: 1000
+                    legendFormat: __auto
+                    maxDataPoints: 43200
+                    range: false
+                    refId: A
+                    useBackend: false
+                - refId: C
+                  relativeTimeRange:
+                    from: 600
+                    to: 0
+                  datasourceUid: __expr__
+                  model:
+                    conditions:
+                      - evaluator:
+                          params:
+                            - 20
+                          type: lt
+                        operator:
+                          type: and
+                        query:
+                          params:
+                            - C
+                        reducer:
+                          params: []
+                          type: last
+                        type: query
+                    datasource:
+                        type: __expr__
+                        uid: __expr__
+                    expression: A
+                    intervalMs: 1000
+                    maxDataPoints: 43200
+                    refId: C
+                    type: threshold
+              noDataState: NoData
+              execErrState: Error
+              for: 1m
+              annotations:
+                description: The rule alerts when root filesystem space is critically low (below 20%).
+                summary: 'Root filesystem space is critically low on {{ "{{" }} $labels.instance {{ "}}" }}.'
+              labels:
+                app: simplyblock
+              isPaused: false
+
+  alert_resources.yaml: |
+    policies:
+      - orgId: 1
+        receiver: grafana-alerts
+        group_by: ['grafana_folder', 'alertname']
+        routes:
+          - receiver: grafana-alerts
+            object_matchers:
+              - ['app', '=', 'simplyblock']
+
+    contactPoints:
+      - orgId: 1
+        name: grafana-alerts
+        receivers:
+          - uid: grafana
+            type: slack
+            settings:
+              username: grafana_bot
+              url: '{{ .Values.controlplane.observability.grafana.contactPoint }}'
+              title: |
+                '{{ "{{" }} template "slack.title" . {{ "}}" }}'
+              text: |
+                '{{ "{{" }} template "slack.message" . {{ "}}" }}'
+
+    templates:
+      - orgId: 1
+        name: slack.title
+        template: |
+          [ALERT] Grafana Alerting Notification
+
+      - orgId: 1
+        name: slack.message
+        template: |
+          *Alert*: {{ "{{" }} .Labels.alertname {{ "}}" }}
+          *Summary*: {{ "{{" }} .Annotations.summary {{ "}}" }}
+          *Description*: {{ "{{" }} .Annotations.description {{ "}}" }}
+          *Explore logs:* 
+          *Go to dashboard:* {{ "{{" }} .DashboardURL {{ "}}" }}
+          *Go to panel:* {{ "{{" }} .PanelURL {{ "}}" }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplyblock-grafana-dashboard-config
+  namespace: {{ .Release.Namespace }}
+data:
+  dashboard.yaml: |
+    apiVersion: 1
+    providers:
+      - name: "Dashboard provider"
+        orgId: 1
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: true
+{{- end }}
+{{- end }}

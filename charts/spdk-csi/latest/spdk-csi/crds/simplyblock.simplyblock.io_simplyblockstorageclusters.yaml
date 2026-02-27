@@ -1,0 +1,173 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: simplyblockstorageclusters.simplyblock.simplyblock.io
+spec:
+  group: simplyblock.simplyblock.io
+  names:
+    kind: SimplyBlockStorageCluster
+    listKind: SimplyBlockStorageClusterList
+    plural: simplyblockstorageclusters
+    singular: simplyblockstoragecluster
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SimplyBlockStorageCluster is the Schema for the simplyblockstorageclusters
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of SimplyBlockStorageCluster
+            properties:
+              action:
+                enum:
+                - activate
+                - expand
+                type: string
+              blkSize:
+                format: int32
+                type: integer
+              capCrit:
+                format: int32
+                type: integer
+              capWarn:
+                format: int32
+                type: integer
+              clientQpairCount:
+                format: int32
+                type: integer
+              clusterName:
+                type: string
+              distrBs:
+                format: int32
+                type: integer
+              distrChunkBs:
+                format: int32
+                type: integer
+              enableNodeAffinity:
+                type: boolean
+              eventLogEntries:
+                format: int32
+                type: integer
+              fabric:
+                type: string
+              haType:
+                type: string
+              includeEventLog:
+                type: boolean
+              inflightIOThreshold:
+                format: int32
+                type: integer
+              isSingleNode:
+                type: boolean
+              maxQueueSize:
+                format: int32
+                type: integer
+              mgmtIfc:
+                description: Create-only
+                type: string
+              pageSizeInBlocks:
+                format: int32
+                type: integer
+              provCapCrit:
+                format: int32
+                type: integer
+              provCapWarn:
+                format: int32
+                type: integer
+              qosClasses:
+                description: Updatable
+                type: string
+              qpairCount:
+                format: int32
+                type: integer
+              strictNodeAntiAffinity:
+                type: boolean
+              stripeWdata:
+                format: int32
+                type: integer
+              stripeWparity:
+                format: int32
+                type: integer
+            required:
+            - clusterName
+            type: object
+          status:
+            description: status defines the observed state of SimplyBlockStorageCluster
+            properties:
+              MOD:
+                type: string
+              NQN:
+                type: string
+              UUID:
+                type: string
+              actionStatus:
+                properties:
+                  action:
+                    type: string
+                  message:
+                    type: string
+                  nodeUUID:
+                    type: string
+                  observedGeneration:
+                    format: int64
+                    type: integer
+                  state:
+                    type: string
+                  triggered:
+                    type: boolean
+                  updatedAt:
+                    format: date-time
+                    type: string
+                type: object
+              clusterName:
+                type: string
+              configured:
+                type: boolean
+              created:
+                format: date-time
+                type: string
+              lastUpdated:
+                format: date-time
+                type: string
+              mgmtNodes:
+                format: int32
+                type: integer
+              rebalancing:
+                type: boolean
+              secretName:
+                type: string
+              status:
+                type: string
+              storageNodes:
+                format: int32
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
