@@ -182,7 +182,7 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.numDistribs`              | the number of distribs per storage node	                                                                                  | `2`                                                                        |  |
 | `storagenode.isolateCores`             | Enable core Isolation                                                                                                  | `false`                                                                  |  |
 | `storagenode.haJMCount`                | the number of ha Journal managers                                                                                                  | `<empty>`                                                                  |  |
-| `storagenode.dataNics`                  | Data interface names                                                                                                  | `<empty>`                                                                |  |
+| `storagenode.dataNic`                  | Data interface name                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.pciAllowed`                 | the list of allowed nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.pciBlocked`                 | the list of blocked nvme pcie addresses                                                                                                  | `<empty>`                                                                |  |
 | `storagenode.socketsToUse`               | the list of sockets to use                                                                                                  | `<empty>`                                                                |  |
@@ -268,7 +268,11 @@ The following table lists the configurable parameters of the latest Simplyblock 
 | `storagenode.maxSnap`                  | the default max snapshot per storage node	                                                                              | `10`                                                                       |  |
 | `storagenode.jmPercent`                | the number in percent to use for JM from each device	                                                                    | `3`                                                                        |  |
 | `storagenode.numPartitions`            | the number of partitions to create per device                                                                            | `0`                                                                        |  |
-                                                            |  |
+| `storagenode.numDevices`               | the number of devices per storage node	                                                                                  | `1`                                                                        |  |
+| `storagenode.numDistribs`              | the number of distribs per storage node	                                                                                  | `2`                                                                        |  |
+| `storagenode.disableHAJM`              | Disable ha Journal Manager	                                                                                                  | `false`                                                                  |  |
+| `storagenode.enableTestDevice`         | Enable creation of test device                                                                                                  | `false`                                                                  |  |
+| `storagenode.dataNic`                 | Data interface name                                                                                                  | `<empty>`                                                                |  |
 
 
 ## troubleshooting

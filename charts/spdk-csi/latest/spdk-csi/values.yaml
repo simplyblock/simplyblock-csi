@@ -192,7 +192,7 @@ storagenode:
   numPartitions: 1
   isolateCores: false
   haJMCount:
-  dataNics:
+  dataNic:
   pciAllowed:
   pciBlocked:
   deviceNames:
