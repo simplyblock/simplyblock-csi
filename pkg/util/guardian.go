@@ -11,6 +11,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -33,7 +34,8 @@ type GuardianConfig struct {
 	// Minimum time a lvol must remain "broken" before we restart pods after cluster is active.
 	MinBrokenFor time.Duration
 
-	StatePath string
+	StatePath     string
+	CSIDriverName string
 }
 
 type ClusterStatus struct {
@@ -56,7 +58,8 @@ func NewDefaultGuardianConfig(nodeName string) GuardianConfig {
 			"GUARDIAN_MIN_BROKEN_FOR",
 			30*time.Second,
 		),
-		StatePath: "/var/run/simplyblock/guardian/state.json",
+		StatePath:     "/var/run/simplyblock/guardian/state.json",
+		CSIDriverName: "csi.simplyblock.io",
 	}
 }
 
@@ -176,6 +179,9 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 	}
 	if cfg.OptInLabelValue == "" {
 		cfg.OptInLabelValue = "true"
+	}
+	if cfg.CSIDriverName == "" {
+		cfg.CSIDriverName = "csi.simplyblock.io"
 	}
 
 	rc, err := rest.InClusterConfig()
@@ -429,7 +435,7 @@ func (g *Guardian) tick(ctx context.Context) {
 					continue
 				}
 
-				if pod.Labels[g.cfg.OptInLabelKey] != g.cfg.OptInLabelValue {
+				if !g.podOptedInForAutoRestart(ctx, &pod) {
 					continue
 				}
 
@@ -611,4 +617,124 @@ func (g *Guardian) removePodFromLvolLocked(lvolID, podUID string) {
 		delete(g.lvols, lvolID)
 		delete(g.lastRestart, podUID)
 	}
+}
+
+func hasOptInMetadata(labels map[string]string, annotations map[string]string, key, want string) bool {
+	if key == "" {
+		return false
+	}
+	if labels != nil && labels[key] == want {
+		return true
+	}
+	if annotations != nil && annotations[key] == want {
+		return true
+	}
+	return false
+}
+
+func storageClassOptedIn(sc *storagev1.StorageClass, key, want string) bool {
+	if sc == nil {
+		return false
+	}
+	return hasOptInMetadata(sc.Labels, sc.Annotations, key, want)
+}
+
+func (g *Guardian) podOptedInForAutoRestart(ctx context.Context, pod *v1.Pod) bool {
+	if hasOptInMetadata(pod.Labels, pod.Annotations, g.cfg.OptInLabelKey, g.cfg.OptInLabelValue) {
+		return true
+	}
+
+	ok, err := g.podUsesOptedInSimplyBlockStorageClass(ctx, pod)
+	if err != nil {
+		klog.Warningf("Guardian: failed checking StorageClass opt-in for pod %s/%s: %v",
+			pod.Namespace, pod.Name, err)
+		return false
+	}
+
+	return ok
+}
+
+func (g *Guardian) podUsesOptedInSimplyBlockStorageClass(ctx context.Context, pod *v1.Pod) (bool, error) {
+	seenPVCs := map[string]struct{}{}
+	seenSCs := map[string]struct{}{}
+
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim == nil {
+			continue
+		}
+
+		pvcName := strings.TrimSpace(vol.PersistentVolumeClaim.ClaimName)
+		if pvcName == "" {
+			continue
+		}
+
+		pvcKey := pod.Namespace + "/" + pvcName
+		if _, seen := seenPVCs[pvcKey]; seen {
+			continue
+		}
+		seenPVCs[pvcKey] = struct{}{}
+
+		pvc, err := g.cs.CoreV1().PersistentVolumeClaims(pod.Namespace).Get(ctx, pvcName, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				klog.Warningf("Guardian: PVC %s not found for pod %s/%s", pvcKey, pod.Namespace, pod.Name)
+				continue
+			}
+			return false, fmt.Errorf("get pvc %s: %w", pvcKey, err)
+		}
+
+		pvName := strings.TrimSpace(pvc.Spec.VolumeName)
+		if pvName == "" {
+			continue
+		}
+
+		pv, err := g.cs.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				klog.Warningf("Guardian: PV %s not found for PVC %s", pvName, pvcKey)
+				continue
+			}
+			return false, fmt.Errorf("get pv %s: %w", pvName, err)
+		}
+
+		if pv.Spec.CSI == nil {
+			continue
+		}
+		if strings.TrimSpace(pv.Spec.CSI.Driver) != g.cfg.CSIDriverName {
+			continue
+		}
+
+		scName := ""
+		if pvc.Spec.StorageClassName != nil {
+			scName = strings.TrimSpace(*pvc.Spec.StorageClassName)
+		}
+		if scName == "" {
+			scName = strings.TrimSpace(pvc.Annotations["volume.beta.kubernetes.io/storage-class"])
+		}
+		if scName == "" {
+			continue
+		}
+
+		if _, seen := seenSCs[scName]; seen {
+			continue
+		}
+		seenSCs[scName] = struct{}{}
+
+		sc, err := g.cs.StorageV1().StorageClasses().Get(ctx, scName, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				klog.Warningf("Guardian: StorageClass %s not found for PVC %s", scName, pvcKey)
+				continue
+			}
+			return false, fmt.Errorf("get storageclass %s: %w", scName, err)
+		}
+
+		if storageClassOptedIn(sc, g.cfg.OptInLabelKey, g.cfg.OptInLabelValue) {
+			klog.Infof("Guardian: pod %s/%s opted in via Simplyblock StorageClass %s (driver=%s)",
+				pod.Namespace, pod.Name, sc.Name, g.cfg.CSIDriverName)
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
