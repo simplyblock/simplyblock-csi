@@ -116,6 +116,7 @@ type LvolConnectResp struct {
 	IP             string `json:"ip"`
 	Connect        string `json:"connect"`
 	NSID           int    `json:"ns_id"`
+	HostIface      string `json:"host-iface,omitempty"`
 }
 
 type connectionInfo struct {
@@ -314,6 +315,7 @@ func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error)
 		"targetType":     result[0].TargetType,
 		"connections":    string(connectionsData),
 		"nsId":           strconv.Itoa(result[0].NSID),
+		"hostIface":      result[0].HostIface,
 	}, nil
 }
 
@@ -333,16 +335,11 @@ func (client *RPCClient) resizeVolume(lvolID string, size int64) (bool, error) {
 		LvolID:  lvolID,
 		NewSize: size,
 	}
-	var result bool
-	out, err := client.CallSBCLI("PUT", "/lvol/resize/"+lvolID, &params)
+	_, err := client.CallSBCLI("PUT", "/lvol/resize/"+lvolID, &params)
 	if err != nil {
 		return false, err
 	}
-	result, ok := out.(bool)
-	if !ok {
-		return false, fmt.Errorf("failed to convert the response to bool type. Interface: %v", out)
-	}
-	return result, nil
+	return true, nil
 }
 
 // cloneSnapshot clones a snapshot
@@ -350,10 +347,12 @@ func (client *RPCClient) cloneSnapshot(snapshotID, cloneName, newSize, pvcName s
 	params := struct {
 		SnapshotID string `json:"snapshot_id"`
 		CloneName  string `json:"clone_name"`
+		NewSize    string `json:"new_size"`
 		PVCName    string `json:"pvc_name,omitempty"`
 	}{
 		SnapshotID: snapshotID,
 		CloneName:  cloneName,
+		NewSize:    newSize,
 		PVCName:    pvcName,
 	}
 
@@ -435,6 +434,9 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 	data := []byte(`{}`)
 	var err error
 
+	// Normalize the path to avoid double slashes when building URLs
+	path = strings.TrimLeft(path, "/")
+
 	if args != nil {
 		data, err = json.Marshal(args)
 		if err != nil {
@@ -470,6 +472,7 @@ try_request:
 	defer resp.Body.Close()
 
 	var response struct {
+		Status  *bool  `json:"status"`
 		Result  any    `json:"result"`
 		Results any    `json:"results"`
 		Error   string `json:"error"`
@@ -479,6 +482,10 @@ try_request:
 	if decodeErr != nil {
 		return nil, fmt.Errorf("%s: HTTP error code: %d Error: %w",
 			method, resp.StatusCode, decodeErr)
+	}
+
+	if response.Status != nil && !*response.Status {
+		return nil, fmt.Errorf("%s: %s", method, response.Error)
 	}
 
 	// --- Backward compatibility fallback ---
@@ -507,7 +514,6 @@ try_request:
 	}
 	return response.Results, nil
 }
-
 
 // errorMatches checks if the error message from the full error
 func errorMatches(errFull, errJSON error) bool {

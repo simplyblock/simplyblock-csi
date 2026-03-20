@@ -66,6 +66,7 @@ type initiatorNVMf struct {
 	ctrlLossTmo    string
 	model          string
 	nsId           string
+	hostIface      string
 }
 
 // initiatorCache is an implementation of NVMf cache initiator
@@ -114,8 +115,9 @@ type nvmeDeviceInfo struct {
 }
 
 var (
-	deviceSubsystemMap = make(map[string]bool)
-	mu                 sync.Mutex
+	devicePresentMap  = make(map[string]bool)
+	deviceToLvolIDMap = make(map[string]string)
+	mu                sync.Mutex
 )
 
 // clusterConfig represents the Kubernetes secret structure
@@ -185,6 +187,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			ctrlLossTmo:    volumeContext["ctrlLossTmo"],
 			model:          volumeContext["model"],
 			nsId:           volumeContext["nsId"],
+			hostIface:      volumeContext["hostIface"],
 		}, nil
 
 	case "cache":
@@ -352,18 +355,35 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			return "", err
 		}
 
+		connected := 0
+		var lastErr error
+
 		for i, conn := range nvmf.connections {
 			cmdLine := []string{
 				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
 				"-a", connections[i].IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
 				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 			}
+
+			if nvmf.hostIface != "" {
+				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
+			}
+
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 			if err != nil {
 				// go on checking device status in case caused by duplicated request
 				klog.Errorf("command %v failed: %s", cmdLine, err)
-				return "", err
+				lastErr = err
+				continue
 			}
+
+			connected++
+		}
+		if connected == 0 {
+			return "", fmt.Errorf(
+				"failed to connect to any NVMe path for NQN %s: error: %v",
+				nvmf.nqn, lastErr,
+			)
 		}
 	}
 
@@ -498,7 +518,8 @@ func disconnectDevicePath(devicePath string) error {
 	}
 
 	mu.Lock()
-	delete(deviceSubsystemMap, realPath)
+	delete(devicePresentMap, realPath)
+	delete(deviceToLvolIDMap, realPath)
 	mu.Unlock()
 
 	return nil
@@ -588,7 +609,7 @@ func parseAddress(address string) string {
 	return ""
 }
 
-func reconnectSubsystems() error {
+func reconnectSubsystems(markBroken func(lvolID string)) error {
 	devices, err := getNVMeDeviceInfos()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
@@ -604,7 +625,10 @@ func reconnectSubsystems() error {
 		}
 
 		currentDevices[device.devicePath] = true
-		deviceSubsystemMap[device.devicePath] = true
+
+		mu.Lock()
+		devicePresentMap[device.devicePath] = true
+		mu.Unlock()
 
 		for _, host := range subsystems {
 			for _, subsystem := range host.Subsystems {
@@ -612,6 +636,10 @@ func reconnectSubsystems() error {
 				if lvolID == "" {
 					continue
 				}
+
+				mu.Lock()
+				deviceToLvolIDMap[device.devicePath] = lvolID
+				mu.Unlock()
 
 				if len(subsystem.Paths) == 1 {
 					confirm := confirmSubsystemStillSinglePath(&subsystem, device.devicePath)
@@ -633,14 +661,30 @@ func reconnectSubsystems() error {
 
 	}
 
+	var goneLvols []string
+
 	mu.Lock()
-	for devPath := range deviceSubsystemMap {
+	for devPath := range devicePresentMap {
 		if !currentDevices[devPath] {
-			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device", devPath)
-			delete(deviceSubsystemMap, devPath)
+			lvolID := deviceToLvolIDMap[devPath]
+
+			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device (lvolID=%s)", devPath, lvolID)
+
+			delete(devicePresentMap, devPath)
+			delete(deviceToLvolIDMap, devPath)
+
+			if lvolID != "" {
+				goneLvols = append(goneLvols, lvolID)
+			}
 		}
 	}
 	mu.Unlock()
+
+	if markBroken != nil {
+		for _, lvolID := range goneLvols {
+			markBroken(lvolID)
+		}
+	}
 
 	return nil
 }
@@ -789,7 +833,8 @@ func disconnectViaNVMe(devicePath string, path path) error {
 	}
 
 	mu.Lock()
-	delete(deviceSubsystemMap, devicePath)
+	delete(devicePresentMap, devicePath)
+	delete(deviceToLvolIDMap, devicePath)
 	mu.Unlock()
 
 	return nil
@@ -827,13 +872,13 @@ func confirmSubsystemStillSinglePath(subsystem *subsystem, devicePath string) bo
 
 // MonitorConnection monitors the connection to the SPDK node and reconnects if necessary
 // TODO: make this monitoring multiple connections
-func MonitorConnection() {
+func MonitorConnection(markBroken func(lvolID string)) {
 	for {
-		if err := reconnectSubsystems(); err != nil {
+		if err := reconnectSubsystems(markBroken); err != nil {
 			klog.Errorf("Error: %v\n", err)
+			time.Sleep(3 * time.Second)
 			continue
 		}
-
 		time.Sleep(3 * time.Second)
 	}
 }

@@ -4,3 +4,4 @@
 *.orig
 *.patch
 *.rej
+.gocache

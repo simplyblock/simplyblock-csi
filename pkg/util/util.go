@@ -37,6 +37,11 @@ const volumeContextFileName = "volume-context.json"
 // file name in which XPU context is stashed.
 const xpuContextFileName = "xpu-context.json"
 
+const (
+	MIB = int64(1024 * 1024)
+	GIB = MIB * 1024
+)
+
 func ParseJSONFile(fileName string, result interface{}) error {
 	file, err := os.Open(fileName)
 	if err != nil {
@@ -52,10 +57,19 @@ func ParseJSONFile(fileName string, result interface{}) error {
 	return json.Unmarshal(bytes, result)
 }
 
-// round up bytes to megabytes
+// ToMiB rounds up bytes to megabytes
 func ToMiB(bytes int64) int64 {
-	const mi = 1024 * 1024
-	return (bytes + mi - 1) / mi
+	return (bytes + MIB - 1) / MIB
+}
+
+// ToGiB rounds up bytes to gigabytes
+func ToGiB(bytes int64) int64 {
+	return (bytes + GIB - 1) / GIB
+}
+
+// AlignToGiBBytes rounds bytes up to the next GiB boundary and returns bytes.
+func AlignToGiBBytes(bytes int64) int64 {
+	return ToGiB(bytes) * GIB
 }
 
 // ${env:-def}
@@ -337,4 +351,14 @@ func LookupXPUContext(path string) (map[string]string, error) {
 // CleanUpXPUContext cleans up any stashed XPU context at passed in path.
 func CleanUpXPUContext(path string) error {
 	return cleanUpContext(path, xpuContextFileName)
+}
+
+func parseDurationFromEnv(key string, def time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+		klog.Warningf("Guardian: invalid duration %s=%q, using default %s", key, v, def)
+	}
+	return def
 }

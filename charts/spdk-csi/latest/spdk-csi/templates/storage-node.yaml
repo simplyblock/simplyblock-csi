@@ -58,6 +58,10 @@ spec:
   selector:
     matchLabels:
       app: {{ .appLabel }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1  
   template:
     metadata:
       labels:
@@ -122,6 +126,9 @@ spec:
           {{- with (default list $.Values.storagenode.pciBlocked) }}
           - "--pci-blocked={{ join "," . }}"
           {{- end }}
+          {{- with (default list $.Values.storagenode.deviceNames) }}
+          - "--nvme-devices={{ join "," . }}"
+          {{- end }} 
           {{- if $.Values.storagenode.socketsToUse }}
           - "--sockets-to-use={{ $.Values.storagenode.socketsToUse }}"
           {{- end }}
@@ -130,7 +137,7 @@ spec:
           {{- end }}
           {{- if $.Values.storagenode.deviceModel }}
           - "--device-model={{ $.Values.storagenode.deviceModel }}"
-          {{- end }}
+          {{- end }} 
           {{- if $.Values.storagenode.sizeRange }}
           - "--size-range={{ $.Values.storagenode.sizeRange }}"
           {{- end }}
@@ -159,12 +166,26 @@ spec:
           value: "{{ $.Values.storagenode.ubuntuHost }}"
         - name: OPENSHIFT_CLUSTER
           value: "{{ $.Values.storagenode.openShiftCluster }}"
+        - name: CPU_TOPOLOGY_ENABLED
+          value: "{{ $.Values.storagenode.enableCpuTopology }}"
+        - name: SKIP_KUBELET_CONFIGURATION
+          value: "{{ $.Values.storagenode.skipKubeletConfiguration }}"
+        {{- if $.Values.storagenode.reservedSystemCpu }}
+        - name: RESERVED_SYSTEM_CPUS
+          value: "{{ $.Values.storagenode.reservedSystemCpu }}"
+        {{- end }}
         - name: HOSTNAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
         securityContext:
           privileged: true
+        readinessProbe:
+          httpGet:
+            path: /snode/check
+            port: 5000
+          initialDelaySeconds: 10 
+          periodSeconds: 5 
         volumeMounts:
         - name: dev-vol
           mountPath: /dev

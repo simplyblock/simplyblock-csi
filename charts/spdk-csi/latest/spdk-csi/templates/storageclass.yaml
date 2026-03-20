@@ -8,6 +8,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: simplyblock-csi-sc
+  {{- with .Values.storageclass.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 provisioner: csi.simplyblock.io
 parameters:
   csi.storage.k8s.io/fstype: ext4

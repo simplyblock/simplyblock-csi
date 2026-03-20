@@ -74,7 +74,9 @@ type: Opaque
 
 ### Using multi cluster
 
-With the `zone_cluster_map` parameter you can publish a single StorageClass that targets multiple Simplyblock clusters. A minimal example:
+With the `zone_cluster_map` or `region_cluster_map` parameter you can publish a single StorageClass that targets multiple Simplyblock clusters. A minimal example:
+
+#### Zone-based mapping (zone → cluster)
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -95,10 +97,36 @@ allowedTopologies:
     - us-east-1a
     - us-east-1b
 ```
-
 > **Tip:** The keys inside `zone_cluster_map` must match the zone labels present on your Kubernetes nodes (typically `topology.kubernetes.io/zone`). You can include as many zones as needed, each pointing to the cluster ID defined in `simplyblock-csi-secret-v2`.
 
-Stateful workloads can then rely on standard pod topology hints, for example a StatefulSet with `podAntiAffinity` that spreads replicas across zones. When a PVC is created, the scheduler selects the desired zone, the CSI driver resolves the cluster ID from the map, and the volume is provisioned on the correct Simplyblock backend.
+
+#### Region-based mapping (region → cluster)
+
+Use this when your Simplyblock backend is accessible across all zones within a region, or when you want a coarser placement policy than zones.
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: simplyblock-csi
+provisioner: csi.simplyblock.io
+parameters:
+  pool_name: production
+  region_cluster_map: |
+    {"us-east-1":"cluster-uuid-a","us-west-2":"cluster-uuid-b"}
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/region
+    values:
+    - us-east-1
+    - us-west-2
+```
+
+> **Tip:** The keys inside `region_cluster_map` must match the region labels present on your Kubernetes nodes (typically `topology.kubernetes.io/region`). You can include as many region as needed, each pointing to the cluster ID defined in `simplyblock-csi-secret-v2`.
+
+Stateful workloads can then rely on standard pod topology hints, for example a StatefulSet with `podAntiAffinity` that spreads replicas across zones or regions. When a PVC is created, the scheduler selects the desired zone or region, the CSI driver resolves the cluster ID from the map, and the volume is provisioned on the correct Simplyblock backend.
 
 ### Configuring Multi Storage Cluster Support
 In addition to multi-cluster connectivity via the `simplyblock-csi-secret-v2` secret, the Simplyblock Storage Controller also supports multi storage cluster configuration using a dedicated ConfigMap named `simplyblock-clusters`.

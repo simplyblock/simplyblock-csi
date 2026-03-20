@@ -7,7 +7,7 @@ driverName: csi.simplyblock.io
 image:
   csi:
     repository: simplyblock/spdkcsi
-    tag: v0.1.8
+    tag: v0.2.2
     pullPolicy: Always
   csiProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
@@ -39,15 +39,19 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: public.ecr.aws/simply-block/simplyblock
-    tag: "25.10.4"
+    tag: "25.10.5"
     pullPolicy: Always
   storageNode:
     repository: simplyblock/storage-node-handler
-    tag: v0.1.6
+    tag: v0.1.8
     pullPolicy: Always
   operator:
     repository: simplyblock/simplyblock-manager
     tag: main
+    pullPolicy: Always
+  numaResource:
+    repository: simplyblock/numa-resource-plugin
+    tag: latest
     pullPolicy: Always
   mgmtAPI:
     repository: python
@@ -80,6 +84,10 @@ storageclass:
   volumeBindingMode: WaitForFirstConsumer
   zoneClusterMap: {}
   allowedTopologyZones: []
+  annotations: {}
+  # example:
+  # annotations:
+  #   simplyblock.io/auto-restart-on-pathloss: "true"  
 
 snapshotclass:
   create: true
@@ -170,16 +178,28 @@ storagenode:
   numPartitions: 1
   isolateCores: false
   haJMCount:
-  dataNics:
+  dataNic:
   pciAllowed:
   pciBlocked:
+  deviceNames:
+  format4k: false
   socketsToUse: 
   nodesPerSocket:
   deviceModel:
   sizeRange:
   coresPercentage:
   ubuntuHost: false
+  enableCpuTopology: false
+  enableDevicePlugin: true
+  skipKubeletConfiguration: false
   openShiftCluster: false
+  reservedSystemCpu:
+  multiCluster:
+    enable: false
+    clusters:
+    - cluster_id: 
+      secret:
+      workers:
   daemonsets:
   - name: simplyblock-storage-node-ds
     appLabel: storage-node

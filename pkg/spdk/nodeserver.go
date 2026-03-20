@@ -24,6 +24,11 @@ import (
 	"strconv"
 	"time"
 
+	"path/filepath"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -50,6 +55,7 @@ type nodeServer struct {
 	xpuTargetType string
 	kvmPciBridges int
 	kubeClient    kubernetes.Interface
+	guardian      *util.Guardian
 }
 
 func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
@@ -140,7 +146,20 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 	ns.xpuConnClient = xpuConnClient
 	ns.xpuTargetType = xpuTargetType
 
-	go util.MonitorConnection()
+	nodeName := ns.Driver.GetNodeID()
+	gcfg := util.NewDefaultGuardianConfig(nodeName)
+	guardian, gerr := util.StartGuardian(context.Background(), gcfg)
+	if gerr != nil {
+		klog.Errorf("failed to start guardian: %v", gerr)
+	} else {
+		ns.guardian = guardian
+	}
+
+	go util.MonitorConnection(func(lvolID string) {
+		if ns.guardian != nil {
+			ns.guardian.MarkBrokenLvol(lvolID)
+		}
+	})
 
 	return ns, nil
 }
@@ -194,8 +213,78 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 	return segments
 }
 
-func (ns *nodeServer) NodeGetVolumeStats(_ context.Context, _ *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	volID := req.GetVolumeId()
+	volumePath := req.GetVolumePath()
+
+	if volID == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume_id is required")
+	}
+	if volumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume_path is required")
+	}
+
+	st, err := os.Stat(volumePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Error(codes.NotFound, "volume_path not found")
+		}
+		return nil, status.Errorf(codes.Internal, "stat volume_path %q: %v", volumePath, err)
+	}
+
+	if st.IsDir() {
+		var s unix.Statfs_t
+		if err := unix.Statfs(volumePath, &s); err != nil {
+			return nil, status.Errorf(codes.Internal, "statfs %q: %v", volumePath, err)
+		}
+
+		totalBytes := int64(s.Blocks) * int64(s.Bsize)
+		availBytes := int64(s.Bavail) * int64(s.Bsize)
+		usedBytes := totalBytes - availBytes
+		if usedBytes < 0 {
+			usedBytes = 0
+		}
+
+		totalInodes := int64(s.Files)
+		availInodes := int64(s.Ffree)
+		usedInodes := totalInodes - availInodes
+		if usedInodes < 0 {
+			usedInodes = 0
+		}
+
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:      csi.VolumeUsage_BYTES,
+					Total:     totalBytes,
+					Used:      usedBytes,
+					Available: availBytes,
+				},
+				{
+					Unit:      csi.VolumeUsage_INODES,
+					Total:     totalInodes,
+					Used:      usedInodes,
+					Available: availInodes,
+				},
+			},
+		}, nil
+	}
+
+	sizeBytes, err := getBlockSizeBytes(volumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "get block size for %q: %v", volumePath, err)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Unit:      csi.VolumeUsage_BYTES,
+				Total:     int64(sizeBytes),
+				Used:      0,
+				Available: int64(sizeBytes),
+			},
+		},
+	}, nil
 }
 
 func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -298,6 +387,11 @@ func (ns *nodeServer) NodePublishVolume(_ context.Context, req *csi.NodePublishV
 		klog.Errorf("failed to publish volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	if ns.guardian != nil {
+		ns.guardian.RegisterPublish(req.VolumeContext["nqn"], req.TargetPath)
+	}
+
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -311,6 +405,11 @@ func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpubl
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", req.GetTargetPath(), err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	if ns.guardian != nil {
+		ns.guardian.RegisterUnpublishByTargetPath(req.TargetPath)
+	}
+
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -335,6 +434,13 @@ func (ns *nodeServer) NodeGetCapabilities(_ context.Context, _ *csi.NodeGetCapab
 				Type: &csi.NodeServiceCapability_Rpc{
 					Rpc: &csi.NodeServiceCapability_RPC{
 						Type: csi.NodeServiceCapability_RPC_VOLUME_CONDITION,
+					},
+				},
+			},
+			{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 					},
 				},
 			},
@@ -491,6 +597,11 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		stagingPath = devicePath
 
 		fsType = ""
+
+		if err := ns.ensureCleanTargetPath(targetPath); err != nil {
+			return status.Errorf(codes.Internal, "Could not cleanup mount target %q: %v", targetPath, err)
+		}
+
 		if err = ns.MakeFile(targetPath); err != nil {
 			if removeErr := os.Remove(targetPath); removeErr != nil {
 				return status.Errorf(codes.Internal, "Could not remove mount target %q: %v", targetPath, removeErr)
@@ -563,6 +674,33 @@ func (ns *nodeServer) MakeFile(path string) error {
 	return nil
 }
 
+// ensureCleanTargetPath makes sure targetPath is not a mountpoint and is removed.
+// idempotent
+func (ns *nodeServer) ensureCleanTargetPath(targetPath string) error {
+	isMount, err := ns.mounter.IsMountPoint(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if mount.IsCorruptedMnt(err) {
+			isMount = true
+		} else {
+			return err
+		}
+	}
+
+	if isMount {
+		if err := ns.mounter.Unmount(targetPath); err != nil {
+			_ = osexec.Command("umount", "-l", targetPath).Run()
+		}
+	}
+
+	if err := os.RemoveAll(targetPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func getStagingTargetPath(req interface{}) string {
 	switch vr := req.(type) {
 	case *csi.NodeStageVolumeRequest:
@@ -575,4 +713,43 @@ func getStagingTargetPath(req interface{}) string {
 		klog.Warningf("invalid request %T", vr)
 	}
 	return ""
+}
+
+func getBlockSizeBytes(volumePath string) (uint64, error) {
+	if size, err := ioctlBlkGetSize64(volumePath); err == nil && size > 0 {
+		return size, nil
+	}
+
+	rp, err := filepath.EvalSymlinks(volumePath)
+	if err == nil && rp != "" && rp != volumePath {
+		if size, err2 := ioctlBlkGetSize64(rp); err2 == nil && size > 0 {
+			return size, nil
+		}
+	}
+
+	return 0, fmt.Errorf("BLKGETSIZE64 ioctl failed for %q", volumePath)
+}
+
+func ioctlBlkGetSize64(path string) (uint64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	// blkGetSize64 is the Linux BLKGETSIZE64 ioctl code.
+	// It returns the total size (in bytes) of a block device.
+	var blkGetSize64 = 0x80081272
+
+	var size uint64
+	_, _, errno := unix.Syscall(
+		unix.SYS_IOCTL,
+		f.Fd(),
+		uintptr(blkGetSize64),
+		uintptr(unsafe.Pointer(&size)),
+	)
+	if errno != 0 {
+		return 0, errno
+	}
+	return size, nil
 }

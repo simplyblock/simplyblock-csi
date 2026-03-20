@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -50,6 +49,7 @@ const (
 	annotationSecretNamespace = "simplybk/secret-namespace"
 	paramClusterID            = "cluster_id"
 	paramZoneClusterMap       = "zone_cluster_map"
+	paramRegionClusterMap     = "region_cluster_map"
 	topologyKeyZoneStable     = "topology.kubernetes.io/zone"
 	topologyKeyZoneBeta       = "failure-domain.beta.kubernetes.io/zone"
 	topologyKeyRegionStable   = "topology.kubernetes.io/region"
@@ -89,14 +89,29 @@ func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest
 		}
 	}
 
-	rawMap, ok := params[paramZoneClusterMap]
-	if !ok {
-		return nil, fmt.Errorf("failed to get cluster_id from parameters")
+	var (
+		zoneMap   map[string]string
+		regionMap map[string]string
+		err       error
+	)
+
+	if raw, ok := params[paramZoneClusterMap]; ok {
+		zoneMap, err = parseStringMap(raw, paramZoneClusterMap)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	zoneMap, err := parseZoneClusterMap(rawMap)
-	if err != nil {
-		return nil, err
+	if raw, ok := params[paramRegionClusterMap]; ok {
+		regionMap, err = parseStringMap(raw, paramRegionClusterMap)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(zoneMap) == 0 && len(regionMap) == 0 {
+		return nil, fmt.Errorf("no %s or %s provided and %s not set",
+			paramZoneClusterMap, paramRegionClusterMap, paramClusterID)
 	}
 
 	topoReq := req.GetAccessibilityRequirements()
@@ -104,65 +119,79 @@ func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest
 		return nil, fmt.Errorf("topology requirements are required when using %s", paramZoneClusterMap)
 	}
 
-	attemptedZones := map[string]struct{}{}
-
-	for _, topo := range topoReq.GetPreferred() {
-		if sel := matchTopologyWithZoneMap(topo, zoneMap); sel != nil {
-			return sel, nil
+	tryList := func(list []*csi.Topology) *clusterSelection {
+		for _, topo := range list {
+			if sel := matchTopologyWithZoneMap(topo, zoneMap); sel != nil {
+				return sel
+			}
+			if sel := matchTopologyWithRegionMap(topo, regionMap); sel != nil {
+				return sel
+			}
 		}
-		if zone := zoneFromTopology(topo); zone != "" {
-			attemptedZones[zone] = struct{}{}
-		}
+		return nil
 	}
 
-	for _, topo := range topoReq.GetRequisite() {
-		if sel := matchTopologyWithZoneMap(topo, zoneMap); sel != nil {
-			return sel, nil
-		}
-		if zone := zoneFromTopology(topo); zone != "" {
-			attemptedZones[zone] = struct{}{}
-		}
+	if sel := tryList(topoReq.GetPreferred()); sel != nil {
+		return sel, nil
+	}
+	if sel := tryList(topoReq.GetRequisite()); sel != nil {
+		return sel, nil
 	}
 
-	zones := make([]string, 0, len(attemptedZones))
-	for z := range attemptedZones {
-		zones = append(zones, z)
-	}
-	sort.Strings(zones)
-
-	if len(zones) == 0 {
-		return nil, fmt.Errorf("no zone information found in topology requirements")
-	}
-
-	return nil, fmt.Errorf("no cluster mapping found for zones %s", strings.Join(zones, ", "))
+	return nil, fmt.Errorf("no cluster mapping found for topology requirements")
 }
 
-func parseZoneClusterMap(raw string) (map[string]string, error) {
+func parseStringMap(raw, paramName string) (map[string]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, fmt.Errorf("%s parameter is empty", paramZoneClusterMap)
+		return nil, fmt.Errorf("%s parameter is empty", paramName)
 	}
 
 	var parsed map[string]string
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse %s parameter: %w", paramZoneClusterMap, err)
+		return nil, fmt.Errorf("failed to parse %s parameter: %w", paramName, err)
 	}
 
 	normalized := make(map[string]string, len(parsed))
-	for zone, cluster := range parsed {
-		zone = strings.TrimSpace(zone)
-		cluster = strings.TrimSpace(cluster)
-		if zone == "" || cluster == "" {
+	for key, value := range parsed {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
 			continue
 		}
-		normalized[zone] = cluster
+		normalized[key] = value
 	}
 
 	if len(normalized) == 0 {
-		return nil, fmt.Errorf("%s parameter did not contain any zone to cluster_id mappings", paramZoneClusterMap)
+		return nil, fmt.Errorf("%s parameter did not contain any mappings", paramName)
+	}
+	return normalized, nil
+}
+
+func matchTopologyWithRegionMap(topo *csi.Topology, regionMap map[string]string) *clusterSelection {
+	if topo == nil {
+		return nil
 	}
 
-	return normalized, nil
+	region := regionFromTopology(topo)
+	if region == "" {
+		return nil
+	}
+
+	clusterID, ok := regionMap[region]
+	if !ok {
+		return nil
+	}
+
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		return nil
+	}
+
+	return &clusterSelection{
+		clusterID: clusterID,
+		topology:  map[string]string{topologyKeyRegionStable: region},
+	}
 }
 
 func matchTopologyWithZoneMap(topo *csi.Topology, zoneMap map[string]string) *clusterSelection {
@@ -209,6 +238,23 @@ func zoneFromSegments(segments map[string]string) string {
 		return zone
 	}
 	return ""
+}
+
+func regionFromSegments(segments map[string]string) string {
+	if segments == nil {
+		return ""
+	}
+	if r, ok := segments[topologyKeyRegionStable]; ok && r != "" {
+		return r
+	}
+	return ""
+}
+
+func regionFromTopology(topo *csi.Topology) string {
+	if topo == nil {
+		return ""
+	}
+	return regionFromSegments(topo.GetSegments())
 }
 
 func copyTopologySegments(segments map[string]string) map[string]string {
@@ -276,6 +322,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 		if zone := zoneFromSegments(selection.topology); zone != "" {
 			csiVolume.VolumeContext[topologyKeyZoneStable] = zone
+		}
+		if region := regionFromSegments(selection.topology); region != "" {
+			csiVolume.VolumeContext[topologyKeyRegionStable] = region
 		}
 	}
 
@@ -428,7 +477,7 @@ func getBoolParameter(params map[string]string, key string) bool {
 	return exists && (valueStr == "true" || valueStr == "True")
 }
 
-func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, sizeMiB int64) (*util.CreateLVolData, error) {
+func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, capacityBytes int64) (*util.CreateLVolData, error) {
 	params := req.GetParameters()
 
 	distrNdcs, err := getIntParameter(params, "distr_ndcs", 1)
@@ -498,7 +547,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, s
 
 	createVolReq := util.CreateLVolData{
 		LvolName:     req.GetName(),
-		Size:         fmt.Sprintf("%dM", sizeMiB),
+		Size:         strconv.FormatInt(capacityBytes, 10),
 		LvsName:      params["pool_name"],
 		Fabric:       params["fabric"],
 		MaxRWIOPS:    params["qos_rw_iops"],
@@ -538,9 +587,10 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		klog.Warningln("invalid volume size, resize to 1G")
 		size = 1024 * 1024 * 1024
 	}
-	sizeMiB := util.ToMiB(size)
+
+	capacityBytes := util.AlignToGiBBytes(size)
 	vol := csi.Volume{
-		CapacityBytes: sizeMiB * 1024 * 1024,
+		CapacityBytes: capacityBytes,
 		VolumeContext: req.GetParameters(),
 		ContentSource: req.GetVolumeContentSource(),
 	}
@@ -553,7 +603,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	if req.GetVolumeContentSource() != nil {
-		clonedVolume, clonedErr := cs.handleVolumeContentSource(req, poolName, &vol, sizeMiB)
+		clonedVolume, clonedErr := cs.handleVolumeContentSource(req, poolName, &vol, capacityBytes)
 		if clonedErr != nil {
 			return nil, clonedErr
 		}
@@ -562,7 +612,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	createVolReq, err := prepareCreateVolumeReq(ctx, req, sizeMiB)
+	createVolReq, err := prepareCreateVolumeReq(ctx, req, capacityBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -657,6 +707,10 @@ func (cs *controllerServer) unpublishVolume(volumeID string) error {
 func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	updatedSize := req.GetCapacityRange().GetRequiredBytes()
+
+	// Simplyblock backends are GiB aligned, so we round up to GiB.
+	capacityBytes := util.AlignToGiBBytes(updatedSize)
+
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
 		return nil, err
@@ -667,13 +721,13 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 		return nil, err
 	}
 
-	_, err = sbclient.ResizeVolume(spdkVol.lvolID, updatedSize)
+	_, err = sbclient.ResizeVolume(spdkVol.lvolID, capacityBytes)
 	if err != nil {
 		klog.Errorf("failed to resize lvol, LVolID: %s err: %v", spdkVol.lvolID, err)
 		return nil, err
 	}
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         updatedSize,
+		CapacityBytes:         capacityBytes,
 		NodeExpansionRequired: true,
 	}, nil
 }
@@ -834,19 +888,19 @@ func newControllerServer(d *csicommon.CSIDriver) (*controllerServer, error) {
 	return &server, nil
 }
 
-func (cs *controllerServer) handleVolumeContentSource(req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeContentSource(req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	volumeSource := req.GetVolumeContentSource()
 	switch volumeSource.GetType().(type) {
 	case *csi.VolumeContentSource_Snapshot:
-		return cs.handleSnapshotSource(volumeSource.GetSnapshot(), req, poolName, vol, sizeMiB)
+		return cs.handleSnapshotSource(volumeSource.GetSnapshot(), req, poolName, vol, sizeBytes)
 	case *csi.VolumeContentSource_Volume:
-		return cs.handleVolumeSource(volumeSource.GetVolume(), req, poolName, vol, sizeMiB)
+		return cs.handleVolumeSource(volumeSource.GetVolume(), req, poolName, vol, sizeBytes)
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
 	}
 }
 
-func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	if snapshot == nil {
 		return nil, nil
 	}
@@ -866,7 +920,8 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	snapshotName := req.GetName()
 	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
-	newSize := fmt.Sprintf("%dM", sizeMiB)
+	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
+	newSize := strconv.FormatInt(sizeBytes, 10)
 	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
@@ -878,7 +933,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	return vol, nil
 }
 
-func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeMiB int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	if srcVolume == nil {
 		return nil, nil
 	}
@@ -908,7 +963,8 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to create snapshot, srcVolumeID: %s snapshotName: %s err: %v", srcVolumeID, snapshotName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	newSize := fmt.Sprintf("%dM", sizeMiB)
+	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
+	newSize := strconv.FormatInt(sizeBytes, 10)
 	klog.Infof("CloneSnapshot : snapshotName=%s", snapshotName)
 	snapshot, err := getSnapshot(snapshotID)
 	if err != nil {
