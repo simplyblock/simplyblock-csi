@@ -130,6 +130,7 @@ logicalVolume:
   max_size: "0"
   compression: "False"
   encryption: "False"
+  replicate: "False"
   numDataChunks: "1"
   numParityChunks: "1"
   lvol_priority_class: "0"
