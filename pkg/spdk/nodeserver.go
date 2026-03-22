@@ -465,6 +465,16 @@ func (ns *nodeServer) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVol
 		return nil, status.Errorf(codes.Internal, "could not find device path for volume %s", volumeID)
 	}
 
+	// For raw block volumes, the block device has already been resized at the
+	// storage layer. Skipping filesystem resize is correct here because:
+	// - resize2fs (ext4) can operate on an unmounted raw device, so it worked accidentally
+	// - xfs_growfs requires a mounted filesystem path and cannot operate on raw block devices
+	// Neither tool should be invoked for block volumes.
+	if cap := req.GetVolumeCapability(); cap != nil && cap.GetBlock() != nil {
+		klog.Infof("NodeExpandVolume: volume %s is a block device, skipping filesystem resize", volumeID)
+		return &csi.NodeExpandVolumeResponse{}, nil
+	}
+
 	resizer := mount.NewResizeFs(exec.New())
 	needsResize, err := resizer.NeedResize(devicePath, volumeMountPath)
 	if err != nil {
