@@ -1,0 +1,135 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: simplyblockdevices.simplyblock.simplyblock.io
+spec:
+  group: simplyblock.simplyblock.io
+  names:
+    kind: SimplyBlockDevice
+    listKind: SimplyBlockDeviceList
+    plural: simplyblockdevices
+    singular: simplyblockdevice
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SimplyBlockDevice is the Schema for the simplyblockdevices API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of SimplyBlockDevice
+            properties:
+              action:
+                enum:
+                - remove
+                - restart
+                type: string
+              clusterName:
+                type: string
+              deviceID:
+                type: string
+              nodeUUID:
+                type: string
+            required:
+            - clusterName
+            type: object
+          status:
+            description: status defines the observed state of SimplyBlockDevice
+            properties:
+              actionStatus:
+                properties:
+                  action:
+                    type: string
+                  message:
+                    type: string
+                  nodeUUID:
+                    type: string
+                  observedGeneration:
+                    format: int64
+                    type: integer
+                  state:
+                    type: string
+                  triggered:
+                    type: boolean
+                  updatedAt:
+                    format: date-time
+                    type: string
+                type: object
+              nodes:
+                items:
+                  properties:
+                    devices:
+                      items:
+                        properties:
+                          health:
+                            type: string
+                          model:
+                            type: string
+                          size:
+                            type: string
+                          stats:
+                            items:
+                              properties:
+                                capacityUtil:
+                                  format: int64
+                                  type: integer
+                                riops:
+                                  format: int64
+                                  type: integer
+                                rtp:
+                                  format: int64
+                                  type: integer
+                                wiops:
+                                  format: int64
+                                  type: integer
+                                wtp:
+                                  format: int64
+                                  type: integer
+                              type: object
+                            type: array
+                          status:
+                            type: string
+                          utilization:
+                            format: int64
+                            type: integer
+                          uuid:
+                            type: string
+                        type: object
+                      type: array
+                    nodeUUID:
+                      type: string
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: nodeUUID and deviceID are required when action is specified
+          rule: '!(has(self.spec.action) && self.spec.action != "" && ((!has(self.spec.nodeUUID)
+            || self.spec.nodeUUID == "") || (!has(self.spec.deviceID) || self.spec.deviceID
+            == "")))'
+    served: true
+    storage: true
+    subresources:
+      status: {}

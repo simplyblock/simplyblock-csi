@@ -505,6 +505,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 
 	compression := getBoolParameter(params, "compression")
 	encryption := getBoolParameter(params, "encryption")
+	replicate := getBoolParameter(params, "replicate")
 
 	pvcName, pvcNameSelected := params[CSIStorageNameKey]
 	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
@@ -587,6 +588,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		PriorClass:   priorClass,
 		Compression:  compression,
 		Encryption:   encryption,
+		Replicate:    replicate,
 		DistNdcs:     distrNdcs,
 		DistNpcs:     distrNpcs,
 		CryptoKey1:   cryptoKey1,

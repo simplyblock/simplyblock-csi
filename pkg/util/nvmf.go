@@ -69,6 +69,7 @@ type CreateLVolData struct {
 	Fabric       string `json:"fabric"`
 	Compression  bool   `json:"comp"`
 	Encryption   bool   `json:"crypto"`
+	Replicate    bool   `json:"do_replicate"`
 	MaxRWIOPS    string `json:"max_rw_iops"`
 	MaxRWmBytes  string `json:"max_rw_mbytes"`
 	MaxRmBytes   string `json:"max_r_mbytes"`

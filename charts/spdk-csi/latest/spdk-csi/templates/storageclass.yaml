@@ -22,6 +22,7 @@ parameters:
   qos_w_mbytes: "{{ .Values.logicalVolume.qos_w_mbytes }}"
   compression: "{{ .Values.logicalVolume.compression }}"
   encryption: "{{ .Values.logicalVolume.encryption }}"
+  replicate: "{{ .Values.logicalVolume.replicate }}"
   distr_ndcs: "{{ .Values.logicalVolume.numDataChunks }}"
   distr_npcs: "{{ .Values.logicalVolume.numParityChunks }}"
   lvol_priority_class: "{{ .Values.logicalVolume.lvol_priority_class }}"

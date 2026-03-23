@@ -1,0 +1,154 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: simplyblocksnapshotreplications.simplyblock.simplyblock.io
+spec:
+  group: simplyblock.simplyblock.io
+  names:
+    kind: SimplyBlockSnapshotReplication
+    listKind: SimplyBlockSnapshotReplicationList
+    plural: simplyblocksnapshotreplications
+    singular: simplyblocksnapshotreplication
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SimplyBlockSnapshotReplication is the Schema for the simplyblocksnapshotreplications
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of SimplyBlockSnapshotReplication
+            properties:
+              action:
+                enum:
+                - failback
+                type: string
+              excludeVolumeIDs:
+                description: 'Optional: volumes to exclude from failback.'
+                items:
+                  type: string
+                type: array
+              includeVolumeIDs:
+                description: |-
+                  Optional: only these volumes are included in failback.
+                  If empty, all volumes are candidates unless excluded below.
+                items:
+                  type: string
+                type: array
+              interval:
+                description: 'snapshot replication interval in seconds (default: 300sec)'
+                format: int32
+                type: integer
+              sourceCluster:
+                description: Source cluster for the snapshots
+                type: string
+              targetCluster:
+                description: Target cluster for replication
+                type: string
+              targetPool:
+                description: Target cluster pool for replication
+                type: string
+              timeout:
+                description: snapshot replication timeout
+                format: int32
+                type: integer
+              volumeIDs:
+                description: 'Optional: list of volumes to replicate. Empty means
+                  all volumes'
+                items:
+                  type: string
+                type: array
+            required:
+            - sourceCluster
+            - targetCluster
+            - targetPool
+            type: object
+          status:
+            description: status defines the observed state of SimplyBlockSnapshotReplication
+            properties:
+              configured:
+                type: boolean
+              observedFailbackGeneration:
+                description: The metadata.generation value for which failback was
+                  last processed.
+                format: int64
+                type: integer
+              volumes:
+                description: Per-volume replication status
+                items:
+                  description: VolumeReplicationStatus tracks the replication state
+                    of an individual volume
+                  properties:
+                    errors:
+                      description: 'Optional: list of errors encountered for this
+                        volume'
+                      items:
+                        description: ReplicationError stores timestamped error messages
+                        properties:
+                          message:
+                            type: string
+                          timestamp:
+                            format: date-time
+                            type: string
+                        required:
+                        - message
+                        - timestamp
+                        type: object
+                      type: array
+                    lastReplicationTime:
+                      description: Timestamp of the last successful replication for
+                        this volume
+                      format: date-time
+                      type: string
+                    lastSnapshotID:
+                      description: Last snapshot ID replicated for this volume
+                      type: string
+                    phase:
+                      description: Current phase for this volume
+                      enum:
+                      - Pending
+                      - Running
+                      - Completed
+                      - Failed
+                      - Paused
+                      type: string
+                    replicatedCount:
+                      description: Number of snapshots successfully replicated
+                      format: int32
+                      type: integer
+                    volumeID:
+                      description: Volume ID
+                      type: string
+                  required:
+                  - volumeID
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
