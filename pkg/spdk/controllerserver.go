@@ -957,7 +957,8 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	pvcName, _ := params[CSIStorageNameKey]
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
-	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
+	deleteSnap := false
+	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName, deleteSnap)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -1006,7 +1007,9 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", snapshotID, err)
 		return nil, err
 	}
-	volumeID, err := sbclient.CloneSnapshot(snapshot.snapshotID, snapshotName, newSize, pvcName)
+
+	deleteSnap := true
+	volumeID, err := sbclient.CloneSnapshot(snapshot.snapshotID, snapshotName, newSize, pvcName, deleteSnap)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -1140,7 +1143,7 @@ func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string)
 
 // qosAnnotations holds per-PVC QoS override values read from PVC annotations.
 type qosAnnotations struct {
-	RWIOPS  string
+	RWIOPS   string
 	RWMBytes string
 	RMBytes  string
 	WMBytes  string
