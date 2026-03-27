@@ -342,6 +342,40 @@ func (client *RPCClient) resizeVolume(lvolID string, size int64) (bool, error) {
 	return true, nil
 }
 
+// cloneVolume clones a volume
+func (client *RPCClient) cloneVolume(lvolID, cloneName, newSize, pvcName string, deleteSnap bool) (string, error) {
+	params := struct {
+		LvolID     string `json:"lvol_id"`
+		CloneName  string `json:"clone_name"`
+		NewSize    string `json:"new_size"`
+		PVCName    string `json:"pvc_name,omitempty"`
+		DeleteSnap bool   `json:"delete_snap_on_lvol_delete"`
+	}{
+		LvolID:     lvolID,
+		CloneName:  cloneName,
+		NewSize:    newSize,
+		PVCName:    pvcName,
+		DeleteSnap: deleteSnap,
+	}
+
+	klog.V(5).Infof("cloned volume size: %s", newSize)
+
+	var lvID string
+	out, err := client.CallSBCLI("POST", "/lvol/clone", &params)
+	if err != nil {
+		if errorMatches(err, ErrJSONNoSpaceLeft) {
+			err = ErrJSONNoSpaceLeft // may happen in concurrency
+		}
+		return "", err
+	}
+
+	lvID, ok := out.(string)
+	if !ok {
+		return "", fmt.Errorf("failed to convert the response to string type. Interface: %v", out)
+	}
+	return lvID, err
+}
+
 // cloneSnapshot clones a snapshot
 func (client *RPCClient) cloneSnapshot(snapshotID, cloneName, newSize, pvcName string, deleteSnap bool) (string, error) {
 	params := struct {

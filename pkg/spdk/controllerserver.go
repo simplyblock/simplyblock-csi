@@ -977,7 +977,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 
 	klog.Infof("srcVolumeID=%s", srcVolumeID)
 
-	snapshotName := req.GetName()
+	cloneName := req.GetName()
 	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
 
@@ -991,31 +991,17 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	klog.Infof("CreateSnapshot: clusterID=%s poolName=%s", sbclient.Client.ClusterID, poolName)
-	snapshotID, err := sbclient.CreateSnapshot(spdkVol.lvolID, snapshotName)
-	klog.Infof("CreatedSnapshot: clusterID=%s snapshotID=%s", sbclient.Client.ClusterID, snapshotID)
-	if err != nil {
-		klog.Errorf("failed to create snapshot, srcVolumeID: %s snapshotName: %s err: %v", srcVolumeID, snapshotName, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
-	klog.Infof("CloneSnapshot : snapshotName=%s", snapshotName)
-	snapshot, err := getSnapshot(snapshotID)
-	if err != nil {
-		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", snapshotID, err)
-		return nil, err
-	}
-
+	klog.Infof("CloneVolume : cloneName=%s", cloneName)
 	deleteSnap := true
-	volumeID, err := sbclient.CloneSnapshot(snapshot.snapshotID, snapshotName, newSize, pvcName, deleteSnap)
+	volumeID, err := sbclient.CloneVolume(spdkVol.lvolID, cloneName, newSize, pvcName, deleteSnap)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
 	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
-	klog.V(5).Info("successfully created clonesnapshot volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
+	klog.V(5).Info("successfully created clone volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
 }
