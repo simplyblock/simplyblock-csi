@@ -957,8 +957,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	pvcName, _ := params[CSIStorageNameKey]
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
-	deleteSnap := false
-	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName, deleteSnap)
+	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -994,8 +993,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
 	klog.Infof("CloneVolume : cloneName=%s", cloneName)
-	deleteSnap := true
-	volumeID, err := sbclient.CloneVolume(spdkVol.lvolID, cloneName, newSize, pvcName, deleteSnap)
+	volumeID, err := sbclient.CloneVolume(spdkVol.lvolID, cloneName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
