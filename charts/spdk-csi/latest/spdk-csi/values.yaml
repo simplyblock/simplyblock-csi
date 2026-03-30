@@ -6,51 +6,47 @@ driverName: csi.simplyblock.io
 
 image:
   csi:
-    repository: simplyblock/spdkcsi
+    repository: quay.io/simplyblock-io/spdkcsi
     tag: v0.2.2
     pullPolicy: Always
   csiProvisioner:
-    repository: registry.k8s.io/sig-storage/csi-provisioner
+    repository: quay.io/simplyblock-io/csi-provisioner
     tag: v4.0.1
     pullPolicy: Always
   csiAttacher:
-    repository: gcr.io/k8s-staging-sig-storage/csi-attacher
+    repository: quay.io/simplyblock-io/csi-attacher
     tag: v4.5.1
     pullPolicy: Always
   nodeDriverRegistrar:
-    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
+    repository: quay.io/simplyblock-io/csi-node-driver-registrar
     tag: v2.10.1
     pullPolicy: Always
   csiSnapshotter:
-    repository: registry.k8s.io/sig-storage/csi-snapshotter
+    repository: quay.io/simplyblock-io/csi-snapshotter
     tag: v8.2.0
     pullPolicy: Always
   csiResizer:
-    repository: gcr.io/k8s-staging-sig-storage/csi-resizer
+    repository: quay.io/simplyblock-io/csi-resizer
     tag: v1.10.1
     pullPolicy: Always
   csiHealthMonitor:
-    repository: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller
+    repository: quay.io/simplyblock-io/csi-external-health-monitor-controller
     tag: v0.11.0
     pullPolicy: Always
   csiSnapshotterController:
-    repository: registry.k8s.io/sig-storage/snapshot-controller
+    repository: quay.io/simplyblock-io/snapshot-controller
     tag: v8.2.0
     pullPolicy: Always
   simplyblock:
-    repository: public.ecr.aws/simply-block/simplyblock
+    repository: quay.io/simplyblock-io/simplyblock
     tag: "25.10.5"
     pullPolicy: Always
   storageNode:
-    repository: simplyblock/storage-node-handler
+    repository: quay.io/simplyblock-io/storage-node-handler
     tag: v0.1.8
     pullPolicy: Always
-  cachingNode:
-    repository: simplyblock/caching-node-handler
-    tag: v0.1.0
-    pullPolicy: Always
   numaResource:
-    repository: simplyblock/numa-resource-plugin
+    repository: quay.io/simplyblock-io/numa-resource-plugin
     tag: latest
     pullPolicy: Always
   mgmtAPI:
@@ -165,24 +161,6 @@ node:
     create: false
     key: 
     value:
-
-cachingnode:
-  create: false
-  nodeSelector:
-    key: type
-    value: simplyblock-cache
-  ifname: eth0
-  cpuMask: 
-  spdkMem:
-  spdkImage: 
-  multipathing: true
-  tolerations:
-    create: false
-    list:
-    - operator: Exists
-      effect:
-      key: 
-      value:
 
 storagenode:
   create: false
