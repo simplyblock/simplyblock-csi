@@ -190,6 +190,7 @@ storagenode:
   numDataChunks: "1"
   numParityChunks: "1"
   spdkImage:
+  spdkProxyImage:
   maxLogicalVolumes: 10
   maxSnapshots: 10
   maxSize:

@@ -58,6 +58,8 @@ spec:
           value: "{{ .Values.storagenode.dataNic }}"
         - name: SPDKIMAGE
           value: "{{ .Values.storagenode.spdkImage }}"
+        - name: SPDKPROXYIMAGE
+          value: "{{ .Values.storagenode.spdkProxyImage }}"
         - name: FORMAT4K
           value: "{{ .Values.storagenode.format4k }}"
         - name: HAJMCOUNT
