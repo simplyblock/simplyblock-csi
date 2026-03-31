@@ -39,11 +39,11 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: quay.io/simplyblock-io/simplyblock
-    tag: "25.10.5"
+    tag: "R25.10-Hotfix-quay"
     pullPolicy: Always
   storageNode:
     repository: quay.io/simplyblock-io/storage-node-handler
-    tag: v0.1.8
+    tag: v0.1.9
     pullPolicy: Always
   numaResource:
     repository: quay.io/simplyblock-io/numa-resource-plugin
@@ -167,8 +167,8 @@ storagenode:
   ifname: eth0
   numDataChunks: "1"
   numParityChunks: "1"
-  spdkImage:
-  spdkProxyImage:
+  spdkImage: "quay.io/simplyblock-io/ultra:R25.10-Hotfix-latest"
+  spdkProxyImage: "quay.io/simplyblock-io/simplyblock:R25.10-Hotfix-quay"
   maxLogicalVolumes: 10
   maxSnapshots: 10
   maxSize:
