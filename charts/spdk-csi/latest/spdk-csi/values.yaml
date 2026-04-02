@@ -377,6 +377,8 @@ mongodb:
     agent: quay.io/mongodb
     readinessProbe: quay.io/mongodb
     versionUpgradeHook: quay.io/mongodb
+  nodeSelector: {}
+  tolerations: []
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -392,6 +394,9 @@ opensearch:
   fullnameOverride: "simplyblock-opensearch"
   singleNode: true
   replicas: 1
+
+  nodeSelector: {}
+  tolerations: []
 
   antiAffinity: "hard"
   persistence:
@@ -431,6 +436,8 @@ reloader:
       image:
         name: ghcr.io/stakater/reloader
         tag: v1.3.0
+      nodeSelector: {}
+      tolerations: []
 
 prometheus:
   simplyblock:
@@ -449,6 +456,8 @@ prometheus:
       log-collector/enabled: "true"
       reloader.stakater.com/auto: "true"
       reloader.stakater.com/configmap: "sbcli-simplyblock-prometheus-config"
+    nodeSelector: {}
+    tolerations: []
     affinity:
       podAntiAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
