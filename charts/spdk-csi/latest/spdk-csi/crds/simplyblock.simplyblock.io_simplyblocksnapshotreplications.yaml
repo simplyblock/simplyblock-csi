@@ -63,6 +63,9 @@ spec:
               sourceCluster:
                 description: Source cluster for the snapshots
                 type: string
+              sourcePool:
+                description: required for failback to a fresh source cluster
+                type: string
               targetCluster:
                 description: Target cluster for replication
                 type: string

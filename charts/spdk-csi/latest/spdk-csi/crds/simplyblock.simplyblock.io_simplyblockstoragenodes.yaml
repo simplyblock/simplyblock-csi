@@ -67,9 +67,17 @@ spec:
                 items:
                   type: string
                 type: array
+              deviceNames:
+                items:
+                  type: string
+                type: array
               driveSizeRange:
                 type: string
+              enableCpuTopology:
+                type: boolean
               force:
+                type: boolean
+              format4k:
                 type: boolean
               haJM:
                 type: boolean
@@ -111,6 +119,10 @@ spec:
                 type: array
               pcieModel:
                 type: string
+              reservedSystemCPU:
+                type: string
+              skipKubeletConfiguration:
+                type: boolean
               socketsToUse:
                 format: int32
                 type: integer
@@ -156,6 +168,8 @@ spec:
                       type: string
                   type: object
                 type: array
+              ubuntuHost:
+                type: boolean
               useSeparateJournalDevice:
                 type: boolean
               workerNode:

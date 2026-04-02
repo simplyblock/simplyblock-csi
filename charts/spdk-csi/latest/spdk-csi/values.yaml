@@ -56,7 +56,7 @@ image:
   mgmtAPI:
     repository: python
     tag: "3.10"
-    pullPolicy: Always
+    pullPolicy: Always 
 serviceAccount:
   # Specifies whether a serviceAccount should be created
   create: true
@@ -236,13 +236,35 @@ controlplane:
     deletionInterval: "3d"
     level: "DEBUG"
     graylog:
+      repository: graylog/graylog
+      tag: "5.0"
+      pullPolicy: Always 
       rootPasswordSha2: "b87c15a8ae4736d771ca60a7cc2014baaeab19b11c31f5fedef9421958a403c9"
       passwordSecret: "is6SP2EdWg0NdmVGv6CEp5hRHNL7BKVMFem4t9pouMqDQnHwXMSomas1qcbKSt5yISr8eBHv4Y7Dbswhyz84Ut0TW6kqsiPs"
       maxNumberIndex: "3"
       retentionPeriod: "7d"
     grafana:
+      repository: grafana/grafana
+      tag: 10.0.12
+      pullPolicy: Always
       endpoint: ""
       contactPoint: ""
+    thanos:
+      repository: thanosio/thanos
+      tag: v0.31.0
+      pullPolicy: Always
+
+  tolerations:
+    create: false
+    list:
+    - operator: Exists
+      effect:
+      key: 
+      value:
+  nodeSelector:
+    create: false
+    key: 
+    value:
 
   ports:
     lvolNvmfPortStart: 9100
@@ -301,6 +323,8 @@ operator:
     jmPercent: 30
     spdkDebug: false
     coreIsolation: false
+    skipKubeletConfiguration: true
+    enableCpuTopology: false
     workerNodes: []
     haJM: false
     idDeviceByNQN: false
@@ -338,6 +362,21 @@ mongodb:
     limits:
       cpu: 250m
       memory: 1Gi
+  community:
+    mongodb:
+      repo: quay.io/mongodb
+      imageType: ubi8
+    agent:
+      name: mongodb-agent
+      version: 108.0.2.8729-1
+    registry:
+      agent: quay.io/mongodb
+
+  registry:
+    operator: quay.io/mongodb
+    agent: quay.io/mongodb
+    readinessProbe: quay.io/mongodb
+    versionUpgradeHook: quay.io/mongodb
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -357,9 +396,12 @@ opensearch:
   antiAffinity: "hard"
   persistence:
     enabled: true
+    image: busybox
     storageClass: local-hostpath
     size: 20Gi
-
+  image:
+    repository: "opensearchproject/opensearch"
+    tag: ""
   resources:
     requests:
       cpu: "100m"
@@ -382,9 +424,18 @@ opensearch:
     enabled: false
 
 reloader:
+  nameOverride: simplyblock-reloader
   fullnameOverride: simplyblock-reloader
+  reloader:
+    deployment:
+      image:
+        name: ghcr.io/stakater/reloader
+        tag: v1.3.0
 
 prometheus:
+  simplyblock:
+    prometheusURL: simplyblock-prometheus
+    prometheusPORT: 9090   
   server:
     fullnameOverride: simplyblock-prometheus
     enabled: true
@@ -476,3 +527,7 @@ prometheus:
 
   kube-state-metrics:
     enabled: false
+  configmapReload:
+    prometheus:
+      repository: quay.io/prometheus-operator/prometheus-config-reloader
+      tag: v0.72.0

@@ -54,6 +54,8 @@ spec:
               capWarn:
                 format: int32
                 type: integer
+              clientDataNic:
+                type: string
               clientQpairCount:
                 format: int32
                 type: integer
@@ -81,12 +83,18 @@ spec:
                 type: integer
               isSingleNode:
                 type: boolean
+              maxFaultTolerance:
+                format: int32
+                type: integer
               maxQueueSize:
                 format: int32
                 type: integer
               mgmtIfc:
                 description: Create-only
                 type: string
+              nvmfBasePort:
+                format: int32
+                type: integer
               pageSizeInBlocks:
                 format: int32
                 type: integer
@@ -100,6 +108,12 @@ spec:
                 description: Updatable
                 type: string
               qpairCount:
+                format: int32
+                type: integer
+              rpcBasePort:
+                format: int32
+                type: integer
+              snodeApiPort:
                 format: int32
                 type: integer
               strictNodeAntiAffinity:
