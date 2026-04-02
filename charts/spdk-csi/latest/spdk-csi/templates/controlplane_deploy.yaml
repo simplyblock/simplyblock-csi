@@ -10,6 +10,11 @@ metadata:
     reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: simplyblock-admin-control
@@ -107,6 +112,11 @@ metadata:
     reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: simplyblock-webappapi
