@@ -5,6 +5,9 @@ kind: Deployment
 metadata:
   name: simplyblock-admin-control
   namespace: {{ .Release.Namespace }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+    reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
 spec:
   replicas: 2
   selector:
@@ -14,8 +17,6 @@ spec:
     metadata:
       annotations:
         log-collector/enabled: "true"
-        reloader.stakater.com/auto: "true"
-        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
       labels:
         app: simplyblock-admin-control
     spec:
@@ -101,6 +102,9 @@ kind: Deployment
 metadata:
   name: simplyblock-webappapi
   namespace: {{ .Release.Namespace }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+    reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
 spec:
   replicas: 2
   selector:
@@ -110,8 +114,6 @@ spec:
     metadata:
       annotations:
         log-collector/enabled: "true"
-        reloader.stakater.com/auto: "true"
-        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
       labels:
         app: simplyblock-webappapi
     spec:
@@ -222,6 +224,9 @@ kind: Deployment
 metadata:
   name: simplyblock-monitoring
   namespace: {{ .Release.Namespace }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+    reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
 spec:
   replicas: 1
   selector:
@@ -231,8 +236,6 @@ spec:
     metadata:
       annotations:
         log-collector/enabled: "true"
-        reloader.stakater.com/auto: "true"
-        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
       labels:
         app: simplyblock-monitoring
     spec:
@@ -464,6 +467,9 @@ kind: Deployment
 metadata:
   name: simplyblock-tasks
   namespace: {{ .Release.Namespace }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+    reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
 spec:
   replicas: 1
   selector:
@@ -473,8 +479,6 @@ spec:
     metadata:
       annotations:
         log-collector/enabled: "true"
-        reloader.stakater.com/auto: "true"
-        reloader.stakater.com/configmap: "simplyblock-fdb-cluster-config"
       labels:
         app: simplyblock-tasks
     spec:
