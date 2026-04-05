@@ -365,8 +365,12 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 			}
 
-			if nvmf.hostIface != "" {
-				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
+			hostIface := connections[i].HostIface
+			if hostIface == "" {
+				hostIface = nvmf.hostIface
+			}
+			if hostIface != "" {
+				cmdLine = append(cmdLine, "-f", hostIface)
 			}
 
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
@@ -814,6 +818,9 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 		"-l", strconv.Itoa(ctrlLossTmo),
 		"-c", strconv.Itoa(conn.ReconnectDelay),
 		"-i", strconv.Itoa(conn.NrIoQueues),
+	}
+	if conn.HostIface != "" {
+		cmd = append(cmd, "-f", conn.HostIface)
 	}
 	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
 		klog.Errorf("nvme connect failed: %v", err)
