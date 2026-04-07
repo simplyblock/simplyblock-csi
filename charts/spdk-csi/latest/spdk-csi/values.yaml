@@ -269,7 +269,11 @@ controlplane:
   ports:
     lvolNvmfPortStart: 9100
 
+  csiHostpathDriver:
+    enabled: false
+
   storageclass:  
+    name:  
     allowedTopologyZones: []
 
   foundationdb:

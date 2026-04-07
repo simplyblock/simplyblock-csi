@@ -1012,8 +1012,6 @@ spec:
               value: "true"
             - name: GF_PATHS_PROVISIONING
               value: "/etc/grafana/provisioning"
-            - name: GF_INSTALL_PLUGINS
-              value: "grafana-opensearch-datasource"
             - name: GF_SERVER_ROOT_URL
               value: "http://localhost:3000"
           volumeMounts:
@@ -1085,7 +1083,9 @@ spec:
             name: data-volume
           spec:
             accessModes: [ "ReadWriteOnce" ]
-            storageClassName: local-hostpath
+            {{- if .Values.controlplane.storageclass.name }}
+            storageClassName: {{ .Values.controlplane.storageclass.name }}
+            {{- end }}
             resources:
               requests:
                 storage: 5Gi
@@ -1093,7 +1093,9 @@ spec:
             name: logs-volume
           spec:
             accessModes: [ "ReadWriteOnce" ]
-            storageClassName: local-hostpath
+            {{- if .Values.controlplane.storageclass.name }}
+            storageClassName: {{ .Values.controlplane.storageclass.name }}
+            {{- end }}
             resources:
               requests:
                 storage: 5Gi
