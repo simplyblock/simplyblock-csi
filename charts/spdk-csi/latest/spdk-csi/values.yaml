@@ -163,15 +163,15 @@ node:
     value:
 
 storagenode:
-  create: false
-  ifname: eth0
+  create: true
+  ifname: br-ex
   numDataChunks: "1"
   numParityChunks: "1"
   spdkImage: "quay.io/simplyblock-io/ultra:R25.10-Hotfix-latest"
   spdkProxyImage: "quay.io/simplyblock-io/simplyblock:R25.10-Hotfix-quay"
-  maxLogicalVolumes: 10
+  maxLogicalVolumes: 300
   maxSnapshots: 10
-  maxSize:
+  maxSize: 0
   numPartitions: 1
   isolateCores: false
   haJMCount:
@@ -179,17 +179,17 @@ storagenode:
   pciAllowed:
   pciBlocked:
   deviceNames:
-  format4k: false
-  socketsToUse: 
+  format4k: true
+  socketsToUse: "0,1"
   nodesPerSocket:
-  deviceModel:
-  sizeRange:
-  coresPercentage:
+  deviceModel: "Dell Ent NVMe CM6 MU 6.4TB"
+  sizeRange: "5T-7T"
+  coresPercentage: 30
   ubuntuHost: false
-  enableCpuTopology: false
+  enableCpuTopology: true
   enableDevicePlugin: true
   skipKubeletConfiguration: false
-  openShiftCluster: false
+  openShiftCluster: true
   reservedSystemCpu:
   multiCluster:
     enable: false
