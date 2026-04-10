@@ -23,6 +23,25 @@ spec:
         runAsGroup: 65532
         fsGroup: 65532
       serviceAccountName: simplyblock-manager
+      {{- if .Values.controlplane.nodeSelector.create }}
+      nodeSelector:
+        {{ .Values.controlplane.nodeSelector.key }}: {{ .Values.controlplane.nodeSelector.value }}
+      {{- end }}
+      {{- if .Values.controlplane.tolerations.create }}
+      tolerations:
+      {{- range .Values.controlplane.tolerations.list }}
+      - operator: {{ .operator | quote }}
+        {{- if .effect }}
+        effect: {{ .effect | quote }}
+        {{- end }}
+        {{- if .key }}
+        key: {{ .key | quote }}
+        {{- end }}
+        {{- if .value }}
+        value: {{ .value | quote }}
+        {{- end }}
+      {{- end }}
+      {{- end }} 
       containers:
         - image: "{{ .Values.image.operator.repository }}:{{ .Values.image.operator.tag }}"
           imagePullPolicy: {{ .Values.image.operator.pullPolicy }}
@@ -138,14 +157,15 @@ rules:
   - update
   - patch
 - apiGroups:
-  - simplyblock.simplyblock.io
+  - storage.simplyblock.io
   resources:
-  - simplyblockpools
-  - simplyblocklvols
-  - simplyblockstorageclusters
-  - simplyblockstoragenodes
-  - simplyblockdevices
-  - simplyblocktasks
+  - pools
+  - lvols
+  - storageclusters
+  - storagenodes
+  - devices
+  - tasks
+  - snapshotreplications
   verbs:
   - create
   - delete
@@ -155,26 +175,28 @@ rules:
   - update
   - watch
 - apiGroups:
-  - simplyblock.simplyblock.io
+  - storage.simplyblock.io
   resources:
-  - simplyblockpools/finalizers
-  - simplyblocklvols/finalizers
-  - simplyblockstorageclusters/finalizers
-  - simplyblockstoragenodes/finalizers
-  - simplyblockdevices/finalizers
-  - simplyblocktasks/finalizers
+  - pools/finalizers
+  - lvols/finalizers
+  - storageclusters/finalizers
+  - storagenodes/finalizers
+  - devices/finalizers
+  - tasks/finalizers
+  - snapshotreplications/finalizers
   verbs:
   - update
   - delete
 - apiGroups:
-  - simplyblock.simplyblock.io
+  - storage.simplyblock.io
   resources:
-  - simplyblockpools/status
-  - simplyblocklvols/status
-  - simplyblockstorageclusters/status
-  - simplyblockstoragenodes/status
-  - simplyblockdevices/status
-  - simplyblocktasks/status
+  - pools/status
+  - lvols/status
+  - storageclusters/status
+  - storagenodes/status
+  - devices/status
+  - tasks/status
+  - snapshotreplications/status
   verbs:
   - get
   - patch
@@ -194,5 +216,3 @@ subjects:
 - kind: ServiceAccount
   name: simplyblock-manager
   namespace: {{ .Release.Namespace }}
-  
-{{- end }}
