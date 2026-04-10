@@ -281,6 +281,7 @@ controlplane:
 
 operator:
   enabled: false
+  openShift: false
   cluster:
     clusterName: simplyblock-cluster
     mgmtIfname: eth0
@@ -342,7 +343,7 @@ operator:
     driveSizeRange:
     socketsToUse: 
     nodesPerSocket: 
-    dataNIC: []
+    dataIfname: []
     haJmCount:
     openShiftCluster: false
     tolerations:

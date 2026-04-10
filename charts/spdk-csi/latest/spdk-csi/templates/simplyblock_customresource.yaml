@@ -231,11 +231,19 @@ spec:
   nodesPerSocket: {{ .Values.operator.storageNodes.nodesPerSocket }}
   {{- end }}
 
-  {{- if .Values.operator.storageNodes.dataNIC }}
-  dataNIC:
-  {{- range .Values.operator.storageNodes.dataNIC }}
+  {{- if .Values.operator.storageNodes.dataIfname }}
+  dataIfname:
+  {{- range .Values.operator.storageNodes.dataIfname }}
     - {{ . }}
   {{- end }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.storageNodes "skipKubeletConfiguration" }}
+  skipKubeletConfiguration: {{ .Values.operator.storageNodes.skipKubeletConfiguration }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.storageNodes "enableCpuTopology" }}
+  enableCpuTopology: {{ .Values.operator.storageNodes.enableCpuTopology }}
   {{- end }}
 
   {{- if hasKey .Values.operator.storageNodes "haJmCount" }}
