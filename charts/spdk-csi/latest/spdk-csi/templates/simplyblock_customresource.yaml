@@ -113,20 +113,23 @@ spec:
   capacityLimit: {{ .Values.operator.pool.capacityLimit | quote }}
   {{- end }}
 
-  {{- if .Values.operator.pool.qosIOPSLimit }}
-  qosIOPSLimit: {{ .Values.operator.pool.qosIOPSLimit }}
-  {{- end }}
-
-  {{- if .Values.operator.pool.rwLimit }}
-  rwLimit: {{ .Values.operator.pool.rwLimit }}
-  {{- end }}
-
-  {{- if .Values.operator.pool.rLimit }}
-  rLimit: {{ .Values.operator.pool.rLimit }}
-  {{- end }}
-
-  {{- if .Values.operator.pool.wLimit }}
-  wLimit: {{ .Values.operator.pool.wLimit }}
+  {{- if .Values.operator.pool.qos }}
+  qos:
+    {{- if .Values.operator.pool.qos.iops }}
+    iops: {{ .Values.operator.pool.qos.iops }}
+    {{- end }}
+    {{- if .Values.operator.pool.qos.throughput }}
+    throughput:
+      {{- if .Values.operator.pool.qos.throughput.read }}
+      read: {{ .Values.operator.pool.qos.throughput.read }}
+      {{- end }}
+      {{- if .Values.operator.pool.qos.throughput.readWrite }}
+      readWrite: {{ .Values.operator.pool.qos.throughput.readWrite }}
+      {{- end }}
+      {{- if .Values.operator.pool.qos.throughput.write }}
+      write: {{ .Values.operator.pool.qos.throughput.write }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
 {{- end }}

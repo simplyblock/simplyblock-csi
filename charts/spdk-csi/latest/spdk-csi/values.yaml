@@ -309,11 +309,13 @@ operator:
 
   pool:
     name: simplyblock-pool
-    capacityLimit: 
-    qosIOPSLimit: 
-    rwLimit:
-    rLimit:
-    wLimit:
+    capacityLimit:
+    qos:
+      iops:
+      throughput:
+        read:
+        readWrite:
+        write:
 
   lvol:
     name: simplyblock-lvol
