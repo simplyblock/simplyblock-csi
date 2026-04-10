@@ -1,15 +1,15 @@
 {{- if .Values.operator.enabled }}
 {{- if .Values.operator.cluster }}
-apiVersion: simplyblock.simplyblock.io/v1alpha1
-kind: SimplyBlockStorageCluster
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: StorageCluster
 metadata:
   name: {{ .Values.operator.cluster.clusterName }}
   namespace: {{ .Release.Namespace }}
 spec:
   clusterName: {{ .Values.operator.cluster.clusterName }}
 
-  {{- if .Values.operator.cluster.mgmtIfc }}
-  mgmtIfc: {{ .Values.operator.cluster.mgmtIfc }}
+  {{- if .Values.operator.cluster.mgmtIfname }}
+  mgmtIfname: {{ .Values.operator.cluster.mgmtIfname }}
   {{- end }}
 
   {{- if .Values.operator.cluster.fabric }}
@@ -76,27 +76,32 @@ spec:
   qosClasses: {{ .Values.operator.cluster.qosClasses | quote }}
   {{- end }}
 
-  {{- if .Values.operator.cluster.capWarn }}
-  capWarn: {{ .Values.operator.cluster.capWarn }}
+  {{- if .Values.operator.cluster.warningThreshold }}
+  warningThreshold:
+    {{- if .Values.operator.cluster.warningThreshold.capacity }}
+    capacity: {{ .Values.operator.cluster.warningThreshold.capacity }}
+    {{- end }}
+    {{- if .Values.operator.cluster.warningThreshold.provisionedCapacity }}
+    provisionedCapacity: {{ .Values.operator.cluster.warningThreshold.provisionedCapacity }}
+    {{- end }}
   {{- end }}
 
-  {{- if .Values.operator.cluster.capCrit }}
-  capCrit: {{ .Values.operator.cluster.capCrit }}
+  {{- if .Values.operator.cluster.criticalThreshold }}
+  criticalThreshold:
+    {{- if .Values.operator.cluster.criticalThreshold.capacity }}
+    capacity: {{ .Values.operator.cluster.criticalThreshold.capacity }}
+    {{- end }}
+    {{- if .Values.operator.cluster.criticalThreshold.provisionedCapacity }}
+    provisionedCapacity: {{ .Values.operator.cluster.criticalThreshold.provisionedCapacity }}
+    {{- end }}
   {{- end }}
 
-  {{- if .Values.operator.cluster.provCapWarn }}
-  provCapWarn: {{ .Values.operator.cluster.provCapWarn }}
-  {{- end }}
-
-  {{- if .Values.operator.cluster.provCapCrit }}
-  provCapCrit: {{ .Values.operator.cluster.provCapCrit }}
-  {{- end }}
 {{- end }}
 
 ---
 {{- if .Values.operator.pool }}
-apiVersion: simplyblock.simplyblock.io/v1alpha1
-kind: SimplyBlockPool
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: Pool
 metadata:
   name: {{ .Values.operator.pool.name }}
   namespace: {{ .Release.Namespace }}
@@ -128,8 +133,8 @@ spec:
 
 ---
 {{- if .Values.operator.lvol }}
-apiVersion: simplyblock.simplyblock.io/v1alpha1
-kind: SimplyBlockLvol
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: Lvol
 metadata:
   name: {{ .Values.operator.lvol.name }}
   namespace: {{ .Release.Namespace }}
@@ -140,8 +145,8 @@ spec:
 
 ---
 {{- if .Values.operator.storageNodes }}
-apiVersion: simplyblock.simplyblock.io/v1alpha1
-kind: SimplyBlockStorageNode
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: StorageNode
 metadata:
   name: {{ .Values.operator.storageNodes.name }}
   namespace: {{ .Release.Namespace }}
@@ -150,16 +155,16 @@ spec:
 
   clusterImage: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}" 
 
-  {{- if .Values.operator.storageNodes.mgmtIfc }}
-  mgmtIfc: {{ .Values.operator.storageNodes.mgmtIfc }}
+  {{- if .Values.operator.storageNodes.mgmtIfname }}
+  mgmtIfname: {{ .Values.operator.storageNodes.mgmtIfname }}
   {{- end }}
 
   {{- if .Values.operator.storageNodes.spdkImage }}
   spdkImage: {{ .Values.operator.storageNodes.spdkImage }}
   {{- end }}
 
-  {{- if .Values.operator.storageNodes.maxLVol }}
-  maxLVol: {{ .Values.operator.storageNodes.maxLVol }}
+  {{- if .Values.operator.storageNodes.maxLogicalVolumeCount }}
+  maxLogicalVolumeCount: {{ .Values.operator.storageNodes.maxLogicalVolumeCount }}
   {{- end }}
 
   {{- if .Values.operator.storageNodes.maxSize }}
@@ -180,10 +185,6 @@ spec:
 
   {{- if hasKey .Values.operator.storageNodes "haJM" }}
   haJM: {{ .Values.operator.storageNodes.haJM }}
-  {{- end }}
-
-  {{- if hasKey .Values.operator.storageNodes "spdkDebug" }}
-  spdkDebug: {{ .Values.operator.storageNodes.spdkDebug }}
   {{- end }}
 
   {{- if hasKey .Values.operator.storageNodes "idDeviceByNQN" }}
@@ -265,8 +266,8 @@ spec:
 
 ---
 {{- if .Values.operator.devices }}
-apiVersion: simplyblock.simplyblock.io/v1alpha1
-kind: SimplyBlockDevice
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: Device
 metadata:
   name: {{ .Values.operator.devices.name }}
   namespace: {{ .Release.Namespace }}
@@ -276,8 +277,8 @@ spec:
 
 ---
 {{- if .Values.operator.tasks }}
-apiVersion: simplyblock.simplyblock.io/v1alpha1
-kind: SimplyBlockTask
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: Task
 metadata:
   name: {{ .Values.operator.tasks.name }}
   namespace: {{ .Release.Namespace }}

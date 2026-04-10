@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: simplyblocksnapshotreplications.simplyblock.simplyblock.io
+  name: snapshotreplications.storage.simplyblock.io
 spec:
-  group: simplyblock.simplyblock.io
+  group: storage.simplyblock.io
   names:
-    kind: SimplyBlockSnapshotReplication
-    listKind: SimplyBlockSnapshotReplicationList
-    plural: simplyblocksnapshotreplications
-    singular: simplyblocksnapshotreplication
+    kind: SnapshotReplication
+    listKind: SnapshotReplicationList
+    plural: snapshotreplications
+    singular: snapshotreplication
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: SimplyBlockSnapshotReplication is the Schema for the simplyblocksnapshotreplications
+        description: SnapshotReplication is the Schema for the snapshotreplications
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of SimplyBlockSnapshotReplication
+            description: spec defines the desired state of SnapshotReplication
             properties:
               action:
                 enum:
@@ -88,7 +88,7 @@ spec:
             - targetPool
             type: object
           status:
-            description: status defines the observed state of SimplyBlockSnapshotReplication
+            description: status defines the observed state of SnapshotReplication
             properties:
               configured:
                 type: boolean

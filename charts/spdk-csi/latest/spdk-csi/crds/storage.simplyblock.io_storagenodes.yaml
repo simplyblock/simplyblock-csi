@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: simplyblockstoragenodes.simplyblock.simplyblock.io
+  name: storagenodes.storage.simplyblock.io
 spec:
-  group: simplyblock.simplyblock.io
+  group: storage.simplyblock.io
   names:
-    kind: SimplyBlockStorageNode
-    listKind: SimplyBlockStorageNodeList
-    plural: simplyblockstoragenodes
-    singular: simplyblockstoragenode
+    kind: StorageNode
+    listKind: StorageNodeList
+    plural: storagenodes
+    singular: storagenode
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: SimplyBlockStorageNode is the Schema for the storagenodes API
+        description: StorageNode is the Schema for the storagenodes API
         properties:
           apiVersion:
             description: |-
@@ -40,6 +40,7 @@ spec:
             description: spec defines the desired state of StorageNode
             properties:
               action:
+                description: Action triggers an imperative node operation.
                 enum:
                 - shutdown
                 - restart
@@ -48,89 +49,134 @@ spec:
                 - remove
                 type: string
               addPcieToAllowList:
-                description: restart params
+                description: AddPcieToAllowList appends devices to the allow-list
+                  during restart actions.
                 items:
                   type: string
                 type: array
               clusterImage:
+                description: ClusterImage is the container image used for storage-node
+                  workloads.
                 type: string
               clusterName:
+                description: ClusterName is the target storage cluster name.
                 type: string
               coreIsolation:
+                description: CoreIsolation enables CPU core isolation mode.
                 type: boolean
-              coreMask:
-                type: string
               corePercentage:
+                description: CorePercentage is the percentage of cores to be used
+                  for spdk (0-99).
                 format: int32
                 type: integer
-              dataNIC:
+              dataIfname:
+                description: DataIfname lists data-plane network interfaces.
                 items:
                   type: string
                 type: array
               deviceNames:
+                description: DeviceNames explicitly defines a comma separated list
+                  of nvme namespace names like nvme0n1,nvme1n1...
                 items:
                   type: string
                 type: array
               driveSizeRange:
+                description: DriveSizeRange filters devices by size range.
                 type: string
               enableCpuTopology:
+                description: EnableCpuTopology enables topology-aware CPU handling.
                 type: boolean
               force:
+                description: Force enables forced action execution where supported.
                 type: boolean
-              format4k:
+              forceFormat4K:
+                description: ForceFormat4K forces 4K blocksize formatting of the NVMe
+                  device where supported.
                 type: boolean
-              haJM:
-                type: boolean
-              haJmCount:
-                format: int32
-                type: integer
-              idDeviceByNQN:
-                type: boolean
-              jmPercent:
-                format: int32
-                type: integer
-              maxLVol:
+              journalManager:
+                description: JournalManagerSpec configures journal manager behavior.
+                properties:
+                  count:
+                    description: Count is the number of journal managers to configure.
+                    format: int32
+                    type: integer
+                  percentPerDevice:
+                    description: PercentPerDevice is the journal manager capacity
+                      percentage per device.
+                    format: int32
+                    type: integer
+                  useSeparateJournalDevice:
+                    description: UseSeparateJournalDevice enables using separate journal
+                      devices.
+                    type: boolean
+                type: object
+              maxLogicalVolumeCount:
+                description: MaxLogicalVolumeCount is the maximum number of logical
+                  volumes per node.
                 format: int32
                 type: integer
               maxSize:
+                description: MaxSize is the maximum allocatable size of the storage
+                  node.
                 type: string
-              mgmtIfc:
+              mgmtIfname:
+                description: MgmtIfname is the management interface name used by storage
+                  nodes.
                 type: string
               nodeAddr:
+                description: NodeAddr is the explicit node address used by action
+                  flows.
                 type: string
               nodeUUID:
                 description: NodeUUID is required when action is specified
                 type: string
               nodesPerSocket:
+                description: NodesPerSocket defines how many storage nodes are created
+                  per NUMA socket.
                 format: int32
                 type: integer
               openShiftCluster:
+                description: OpenShiftCluster indicates OpenShift-specific behavior
+                  should be enabled.
                 type: boolean
               partitions:
+                description: Partitions is the number of partitions created per backend
+                  storage device.
                 format: int32
                 type: integer
               pcieAllowList:
+                description: PcieAllowList is the list of PCI addresses allowed for
+                  use.
                 items:
                   type: string
                 type: array
               pcieDenyList:
+                description: PcieDenyList is the list of PCI addresses excluded from
+                  use.
                 items:
                   type: string
                 type: array
               pcieModel:
+                description: PcieModel filters devices by PCI model.
                 type: string
               reservedSystemCPU:
+                description: ReservedSystemCPU defines CPUs reserved for system workloads.
                 type: string
               skipKubeletConfiguration:
+                description: SkipKubeletConfiguration skips kubelet configuration
+                  changes.
                 type: boolean
               socketsToUse:
-                format: int32
-                type: integer
-              spdkDebug:
-                type: boolean
+                description: SocketsToUse restricts deployment to selected NUMA sockets.
+                items:
+                  type: string
+                type: array
               spdkImage:
+                description: SpdkImage is the SPDK image reference used by node services.
                 type: string
               tolerations:
+                description: Tolerations configures pod tolerations for storage-node
+                  pods.
                 items:
                   description: |-
                     The pod this Toleration is attached to tolerates any taint that matches
@@ -169,12 +215,14 @@ spec:
                   type: object
                 type: array
               ubuntuHost:
-                type: boolean
-              useSeparateJournalDevice:
+                description: UbuntuHost indicates the node host OS is Ubuntu.
                 type: boolean
               workerNode:
+                description: WorkerNode is a single worker node used by action flows.
                 type: string
               workerNodes:
+                description: WorkerNodes is the set of Kubernetes worker nodes to
+                  manage.
                 items:
                   type: string
                 type: array
@@ -185,56 +233,82 @@ spec:
             description: status defines the observed state of StorageNode
             properties:
               actionStatus:
+                description: ActionStatus tracks the latest action execution status.
                 properties:
                   action:
+                    description: Action is the requested action name.
                     type: string
                   message:
+                    description: Message is a human-readable action result or error.
                     type: string
                   nodeUUID:
+                    description: NodeUUID is the target node UUID for the action.
                     type: string
                   observedGeneration:
+                    description: ObservedGeneration is the resource generation observed
+                      by this status.
                     format: int64
                     type: integer
                   state:
                     type: string
                   triggered:
+                    description: Triggered indicates whether the underlying backend
+                      action has been fired.
                     type: boolean
                   updatedAt:
+                    description: UpdatedAt is the timestamp of the last status transition.
                     format: date-time
                     type: string
                 type: object
               nodes:
+                description: Nodes is the observed state of each managed storage node.
                 items:
                   properties:
                     cpu:
+                      description: CPU is the reported CPU allocation/count for the
+                        node.
                       format: int32
                       type: integer
                     devices:
+                      description: Devices is the backend summary of devices on this
+                        node.
                       type: string
                     health:
+                      description: Health indicates whether health checks are currently
+                        passing.
                       type: boolean
                     hostname:
+                      description: Hostname is the Kubernetes node hostname.
                       type: string
-                    lvol_port:
+                    lvolPort:
+                      description: LvolPort is the logical-volume subsystem port.
                       format: int32
                       type: integer
                     memory:
+                      description: Memory is the reported memory value.
                       type: string
                     mgmtIp:
+                      description: MgmtIp is the management IP address for the node.
                       type: string
-                    nvmf_port:
+                    nvmfPort:
+                      description: NvmfPort is the NVMf service port.
                       format: int32
                       type: integer
-                    rpc_port:
+                    rpcPort:
+                      description: RpcPort is the node RPC service port.
                       format: int32
                       type: integer
                     status:
+                      description: Status is the backend lifecycle state for the node.
                       type: string
                     uptime:
+                      description: Uptime is the reported node uptime value.
                       type: string
                     uuid:
+                      description: UUID is the backend node UUID.
                       type: string
                     volumes:
+                      description: Volumes is the current logical volume count.
                       format: int32
                       type: integer
                   type: object
@@ -247,11 +321,11 @@ spec:
         - message: nodeUUID is required when action is specified
           rule: '!(has(self.spec.action) && self.spec.action != "" && (!has(self.spec.nodeUUID)
             || self.spec.nodeUUID == ""))'
-        - message: clusterImage, maxLVol, and workerNodes are required when action
-            is not specified
+        - message: clusterImage, maxLogicalVolumeCount, and workerNodes are required
+            when action is not specified
           rule: (has(self.spec.action) && self.spec.action != "") || (has(self.spec.clusterImage)
-            && self.spec.clusterImage != "" && has(self.spec.maxLVol) && has(self.spec.workerNodes)
-            && size(self.spec.workerNodes) > 0)
+            && self.spec.clusterImage != "" && has(self.spec.maxLogicalVolumeCount)
+            && has(self.spec.workerNodes) && size(self.spec.workerNodes) > 0)
     served: true
     storage: true
     subresources:

@@ -283,7 +283,7 @@ operator:
   enabled: false
   cluster:
     clusterName: simplyblock-cluster
-    mgmtIfc: eth0
+    mgmtIfname: eth0
     fabric: tcp
     enableNodeAffinity: false
     stripeWdata: 1
@@ -300,10 +300,12 @@ operator:
     inflightIOThreshold:
     clientQpairCount:
     qosClasses:
-    capWarn:
-    capCrit:
-    provCapWarn:
-    provCapCrit:
+    warningThreshold:
+      capacity: 80
+      provisionedCapacity: 80
+    criticalThreshold:
+      capacity: 90
+      provisionedCapacity: 90
 
   pool:
     name: simplyblock-pool
@@ -319,13 +321,12 @@ operator:
   storageNodes:
     name: simplyblock-node
     spdkImage: ""
-    mgmtIfc: eth0
-    maxLVol: 10
+    mgmtIfname: eth0
+    maxLogicalVolumeCount: 10
     maxSize: 150G
     partitions: 0
     corePercentage: 65
     jmPercent: 30
-    spdkDebug: false
     coreIsolation: false
     skipKubeletConfiguration: true
     enableCpuTopology: false
