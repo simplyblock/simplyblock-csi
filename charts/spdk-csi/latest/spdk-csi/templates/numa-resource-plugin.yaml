@@ -68,6 +68,9 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+            seLinuxOptions:
+              type: container_device_plugin_t
+
           envFrom:
             - configMapRef:
                 name: simplyblock-numa-resource-plugin-config
