@@ -265,6 +265,41 @@ spec:
                     format: date-time
                     type: string
                 type: object
+              drainCoordination:
+                description: DrainCoordination tracks the upgrade-drain state per
+                  worker node.
+                items:
+                  description: NodeDrainState tracks the upgrade-drain coordination
+                    state for a single worker node.
+                  properties:
+                    hostname:
+                      description: Hostname is the Kubernetes node name.
+                      type: string
+                    message:
+                      description: Message provides additional status detail or error
+                        information.
+                      type: string
+                    phase:
+                      description: Phase is the current drain coordination phase.
+                      enum:
+                      - detected
+                      - shutdown_called
+                      - draining
+                      - restart_called
+                      - complete
+                      - failed
+                      type: string
+                    startedAt:
+                      description: StartedAt is when drain coordination began for
+                        this node.
+                      format: date-time
+                      type: string
+                  required:
+                  - hostname
+                  - phase
+                  - startedAt
+                  type: object
+                type: array
               nodes:
                 description: Nodes is the observed state of each managed storage node.
                 items:
