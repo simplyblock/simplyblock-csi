@@ -283,10 +283,9 @@ spec:
               runAsUser: 0
       volumeClaimTemplate:
         spec:
-          storageClassName: local-hostpath
-            {{- if .Values.controlplane.storageclass.name }}
-            storageClassName: {{ .Values.controlplane.storageclass.name }}
-            {{- end }}
+          {{- if .Values.controlplane.storageclass.name }}
+          storageClassName: {{ .Values.controlplane.storageclass.name }}
+          {{- end }}
           accessModes:
             - ReadWriteOnce
           resources:
