@@ -409,7 +409,7 @@ opensearch:
   persistence:
     enabled: true
     image: busybox
-    storageClass: local-hostpath
+    storageClass: 
     size: 20Gi
   image:
     repository: "opensearchproject/opensearch"
@@ -491,7 +491,7 @@ prometheus:
     persistentVolume:
       enabled: true
       size: 5Gi
-      storageClass: local-hostpath
+      storageClass:
     extraArgs:
       storage.tsdb.min-block-duration: 2h
       storage.tsdb.max-block-duration: 2h
