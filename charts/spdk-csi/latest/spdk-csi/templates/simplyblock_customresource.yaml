@@ -186,8 +186,19 @@ spec:
   jmPercent: {{ .Values.operator.storageNodes.jmPercent }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "journalManager" }}
-  journalManager: {{ .Values.operator.storageNodes.journalManager | toYaml | nindent 4 }}
+  {{- with .Values.operator.storageNodes.journalManager }}
+  {{- if or .count .percentPerDevice .useSeparateJournalDevice }}
+  journalManager:
+    {{- if .count }}
+    count: {{ .count }}
+    {{- end }}
+    {{- if .percentPerDevice }}
+    percentPerDevice: {{ .percentPerDevice }}
+    {{- end }}
+    {{- if .useSeparateJournalDevice }}
+    useSeparateJournalDevice: {{ .useSeparateJournalDevice }}
+    {{- end }}
+  {{- end }}
   {{- end }}
 
   {{- if hasKey .Values.operator.storageNodes "idDeviceByNQN" }}

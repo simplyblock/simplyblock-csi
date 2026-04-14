@@ -328,10 +328,9 @@ operator:
     maxSize: 150G
     partitions: 0
     corePercentage: 65
-    jmPercent: 30
     coreIsolation: false
-    skipKubeletConfiguration: true
-    enableCpuTopology: false
+    skipKubeletConfiguration: false
+    enableCpuTopology: true
     workerNodes: []
     idDeviceByNQN: false
     coreMask:
@@ -343,6 +342,8 @@ operator:
     nodesPerSocket:
     dataIfname: []
     journalManager:
+      count: 3
+      percentPerDevice: 3
     openShiftCluster: false
     tolerations:
       create: false
