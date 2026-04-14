@@ -267,7 +267,7 @@ controlplane:
     value:
 
   ports:
-    lvolNvmfPortStart: 9100
+    lvolNvmfPortStart: 9110
 
   csiHostpathDriver:
     enabled: false
@@ -281,7 +281,6 @@ controlplane:
 
 operator:
   enabled: false
-  openShift: false
   cluster:
     clusterName: simplyblock-cluster
     mgmtIfname: eth0
