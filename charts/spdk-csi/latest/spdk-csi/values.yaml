@@ -325,8 +325,8 @@ operator:
     spdkImage: ""
     mgmtIfname: eth0
     maxLogicalVolumeCount: 10
-    maxSize: 150G
-    partitions: 0
+    maxSize: 
+    partitions: 1
     corePercentage: 65
     coreIsolation: false
     skipKubeletConfiguration: false
