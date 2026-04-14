@@ -178,7 +178,7 @@ storagenode:
   maxSize:
   numPartitions: 1
   isolateCores: false
-  haJMCount:
+  journalManager:
   dataNic:
   pciAllowed:
   pciBlocked:
@@ -334,17 +334,16 @@ operator:
     skipKubeletConfiguration: true
     enableCpuTopology: false
     workerNodes: []
-    haJM: false
     idDeviceByNQN: false
-    coreMask: 
+    coreMask:
     pcieAllowList: []
     pcieDenyList: []
     pcieModel:
     driveSizeRange:
-    socketsToUse: 
-    nodesPerSocket: 
+    socketsToUse:
+    nodesPerSocket:
     dataIfname: []
-    haJmCount:
+    journalManager:
     openShiftCluster: false
     tolerations:
       create: false

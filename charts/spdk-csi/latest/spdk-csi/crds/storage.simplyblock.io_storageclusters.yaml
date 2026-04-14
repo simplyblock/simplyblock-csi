@@ -14,7 +14,23 @@ spec:
     singular: storagecluster
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Backend-reported cluster lifecycle status
+      jsonPath: .status.status
+      name: Status
+      type: string
+    - description: Backend cluster UUID
+      jsonPath: .status.uuid
+      name: UUID
+      type: string
+    - description: Whether initial cluster setup has completed
+      jsonPath: .status.configured
+      name: Configured
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: StorageCluster is the Schema for the storageclusters API
@@ -77,13 +93,13 @@ spec:
                 description: BlockSize defines the logical block size in bytes.
                 format: int32
                 type: integer
-              clientDataNic:
-                description: ClientDataNic defines the client data network interface.
+              clientDataIfname:
+                description: ClientDataIfname defines the client data network interface.
                 type: string
               clientQpairCount:
                 description: |-
                   ClientQpairCount defines client-side queue-pair count.
-                  FIXME: Unused for now (API update required?)
+                  FIXME: Unused for now
                 format: int32
                 type: integer
               clusterName:
@@ -109,19 +125,21 @@ spec:
                   storage components.
                 type: boolean
               eventLogEntries:
-                description: EventLogEntries limits the number of event-log entries
-                  returned/retained.
+                description: |-
+                  EventLogEntries limits the number of event-log entries returned/retained.
+                  FIXME: Unused for now
                 format: int32
                 type: integer
-              fabric:
-                description: Fabric defines the storage fabric type.
+              fabricType:
+                description: FabricType defines the storage fabric type.
                 type: string
               haType:
                 description: HAType defines the backend high-availability mode.
                 type: string
               includeEventLog:
-                description: IncludeEventLog controls whether event logs are included
-                  in responses/exports.
+                description: |-
+                  IncludeEventLog controls whether event logs are included in responses/exports.
+                  FIXME: Unused for now
                 type: boolean
               inflightIOThreshold:
                 description: InflightIOThreshold defines the inflight I/O threshold.
@@ -140,8 +158,9 @@ spec:
                 format: int32
                 type: integer
               mgmtIfname:
-                description: MgmtIfname is the management network interface name used
-                  for cluster communication.
+                description: |-
+                  MgmtIfname is the management network interface name used for cluster communication.
+                  FIXME: Unused for now
                 type: string
               nvmfBasePort:
                 description: NvmfBasePort defines the base NVMf service port.
@@ -152,7 +171,9 @@ spec:
                 format: int32
                 type: integer
               qosClasses:
-                description: QoSClasses defines backend QosSpec class configuration.
+                description: |-
+                  QoSClasses defines backend QosSpec class configuration.
+                  FIXME: Unused for now
                 type: string
               qpairCount:
                 description: QpairCount defines the NVMe queue-pair count used by
@@ -242,7 +263,9 @@ spec:
                 description: Configured indicates whether initial cluster setup completed.
                 type: boolean
               created:
-                description: Created is the backend creation timestamp.
+                description: |-
+                  Created is the backend creation timestamp.
+                  FIXME: Unused for now (API update required?)
                 format: date-time
                 type: string
               erasureCodingScheme:
@@ -250,11 +273,15 @@ spec:
                   for example "2x1".
                 type: string
               lastUpdated:
-                description: LastUpdated is the last backend update timestamp.
+                description: |-
+                  LastUpdated is the last backend update timestamp.
+                  FIXME: Unused for now (API update required?)
                 format: date-time
                 type: string
               mgmtNodes:
-                description: MgmtNodes is the number of management nodes.
+                description: |-
+                  MgmtNodes is the number of management nodes.
+                  FIXME: Unused for now (API update required?)
                 format: int32
                 type: integer
               nqn:
@@ -272,7 +299,9 @@ spec:
                 description: Status is the backend-reported lifecycle status.
                 type: string
               storageNodes:
-                description: StorageNodes is the number of storage nodes.
+                description: |-
+                  StorageNodes is the number of storage nodes.
+                  FIXME: Unused for now (API update required?)
                 format: int32
                 type: integer
               uuid:

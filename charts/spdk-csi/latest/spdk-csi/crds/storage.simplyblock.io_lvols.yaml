@@ -86,8 +86,8 @@ spec:
                       description: ErasureCodingScheme is the erasure coding layout,
                         for example "2x1".
                       type: string
-                    fabric:
-                      description: Fabric is the storage fabric/protocol in use.
+                    fabricType:
+                      description: FabricType is the storage fabric/protocol in use.
                       type: string
                     ha:
                       description: HA indicates whether high availability is enabled.

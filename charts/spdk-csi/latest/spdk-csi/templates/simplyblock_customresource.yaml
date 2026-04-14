@@ -186,8 +186,8 @@ spec:
   jmPercent: {{ .Values.operator.storageNodes.jmPercent }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "haJM" }}
-  haJM: {{ .Values.operator.storageNodes.haJM }}
+  {{- if hasKey .Values.operator.storageNodes "journalManager" }}
+  journalManager: {{ .Values.operator.storageNodes.journalManager | toYaml | nindent 4 }}
   {{- end }}
 
   {{- if hasKey .Values.operator.storageNodes "idDeviceByNQN" }}
@@ -246,9 +246,6 @@ spec:
   enableCpuTopology: {{ .Values.operator.storageNodes.enableCpuTopology }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "haJmCount" }}
-  haJmCount: {{ .Values.operator.storageNodes.haJmCount }}
-  {{- end }}
 
   {{- if .Values.operator.storageNodes.workerNodes }}
   workerNodes:

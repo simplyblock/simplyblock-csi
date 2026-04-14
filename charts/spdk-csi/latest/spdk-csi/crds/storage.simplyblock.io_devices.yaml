@@ -163,7 +163,9 @@ spec:
                               the device.
                             type: string
                           utilization:
-                            description: Utilization is the backend utilization metric.
+                            description: |-
+                              Utilization is the backend utilization metric.
+                              FIXME: Unused for now
                             format: int64
                             type: integer
                           uuid:

@@ -49,8 +49,9 @@ spec:
                 - remove
                 type: string
               addPcieToAllowList:
-                description: AddPcieToAllowList appends devices to the allow-list
-                  during restart actions.
+                description: |-
+                  AddPcieToAllowList appends devices to the allow-list during restart actions.
+                  FIXME: Unused for now
                 items:
                   type: string
                 type: array
@@ -87,7 +88,9 @@ spec:
                 description: EnableCpuTopology enables topology-aware CPU handling.
                 type: boolean
               force:
-                description: Force enables forced action execution where supported.
+                description: |-
+                  Force enables forced action execution where supported.
+                  FIXME: Unused for now
                 type: boolean
               forceFormat4K:
                 description: ForceFormat4K forces 4K blocksize formatting of the NVMe
@@ -106,8 +109,9 @@ spec:
                     format: int32
                     type: integer
                   useSeparateJournalDevice:
-                    description: UseSeparateJournalDevice enables using separate journal
-                      devices.
+                    description: |-
+                      UseSeparateJournalDevice enables using separate journal devices.
+                      FIXME: Unused for now
                     type: boolean
                 type: object
               maxLogicalVolumeCount:
@@ -124,8 +128,9 @@ spec:
                   nodes.
                 type: string
               nodeAddr:
-                description: NodeAddr is the explicit node address used by action
-                  flows.
+                description: |-
+                  NodeAddr is the explicit node address used by action flows.
+                  FIXME: Unused for now
                 type: string
               nodeUUID:
                 description: NodeUUID is required when action is specified

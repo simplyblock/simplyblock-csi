@@ -40,7 +40,9 @@ spec:
             description: spec defines the desired state of Pool
             properties:
               action:
-                description: Action triggers an imperative pool operation.
+                description: |-
+                  Action triggers an imperative pool operation.
+                  FIXME: Unused for now
                 type: string
               capacityLimit:
                 description: CapacityLimit is the maximum pool capacity.
@@ -77,8 +79,9 @@ spec:
                     type: object
                 type: object
               status:
-                description: Status is an optional desired-status hint for backend
-                  workflows.
+                description: |-
+                  Status is an optional desired-status hint for backend workflows.
+                  FIXME: Unused for now
                 type: string
             required:
             - clusterName

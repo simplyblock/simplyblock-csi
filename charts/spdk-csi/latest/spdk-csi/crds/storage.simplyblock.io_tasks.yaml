@@ -43,8 +43,9 @@ spec:
                 description: ClusterName is the target storage cluster name.
                 type: string
               subtasks:
-                description: Subtasks includes related child subtasks when supported
-                  by the backend.
+                description: |-
+                  Subtasks includes related child subtasks when supported by the backend.
+                  FIXME: Unused for now
                 type: boolean
               taskID:
                 description: TaskID filters results to a specific backend task when
@@ -65,8 +66,9 @@ spec:
                       description: Canceled indicates whether the task was canceled.
                       type: boolean
                     parentTask:
-                      description: ParentTask is the parent task UUID when this task
-                        is a subtask.
+                      description: |-
+                        ParentTask is the parent task UUID when this task is a subtask.
+                        FIXME: Unused for now
                       type: string
                     retried:
                       description: Retried is the number of retry attempts made for
@@ -74,7 +76,9 @@ spec:
                       format: int32
                       type: integer
                     startedAt:
-                      description: StartedAt is the backend-reported task start timestamp.
+                      description: |-
+                        StartedAt is the backend-reported task start timestamp.
+                        FIXME: Unused for now
                       format: date-time
                       type: string
                     taskResult:
