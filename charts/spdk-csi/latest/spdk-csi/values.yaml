@@ -248,7 +248,7 @@ controlplane:
       tag: 10.0.12
       pullPolicy: Always
       endpoint: ""
-      contactPoint: ""
+      contactPoint: "https://hooks.slack.com/services/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"
     thanos:
       repository: thanosio/thanos
       tag: v0.31.0
