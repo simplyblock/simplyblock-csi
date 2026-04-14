@@ -166,6 +166,7 @@ rules:
   - devices
   - tasks
   - snapshotreplications
+  - storagebackups
   verbs:
   - create
   - delete
@@ -184,6 +185,7 @@ rules:
   - devices/finalizers
   - tasks/finalizers
   - snapshotreplications/finalizers
+  - storagebackups/finalizers
   verbs:
   - update
   - delete
@@ -197,6 +199,7 @@ rules:
   - devices/status
   - tasks/status
   - snapshotreplications/status
+  - storagebackups/status  
   verbs:
   - get
   - patch
