@@ -312,12 +312,12 @@ spec:
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
           command: ["python", "simplyblock_core/services/lvol_stat_collector.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
-{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
           env:
             - name: PROMETHEUS_URL
               value: "{{ .Values.prometheus.simplyblock.prometheusURL }}"
             - name: PROMETHEUS_PORT
               value: "{{ .Values.prometheus.simplyblock.prometheusPORT }}"
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
 {{ toYaml .env | nindent 12 }}
           volumeMounts:
 {{ toYaml .volumeMounts | nindent 12 }}
