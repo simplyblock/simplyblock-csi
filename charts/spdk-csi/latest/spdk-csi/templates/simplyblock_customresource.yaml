@@ -40,11 +40,11 @@ spec:
   {{- end }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "qpairCount" }}
+  {{- if .Values.operator.cluster.qpairCount }}
   qpairCount: {{ .Values.operator.cluster.qpairCount }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "clientQpairCount" }}
+  {{- if .Values.operator.cluster.clientQpairCount }}
   clientQpairCount: {{ .Values.operator.cluster.clientQpairCount }}
   {{- end }}
 
@@ -52,19 +52,19 @@ spec:
   haType: {{ .Values.operator.cluster.haType }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "blockSize" }}
+  {{- if .Values.operator.cluster.blockSize }}
   blockSize: {{ .Values.operator.cluster.blockSize }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "pageSizeInBlocks" }}
+  {{- if .Values.operator.cluster.pageSizeInBlocks }}
   pageSizeInBlocks: {{ .Values.operator.cluster.pageSizeInBlocks }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "maxQueueSize" }}
+  {{- if .Values.operator.cluster.maxQueueSize }}
   maxQueueSize: {{ .Values.operator.cluster.maxQueueSize }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "inflightIOThreshold" }}
+  {{- if .Values.operator.cluster.inflightIOThreshold }}
   inflightIOThreshold: {{ .Values.operator.cluster.inflightIOThreshold }}
   {{- end }}
 
@@ -72,19 +72,19 @@ spec:
   clientDataIfname: {{ .Values.operator.cluster.clientDataIfname }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "maxFaultTolerance" }}
+  {{- if .Values.operator.cluster.maxFaultTolerance }}
   maxFaultTolerance: {{ .Values.operator.cluster.maxFaultTolerance }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "nvmfBasePort" }}
+  {{- if .Values.operator.cluster.nvmfBasePort }}
   nvmfBasePort: {{ .Values.operator.cluster.nvmfBasePort }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "rpcBasePort" }}
+  {{- if .Values.operator.cluster.rpcBasePort }}
   rpcBasePort: {{ .Values.operator.cluster.rpcBasePort }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "snodeApiPort" }}
+  {{- if .Values.operator.cluster.snodeApiPort }}
   snodeApiPort: {{ .Values.operator.cluster.snodeApiPort }}
   {{- end }}
 
@@ -190,7 +190,7 @@ spec:
   maxSize: {{ .Values.operator.storageNodes.maxSize | quote }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "partitions" }}
+  {{- if .Values.operator.storageNodes.partitions }}
   partitions: {{ .Values.operator.storageNodes.partitions }}
   {{- end }}
 
@@ -239,11 +239,14 @@ spec:
   driveSizeRange: {{ .Values.operator.storageNodes.driveSizeRange }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "socketsToUse" }}
-  socketsToUse: {{ .Values.operator.storageNodes.socketsToUse }}
+  {{- if .Values.operator.storageNodes.socketsToUse }}
+  socketsToUse:
+  {{- range .Values.operator.storageNodes.socketsToUse }}
+    - {{ . }}
+  {{- end }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "nodesPerSocket" }}
+  {{- if .Values.operator.storageNodes.nodesPerSocket }}
   nodesPerSocket: {{ .Values.operator.storageNodes.nodesPerSocket }}
   {{- end }}
 
