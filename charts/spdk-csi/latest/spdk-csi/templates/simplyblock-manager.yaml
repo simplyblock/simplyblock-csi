@@ -228,3 +228,4 @@ subjects:
 - kind: ServiceAccount
   name: simplyblock-manager
   namespace: {{ .Release.Namespace }}
+{{- end }}
