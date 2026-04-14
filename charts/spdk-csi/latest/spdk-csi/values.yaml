@@ -293,13 +293,16 @@ operator:
     isSingleNode: false
     strictNodeAntiAffinity: false
     qpairCount:
-    distrBs:
-    distrChunkBs:
-    blkSize:
+    blockSize:
     pageSizeInBlocks:
     maxQueueSize:
     inflightIOThreshold:
     clientQpairCount:
+    clientDataIfname:
+    maxFaultTolerance:
+    nvmfBasePort:
+    rpcBasePort:
+    snodeApiPort:
     qosClasses:
     warningThreshold:
       capacity: 80
@@ -328,8 +331,6 @@ operator:
     skipKubeletConfiguration: false
     enableCpuTopology: true
     workerNodes: []
-    idDeviceByNQN: false
-    coreMask:
     pcieAllowList: []
     pcieDenyList: []
     pcieModel:
@@ -341,6 +342,10 @@ operator:
       count: 3
       percentPerDevice: 3
     openShiftCluster: false
+    deviceNames: []
+    ubuntuHost: false
+    forceFormat4K: false
+    reservedSystemCPU:
     tolerations:
       create: false
       list:

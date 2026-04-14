@@ -52,16 +52,8 @@ spec:
   haType: {{ .Values.operator.cluster.haType }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "distrBs" }}
-  distrBs: {{ .Values.operator.cluster.distrBs }}
-  {{- end }}
-
-  {{- if hasKey .Values.operator.cluster "distrChunkBs" }}
-  distrChunkBs: {{ .Values.operator.cluster.distrChunkBs }}
-  {{- end }}
-
-  {{- if hasKey .Values.operator.cluster "blkSize" }}
-  blkSize: {{ .Values.operator.cluster.blkSize }}
+  {{- if hasKey .Values.operator.cluster "blockSize" }}
+  blockSize: {{ .Values.operator.cluster.blockSize }}
   {{- end }}
 
   {{- if hasKey .Values.operator.cluster "pageSizeInBlocks" }}
@@ -74,6 +66,26 @@ spec:
 
   {{- if hasKey .Values.operator.cluster "inflightIOThreshold" }}
   inflightIOThreshold: {{ .Values.operator.cluster.inflightIOThreshold }}
+  {{- end }}
+
+  {{- if .Values.operator.cluster.clientDataIfname }}
+  clientDataIfname: {{ .Values.operator.cluster.clientDataIfname }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "maxFaultTolerance" }}
+  maxFaultTolerance: {{ .Values.operator.cluster.maxFaultTolerance }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "nvmfBasePort" }}
+  nvmfBasePort: {{ .Values.operator.cluster.nvmfBasePort }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "rpcBasePort" }}
+  rpcBasePort: {{ .Values.operator.cluster.rpcBasePort }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.cluster "snodeApiPort" }}
+  snodeApiPort: {{ .Values.operator.cluster.snodeApiPort }}
   {{- end }}
 
   {{- if .Values.operator.cluster.qosClasses }}
@@ -186,10 +198,6 @@ spec:
   corePercentage: {{ .Values.operator.storageNodes.corePercentage }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "jmPercent" }}
-  jmPercent: {{ .Values.operator.storageNodes.jmPercent }}
-  {{- end }}
-
   {{- with .Values.operator.storageNodes.journalManager }}
   {{- if or .count .percentPerDevice .useSeparateJournalDevice }}
   journalManager:
@@ -205,15 +213,8 @@ spec:
   {{- end }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.storageNodes "idDeviceByNQN" }}
-  idDeviceByNQN: {{ .Values.operator.storageNodes.idDeviceByNQN }}
-  {{- end }}
-
   {{- if hasKey .Values.operator.storageNodes "coreIsolation" }}
   coreIsolation: {{ .Values.operator.storageNodes.coreIsolation }}
-  {{- end }}
-  {{- if .Values.operator.storageNodes.coreMask }}
-  coreMask: {{ .Values.operator.storageNodes.coreMask }}
   {{- end }}
 
   {{- if .Values.operator.storageNodes.pcieAllowList }}
@@ -261,6 +262,29 @@ spec:
   enableCpuTopology: {{ .Values.operator.storageNodes.enableCpuTopology }}
   {{- end }}
 
+
+  {{- if hasKey .Values.operator.storageNodes "openShiftCluster" }}
+  openShiftCluster: {{ .Values.operator.storageNodes.openShiftCluster }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.storageNodes "ubuntuHost" }}
+  ubuntuHost: {{ .Values.operator.storageNodes.ubuntuHost }}
+  {{- end }}
+
+  {{- if hasKey .Values.operator.storageNodes "forceFormat4K" }}
+  forceFormat4K: {{ .Values.operator.storageNodes.forceFormat4K }}
+  {{- end }}
+
+  {{- if .Values.operator.storageNodes.reservedSystemCPU }}
+  reservedSystemCPU: {{ .Values.operator.storageNodes.reservedSystemCPU }}
+  {{- end }}
+
+  {{- if .Values.operator.storageNodes.deviceNames }}
+  deviceNames:
+  {{- range .Values.operator.storageNodes.deviceNames }}
+    - {{ . }}
+  {{- end }}
+  {{- end }}
 
   {{- if .Values.operator.storageNodes.workerNodes }}
   workerNodes:
