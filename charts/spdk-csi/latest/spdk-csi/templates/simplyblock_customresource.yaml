@@ -12,8 +12,8 @@ spec:
   mgmtIfname: {{ .Values.operator.cluster.mgmtIfname }}
   {{- end }}
 
-  {{- if .Values.operator.cluster.fabric }}
-  fabric: {{ .Values.operator.cluster.fabric }}
+  {{- if .Values.operator.cluster.fabricType }}
+  fabricType: {{ .Values.operator.cluster.fabricType }}
   {{- end }}
 
   {{- if hasKey .Values.operator.cluster "isSingleNode" }}
@@ -28,12 +28,16 @@ spec:
   strictNodeAntiAffinity: {{ .Values.operator.cluster.strictNodeAntiAffinity }}
   {{- end }}
 
-  {{- if hasKey .Values.operator.cluster "stripeWdata" }}
-  stripeWdata: {{ .Values.operator.cluster.stripeWdata }}
+  {{- with .Values.operator.cluster.stripe }}
+  {{- if or .dataChunks .parityChunks }}
+  stripe:
+    {{- if .dataChunks }}
+    dataChunks: {{ .dataChunks }}
+    {{- end }}
+    {{- if .parityChunks }}
+    parityChunks: {{ .parityChunks }}
+    {{- end }}
   {{- end }}
-
-  {{- if hasKey .Values.operator.cluster "stripeWparity" }}
-  stripeWparity: {{ .Values.operator.cluster.stripeWparity }}
   {{- end }}
 
   {{- if hasKey .Values.operator.cluster "qpairCount" }}

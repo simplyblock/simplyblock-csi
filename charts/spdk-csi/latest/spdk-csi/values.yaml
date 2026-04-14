@@ -284,10 +284,11 @@ operator:
   cluster:
     clusterName: simplyblock-cluster
     mgmtIfname: eth0
-    fabric: tcp
+    fabricType: tcp
     enableNodeAffinity: false
-    stripeWdata: 1
-    stripeWparity: 1
+    stripe:
+      dataChunks: 1
+      parityChunks: 1
     haType:
     isSingleNode: false
     strictNodeAntiAffinity: false
@@ -311,11 +312,6 @@ operator:
     name: simplyblock-pool
     capacityLimit:
     qos:
-      iops:
-      throughput:
-        read:
-        readWrite:
-        write:
 
   lvol:
     name: simplyblock-lvol
