@@ -522,7 +522,7 @@ spec:
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: LVOL_NVMF_PORT_START
-              value: "{{ .Values.ports.lvolNvmfPortStart }}"
+              value: "{{ .Values.controlplane.ports.lvolNvmfPortStart }}"
             - name: PROMETHEUS_URL
               value: "{{ .Values.prometheus.simplyblock.prometheusURL }}"
             - name: PROMETHEUS_PORT
