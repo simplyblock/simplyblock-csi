@@ -219,7 +219,7 @@ spec:
   {{- if .Values.controlplane.foundationdb.multiAZ }}
     key: topology.kubernetes.io/zone
   {{- else }}
-    key: foundationdb.org/none
+    key: kubernetes.io/hostname
   {{- end }}
   imageType: split
   labels:
