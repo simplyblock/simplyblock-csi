@@ -278,6 +278,10 @@ controlplane:
 
   foundationdb:
     multiAZ: false
+    # desiredFaultTolerance controls how many coordinator failures FDB tolerates.
+    # 1 = 3 coordinators (suitable for 3 workers)
+    # 2 = 5 coordinators (suitable for 5 workers, full double redundancy)
+    desiredFaultTolerance: 1
 
 operator:
   enabled: false

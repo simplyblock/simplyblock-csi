@@ -230,6 +230,7 @@ spec:
     - foundationdb.org/fdb-process-class
     processGroupIDLabels:
     - foundationdb.org/fdb-process-group-id
+  desiredFaultTolerance: {{ .Values.controlplane.foundationdb.desiredFaultTolerance | default 1 }}
   minimumUptimeSecondsForBounce: 60
   processCounts:
   {{- if .Values.controlplane.foundationdb.multiAZ }}
