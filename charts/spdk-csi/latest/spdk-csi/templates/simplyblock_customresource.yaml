@@ -190,10 +190,10 @@ spec:
   maxSize: {{ .Values.operator.storageNodes.maxSize | quote }}
   {{- end }}
 
-  {{- if .Values.operator.storageNodes.partitions }}
+  {{- if not (kindIs "invalid" .Values.operator.storageNodes.partitions) }}
   partitions: {{ .Values.operator.storageNodes.partitions }}
   {{- end }}
-
+  
   {{- if .Values.operator.storageNodes.corePercentage }}
   corePercentage: {{ .Values.operator.storageNodes.corePercentage }}
   {{- end }}
