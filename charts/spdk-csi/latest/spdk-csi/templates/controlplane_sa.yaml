@@ -22,11 +22,11 @@ rules:
   - apiGroups: ["mongodbcommunity.mongodb.com"]
     resources: ["mongodbcommunity"]
     verbs: ["get", "list", "watch", "patch", "update"]
-  - apiGroups: ["simplyblock.simplyblock.io"] 
-    resources: ["simplyblockpools/status", "simplyblocklvols/status", "simplyblockstorageclusters/status", "simplyblockstoragenodes/status", "simplyblockdevices/status", "simplyblocktasks/status"]
+  - apiGroups: ["storage.simplyblock.io"] 
+    resources: ["pools/status", "lvols/status", "storageclusters/status", "storagenodes/status", "devices/status", "tasks/status", "snapshotreplications/status", "storagebackups/status"]
     verbs: ["get", "patch", "update"]
-  - apiGroups: ["simplyblock.simplyblock.io"] 
-    resources: ["simplyblockpools", "simplyblocklvols", "simplyblockstorageclusters", "simplyblockstoragenodes", "simplyblockdevices", "simplyblocktasks"]
+  - apiGroups: ["storage.simplyblock.io"] 
+    resources: ["pools", "lvols", "storageclusters", "storagenodes", "devices", "tasks", "snapshotreplications", "storagebackups"]
     verbs: ["get","list" ,"patch", "update", "watch"]
 
 ---
