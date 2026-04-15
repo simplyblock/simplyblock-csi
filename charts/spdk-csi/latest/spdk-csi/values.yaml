@@ -56,7 +56,7 @@ image:
   mgmtAPI:
     repository: python
     tag: "3.10"
-    pullPolicy: Always 
+    pullPolicy: Always
 serviceAccount:
   # Specifies whether a serviceAccount should be created
   create: true
