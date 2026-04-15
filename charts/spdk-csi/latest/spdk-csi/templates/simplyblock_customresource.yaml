@@ -242,7 +242,7 @@ spec:
   {{- if .Values.operator.storageNodes.socketsToUse }}
   socketsToUse:
   {{- range .Values.operator.storageNodes.socketsToUse }}
-    - {{ . }}
+    - {{ . | quote }}
   {{- end }}
   {{- end }}
 

@@ -339,7 +339,7 @@ operator:
     pcieDenyList: []
     pcieModel:
     driveSizeRange:
-    socketsToUse:
+    socketsToUse: []
     nodesPerSocket:
     dataIfname: []
     journalManager:
