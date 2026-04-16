@@ -47,6 +47,10 @@ const (
 	annotationLvolID          = "simplybk/lvol-id"
 	annotationSecretName      = "simplybk/secret-name"
 	annotationSecretNamespace = "simplybk/secret-namespace"
+	annotationQoSRWIOPS       = "simplybk/qos-rw-iops"
+	annotationQoSRWmBytes     = "simplybk/qos-rw-mbytes"
+	annotationQoSRmBytes      = "simplybk/qos-r-mbytes"
+	annotationQoSWmBytes      = "simplybk/qos-w-mbytes"
 	paramClusterID            = "cluster_id"
 	paramZoneClusterMap       = "zone_cluster_map"
 	paramRegionClusterMap     = "region_cluster_map"
@@ -546,15 +550,39 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		return nil, err
 	}
 
+	// QoS from StorageClass, overridable per-PVC via annotations.
+	maxRWIOPS := params["qos_rw_iops"]
+	maxRWmBytes := params["qos_rw_mbytes"]
+	maxRmBytes := params["qos_r_mbytes"]
+	maxWmBytes := params["qos_w_mbytes"]
+	if pvcNameSelected && pvcNamespaceSelected {
+		qos, qosErr := getQoSAnnotations(ctx, pvcName, pvcNamespace)
+		if qosErr != nil {
+			return nil, qosErr
+		}
+		if qos.RWIOPS != "" {
+			maxRWIOPS = qos.RWIOPS
+		}
+		if qos.RWMBytes != "" {
+			maxRWmBytes = qos.RWMBytes
+		}
+		if qos.RMBytes != "" {
+			maxRmBytes = qos.RMBytes
+		}
+		if qos.WMBytes != "" {
+			maxWmBytes = qos.WMBytes
+		}
+	}
+
 	createVolReq := util.CreateLVolData{
 		LvolName:     req.GetName(),
 		Size:         strconv.FormatInt(capacityBytes, 10),
 		LvsName:      params["pool_name"],
 		Fabric:       params["fabric"],
-		MaxRWIOPS:    params["qos_rw_iops"],
-		MaxRWmBytes:  params["qos_rw_mbytes"],
-		MaxRmBytes:   params["qos_r_mbytes"],
-		MaxWmBytes:   params["qos_w_mbytes"],
+		MaxRWIOPS:    maxRWIOPS,
+		MaxRWmBytes:  maxRWmBytes,
+		MaxRmBytes:   maxRmBytes,
+		MaxWmBytes:   maxWmBytes,
 		MaxSize:      params["max_size"],
 		MaxNamespace: maxNamespace,
 		PriorClass:   priorClass,
@@ -618,6 +646,13 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, err
 	}
+
+	// Store the effective QoS values into VolumeContext so the PV spec records
+	// what was actually applied.
+	vol.VolumeContext["qos_rw_iops"] = createVolReq.MaxRWIOPS
+	vol.VolumeContext["qos_rw_mbytes"] = createVolReq.MaxRWmBytes
+	vol.VolumeContext["qos_r_mbytes"] = createVolReq.MaxRmBytes
+	vol.VolumeContext["qos_w_mbytes"] = createVolReq.MaxWmBytes
 
 	volumeID, err := sbclient.CreateVolume(createVolReq)
 	if err != nil {
@@ -943,7 +978,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 
 	klog.Infof("srcVolumeID=%s", srcVolumeID)
 
-	snapshotName := req.GetName()
+	cloneName := req.GetName()
 	params := req.GetParameters()
 	pvcName, _ := params[CSIStorageNameKey]
 
@@ -957,29 +992,16 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	klog.Infof("CreateSnapshot: clusterID=%s poolName=%s", sbclient.Client.ClusterID, poolName)
-	snapshotID, err := sbclient.CreateSnapshot(spdkVol.lvolID, snapshotName)
-	klog.Infof("CreatedSnapshot: clusterID=%s snapshotID=%s", sbclient.Client.ClusterID, snapshotID)
-	if err != nil {
-		klog.Errorf("failed to create snapshot, srcVolumeID: %s snapshotName: %s err: %v", srcVolumeID, snapshotName, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
-	klog.Infof("CloneSnapshot : snapshotName=%s", snapshotName)
-	snapshot, err := getSnapshot(snapshotID)
-	if err != nil {
-		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", snapshotID, err)
-		return nil, err
-	}
-	volumeID, err := sbclient.CloneSnapshot(snapshot.snapshotID, snapshotName, newSize, pvcName)
+	klog.Infof("CloneVolume : cloneName=%s", cloneName)
+	volumeID, err := sbclient.CloneVolume(spdkVol.lvolID, cloneName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
 	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
-	klog.V(5).Info("successfully created clonesnapshot volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
+	klog.V(5).Info("successfully created clone volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
 }
@@ -1103,4 +1125,41 @@ func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string)
 	}
 
 	return modelID, nil
+}
+
+// qosAnnotations holds per-PVC QoS override values read from PVC annotations.
+type qosAnnotations struct {
+	RWIOPS   string
+	RWMBytes string
+	RMBytes  string
+	WMBytes  string
+}
+
+// getQoSAnnotations returns per-PVC QoS overrides from PVC annotations.
+func getQoSAnnotations(ctx context.Context, pvcName, pvcNamespace string) (qosAnnotations, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Errorf("failed to get in-cluster config: %v", err)
+		return qosAnnotations{}, fmt.Errorf("could not get in-cluster config: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Errorf("failed to create clientset: %v", err)
+		return qosAnnotations{}, fmt.Errorf("could not create clientset: %w", err)
+	}
+
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
+		return qosAnnotations{}, fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
+	}
+
+	annotations := pvc.ObjectMeta.Annotations
+	return qosAnnotations{
+		RWIOPS:   annotations[annotationQoSRWIOPS],
+		RWMBytes: annotations[annotationQoSRWmBytes],
+		RMBytes:  annotations[annotationQoSRmBytes],
+		WMBytes:  annotations[annotationQoSWmBytes],
+	}, nil
 }

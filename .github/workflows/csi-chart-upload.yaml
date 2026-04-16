@@ -1,0 +1,34 @@
+name: CSI Upload Helm Charts
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref (branch/tag/SHA) to upload charts from
+        required: false
+        default: master
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        default: master
+        type: string
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Upload Helm Charts
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: /
+          local-dir: ./charts/spdk-csi

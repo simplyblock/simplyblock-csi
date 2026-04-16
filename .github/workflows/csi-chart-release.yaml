@@ -10,6 +10,8 @@ on:
 jobs:
   package-and-update:
     runs-on: ubuntu-latest
+    outputs:
+      release_branch: ${{ steps.release_meta.outputs.branch }}
 
     steps:
       - name: Checkout repo
@@ -36,12 +38,17 @@ jobs:
           cd charts/spdk-csi
           helm repo index . --url https://github.com/simplyblock-io/spdk-csi/raw/master/charts/spdk-csi
 
+      - name: Prepare release metadata
+        id: release_meta
+        run: |
+          echo "branch=release-${{ env.VERSION }}" >> "$GITHUB_OUTPUT"
+
       - name: Commit and create PR
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          BRANCH="release-${{ env.VERSION }}"
+          BRANCH="${{ steps.release_meta.outputs.branch }}"
           git checkout -b "$BRANCH"
 
           git add charts/spdk-csi/index.yaml charts/spdk-csi/${{ env.VERSION }}/
@@ -55,3 +62,10 @@ jobs:
             --base master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-helm-charts:
+    needs: package-and-update
+    uses: ./.github/workflows/csi-chart-upload.yaml
+    with:
+      ref: ${{ needs.package-and-update.outputs.release_branch }}
+    secrets: inherit

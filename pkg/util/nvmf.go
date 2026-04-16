@@ -142,6 +142,16 @@ func (node *NodeNVMf) CloneSnapshot(snapshotID, cloneName, newSize, pvcName stri
 	return lvolID, nil
 }
 
+// CloneVolume clones a volume to a new volume
+func (node *NodeNVMf) CloneVolume(lvolID, cloneName, newSize, pvcName string) (string, error) {
+	lvolID, err := node.Client.cloneVolume(lvolID, cloneName, newSize, pvcName)
+	if err != nil {
+		return "", err
+	}
+	klog.V(5).Infof("snapshot cloned: %s", lvolID)
+	return lvolID, nil
+}
+
 // CreateSnapshot creates a snapshot of a volume
 func (node *NodeNVMf) CreateSnapshot(lvolID, snapshotName string) (string, error) {
 	snapshotID, err := node.Client.snapshot(lvolID, snapshotName)
