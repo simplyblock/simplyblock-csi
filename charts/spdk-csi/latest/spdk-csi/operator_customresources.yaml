@@ -1,0 +1,55 @@
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: StorageCluster
+metadata:
+  name: simplyblock-cluster
+  namespace: simplyblock
+spec:
+  clusterName: simplyblock-cluster
+  mgmtIfname: eth0
+  fabricType: tcp
+  isSingleNode: false
+  enableNodeAffinity: false
+  strictNodeAntiAffinity: false
+  stripe:
+    dataChunks: 1
+    parityChunks: 1
+  warningThreshold:
+    capacity: 80
+    provisionedCapacity: 80
+  criticalThreshold:
+    capacity: 90
+    provisionedCapacity: 90
+
+---
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: Pool
+metadata:
+  name: simplyblock-pool
+  namespace: simplyblock
+spec:
+  name: simplyblock-pool
+  clusterName: simplyblock-cluster
+
+---
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: StorageNode
+metadata:
+  name: simplyblock-node
+  namespace: simplyblock
+spec:
+  clusterName: simplyblock-cluster
+  clusterImage: "public.ecr.aws/simply-block/simplyblock:26.1.2"
+  mgmtIfname: eth0
+  maxLogicalVolumeCount: 10
+  partitions: 1
+  corePercentage: 65
+  coreIsolation: false
+  journalManager:
+    count: 3
+    percentPerDevice: 3
+  skipKubeletConfiguration: false
+  enableCpuTopology: true
+  openShiftCluster: false
+  ubuntuHost: false
+  forceFormat4K: false
+  workerNodes: []
