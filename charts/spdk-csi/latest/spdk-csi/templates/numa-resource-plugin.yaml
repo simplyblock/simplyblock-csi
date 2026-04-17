@@ -1,5 +1,5 @@
 {{- $storagenodeEnabled := and .Values.storagenode.create .Values.storagenode.enableCpuTopology .Values.storagenode.enableDevicePlugin -}}
-{{- $operatorEnabled := and .Values.operator.enabled (hasKey .Values.operator.storageNodes "enableCpuTopology") .Values.operator.storageNodes.enableCpuTopology (hasKey .Values.operator.storageNodes "enableDevicePlugin") .Values.operator.storageNodes.enableDevicePlugin -}}
+{{- $operatorEnabled := .Values.operator.enabled -}}
 {{- if or $storagenodeEnabled $operatorEnabled -}}
 ---
 apiVersion: v1
@@ -39,12 +39,6 @@ spec:
       serviceAccountName: simplyblock-numa-resource-plugin
       priorityClassName: system-node-critical
       {{- $dsList := .Values.storagenode.daemonsets | default (list) -}}
-      {{- $workerNodes := list -}}
-      {{- if $storagenodeEnabled -}}
-        {{- $workerNodes = $dsList -}}
-      {{- else if $operatorEnabled -}}
-        {{- $workerNodes = .Values.operator.storageNodes.workerNodes | default (list) -}}
-      {{- end }}
       {{- if and $storagenodeEnabled (gt (len $dsList) 0) }}
       affinity:
         nodeAffinity:
@@ -59,18 +53,14 @@ spec:
                 - {{ $ds.nodeSelector.value | quote }}
                 {{- end }}
                 {{- end }}
-      {{- else if and $operatorEnabled (gt (len (.Values.operator.storageNodes.workerNodes | default (list))) 0) }}
+      {{- else if $operatorEnabled }}
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: kubernetes.io/hostname
-                operator: In
-                values:
-                {{- range .Values.operator.storageNodes.workerNodes }}
-                - {{ . | quote }}
-                {{- end }}
+              - key: io.simplyblock.node-type
+                operator: Exists
       {{- end }}
       tolerations:
         # Run on all nodes including control plane
