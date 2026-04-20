@@ -272,6 +272,12 @@ spec:
                   description: NodeDrainState tracks the upgrade-drain coordination
                     state for a single worker node.
                   properties:
+                    activeNodeUUID:
+                      description: |-
+                        ActiveNodeUUID is the backend UUID of the storage node currently being shut
+                        down or restarted. Used to sequence through multiple NUMA-socket nodes on
+                        the same worker one at a time during drain coordination.
+                      type: string
                     hostname:
                       description: Hostname is the Kubernetes node name.
                       type: string
