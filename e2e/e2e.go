@@ -45,5 +45,4 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 }, func(_ []byte) {})
 
 var _ = ginkgo.SynchronizedAfterSuite(func() {
-	framework.RunCleanupActions()
 }, func() {})

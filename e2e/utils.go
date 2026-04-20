@@ -19,7 +19,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
+	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
 	"github.com/spdk/spdk-csi/pkg/util"
 )
@@ -70,86 +71,86 @@ func init() {
 }
 
 func deployTestPod() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", testPodPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodPath)
 	if err != nil {
-		e2elog.Logf("failed to create test pod: %s", err)
+		framework.Logf("failed to create test pod: %s", err)
 	}
 }
 
 func deleteTestPod() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", testPodPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodPath)
 	if err != nil {
-		e2elog.Logf("failed to delete test pod: %s", err)
+		framework.Logf("failed to delete test pod: %s", err)
 	}
 }
 
 func deployCacheTestPod() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", cachetestPodPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", cachetestPodPath)
 	if err != nil {
-		e2elog.Logf("failed to create cache test pod: %s", err)
+		framework.Logf("failed to create cache test pod: %s", err)
 	}
 }
 
 func deleteCacheTestPod() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", cachetestPodPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", cachetestPodPath)
 	if err != nil {
-		e2elog.Logf("failed to delete cache test pod: %s", err)
+		framework.Logf("failed to delete cache test pod: %s", err)
 	}
 }
 
 func deployPVC() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", pvcPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", pvcPath)
 	if err != nil {
-		e2elog.Logf("failed to create pvc: %s", err)
+		framework.Logf("failed to create pvc: %s", err)
 	}
 }
 
 func deletePVC() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", pvcPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", pvcPath)
 	if err != nil {
-		e2elog.Logf("failed to delete pvc: %s", err)
+		framework.Logf("failed to delete pvc: %s", err)
 	}
 }
 
 func deploySnapshot() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", testPodWithSnapshotPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithSnapshotPath)
 	if err != nil {
-		e2elog.Logf("failed to deployed snapshot: %s", err)
+		framework.Logf("failed to deployed snapshot: %s", err)
 	}
 }
 
 func deleteSnapshot() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath)
 	if err != nil {
-		e2elog.Logf("failed to delete snapshot: %s", err)
+		framework.Logf("failed to delete snapshot: %s", err)
 	}
 }
 
 func deploySnapshot2() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", testPodWithSnapshotPath2)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithSnapshotPath2)
 	if err != nil {
-		e2elog.Logf("failed to deployed snapshot: %s", err)
+		framework.Logf("failed to deployed snapshot: %s", err)
 	}
 }
 
 func deleteSnapshot2() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath2)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath2)
 	if err != nil {
-		e2elog.Logf("failed to delete snapshot: %s", err)
+		framework.Logf("failed to delete snapshot: %s", err)
 	}
 }
 
 func deployClone() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", testPodWithClonePath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithClonePath)
 	if err != nil {
-		e2elog.Logf("failed to deployed Cloned Volume: %s", err)
+		framework.Logf("failed to deployed Cloned Volume: %s", err)
 	}
 }
 
 func deleteClone() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", testPodWithClonePath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithClonePath)
 	if err != nil {
-		e2elog.Logf("failed to delete cloned volume : %s", err)
+		framework.Logf("failed to delete cloned volume : %s", err)
 	}
 }
 
@@ -159,16 +160,16 @@ func deletePVCAndTestPod() {
 }
 
 func deployCachePVC() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", cachepvcPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", cachepvcPath)
 	if err != nil {
-		e2elog.Logf("failed to create cache pvc: %s", err)
+		framework.Logf("failed to create cache pvc: %s", err)
 	}
 }
 
 func deleteCachePVC() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", cachepvcPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", cachepvcPath)
 	if err != nil {
-		e2elog.Logf("failed to delete cache pvc: %s", err)
+		framework.Logf("failed to delete cache pvc: %s", err)
 	}
 }
 
@@ -178,30 +179,30 @@ func deleteCachePVCAndCacheTestPod() {
 }
 
 func deployTestPodWithMultiPvcs() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", testPodWithMultiPvcsPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithMultiPvcsPath)
 	if err != nil {
-		e2elog.Logf("failed to create test pod with multiple pvcs: %s", err)
+		framework.Logf("failed to create test pod with multiple pvcs: %s", err)
 	}
 }
 
 func deleteTestPodWithMultiPvcs() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", testPodWithMultiPvcsPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithMultiPvcsPath)
 	if err != nil {
-		e2elog.Logf("failed to delete test pod with multiple pvcs: %s", err)
+		framework.Logf("failed to delete test pod with multiple pvcs: %s", err)
 	}
 }
 
 func deployMultiPvcs() {
-	_, err := framework.RunKubectl(nameSpace, "apply", "-f", multiPvcsPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", multiPvcsPath)
 	if err != nil {
-		e2elog.Logf("failed to create pvcs: %s", err)
+		framework.Logf("failed to create pvcs: %s", err)
 	}
 }
 
 func deleteMultiPvcs() {
-	_, err := framework.RunKubectl(nameSpace, "delete", "-f", multiPvcsPath)
+	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", multiPvcsPath)
 	if err != nil {
-		e2elog.Logf("failed to delete pvcs: %s", err)
+		framework.Logf("failed to delete pvcs: %s", err)
 	}
 }
 
@@ -314,22 +315,22 @@ func waitForPvcGone(c kubernetes.Interface, pvcName string) error {
 
 func execCommandInPod(f *framework.Framework, c, ns string, opt *metav1.ListOptions) (stdOut, stdErr string) {
 	podPot := getCommandInPodOpts(f, c, ns, opt)
-	stdOut, stdErr, err := f.ExecWithOptions(podPot)
+	stdOut, stdErr, err := e2epod.ExecWithOptions(f, podPot)
 	if stdErr != "" {
-		e2elog.Logf("stdErr occurred: %v", stdErr)
+		framework.Logf("stdErr occurred: %v", stdErr)
 	}
 	Expect(err).ShouldNot(HaveOccurred()) //nolint
 	return stdOut, stdErr
 }
 
-func getCommandInPodOpts(f *framework.Framework, c, ns string, opt *metav1.ListOptions) framework.ExecOptions {
+func getCommandInPodOpts(f *framework.Framework, c, ns string, opt *metav1.ListOptions) e2epod.ExecOptions {
 	cmd := []string{"/bin/sh", "-c", c}
-	podList, err := f.PodClientNS(ns).List(ctx, *opt)
+	podList, err := e2epod.PodClientNS(f, ns).List(ctx, *opt)
 	framework.ExpectNoError(err)
 	Expect(podList.Items).NotTo(BeNil())  //nolint
 	Expect(err).ShouldNot(HaveOccurred()) //nolint
 
-	return framework.ExecOptions{
+	return e2epod.ExecOptions{
 		Command:            cmd,
 		PodName:            podList.Items[0].Name,
 		Namespace:          ns,
@@ -699,7 +700,7 @@ func createPVC(c kubernetes.Interface, nameSpace, pvcName, storageClassName stri
 		Spec: corev1.PersistentVolumeClaimSpec{
 			StorageClassName: &storageClassName,
 			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI), // 256Mi
 				},
