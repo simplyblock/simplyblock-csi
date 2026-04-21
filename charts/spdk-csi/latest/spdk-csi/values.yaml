@@ -508,3 +508,6 @@ prometheus:
     prometheus:
       repository: quay.io/prometheus-operator/prometheus-config-reloader
       tag: v0.72.0
+
+tls:
+  enabled: false
