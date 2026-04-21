@@ -10,8 +10,8 @@ data:
   LOG_LEVEL: {{ .Values.controlplane.observability.level }}
   LOG_DELETION_INTERVAL: {{ .Values.controlplane.observability.deletionInterval }}
 
----
 {{- if .Values.controlplane.observability.enabled }}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
