@@ -74,10 +74,10 @@ data:
         if record["kubernetes"] ~= nil then
             local annotations = record["kubernetes"]["annotations"]
             if annotations ~= nil and annotations["log-collector/enabled"] == "true" then
-                return 1, record
+                return 1, timestamp, record
             end
         end
-        return -1, record
+        return -1, timestamp, record
     end
 
 ---
