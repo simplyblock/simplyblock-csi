@@ -11,7 +11,7 @@ data:
   LOG_DELETION_INTERVAL: {{ .Values.controlplane.observability.deletionInterval }}
 
 ---
-
+{{- if .Values.controlplane.observability.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -23,7 +23,12 @@ data:
         Flush        1
         Daemon       Off
         Log_Level    info
-        Parsers_File parsers.conf
+        Parsers_File parsers.conf 
+        storage.path              /var/flb-db
+        storage.sync              normal
+        storage.checksum          off
+        storage.max_chunks_up     128
+        storage.backlog.mem_limit 50MB
 
     [INPUT]
         Name              tail
@@ -32,9 +37,10 @@ data:
         Tag               kube.*
         Exclude_Path      /var/log/containers/*fluent-bit*.log
         Refresh_Interval  5
-        Mem_Buf_Limit     5MB
+        Mem_Buf_Limit     50MB
         Skip_Long_Lines   On
         DB                /var/flb-db/flb_kube.db
+        storage.type      filesystem
 
     [FILTER]
         Name                kubernetes
@@ -46,6 +52,8 @@ data:
         Merge_Log_Key       log
         K8S-Logging.Parser  On
         K8S-Logging.Exclude Off
+        Buffer_Size         0
+        Annotations         On
 
     [FILTER]
         Name      lua
@@ -79,6 +87,7 @@ data:
         end
         return -1, timestamp, record
     end
+{{- end }}
 
 ---
 
