@@ -201,20 +201,6 @@ spec:
           limits:
             cpu: "500m"
             memory: "2Gi"
-      - name: fluent-bit
-        image: fluent/fluent-bit:1.8.11
-        volumeMounts:
-          - name: varlog
-            mountPath: /var/log
-          - name: config
-            mountPath: /fluent-bit/etc/
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "200Mi"
-          limits:
-            cpu: "200m"
-            memory: "400Mi"
       volumes:
       - name: fdb-cluster-file
         configMap:
@@ -222,12 +208,6 @@ spec:
           items:
             - key: cluster-file
               path: fdb.cluster
-      - name: varlog
-        hostPath:
-          path: /var/log
-      - name: config
-        configMap:
-          name: simplyblock-fluent-bit-config
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -443,21 +423,6 @@ spec:
           resources:
 {{ toYaml .resources | nindent 12 }}
 {{- end }}
-        - name: fluent-bit
-          image: fluent/fluent-bit:1.8.11
-          volumeMounts:
-            - name: varlog
-              mountPath: /var/log
-            - name: config
-              mountPath: /fluent-bit/etc/
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "200Mi"
-            limits:
-              cpu: "200m"
-              memory: "400Mi"
-
       volumes:
         - name: fdb-cluster-file
           configMap:
@@ -465,12 +430,6 @@ spec:
             items:
               - key: cluster-file
                 path: fdb.cluster
-        - name: varlog
-          hostPath:
-            path: /var/log
-        - name: config
-          configMap:
-            name: simplyblock-fluent-bit-config
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -687,21 +646,6 @@ spec:
           resources:
 {{ toYaml .resources | nindent 12 }}
 {{- end }}
-        - name: fluent-bit
-          image: fluent/fluent-bit:1.8.11
-          volumeMounts:
-            - name: varlog
-              mountPath: /var/log
-            - name: config
-              mountPath: /fluent-bit/etc/
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "200Mi"
-            limits:
-              cpu: "200m"
-              memory: "400Mi"
-
       volumes:
         - name: fdb-cluster-file
           configMap:
@@ -709,12 +653,6 @@ spec:
             items:
               - key: cluster-file
                 path: fdb.cluster
-        - name: varlog
-          hostPath:
-            path: /var/log
-        - name: config
-          configMap:
-            name: simplyblock-fluent-bit-config
 
 ---
 {{- if .Values.controlplane.observability.enabled }}
