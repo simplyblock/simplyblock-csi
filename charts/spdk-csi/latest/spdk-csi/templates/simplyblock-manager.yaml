@@ -3,26 +3,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: simplyblock-manager
+  name: simplyblock-operator
   labels:
-    control-plane: simplyblock-manager
-    app: simplyblock-manager
+    control-plane: simplyblock-operator
+    app: simplyblock-operator
 spec:
   selector:
     matchLabels:
-      app: simplyblock-manager
+      app: simplyblock-operator
   replicas: 1
   template:
     metadata:
       labels:
-        control-plane: simplyblock-manager
-        app: simplyblock-manager
+        control-plane: simplyblock-operator
+        app: simplyblock-operator
     spec:
       securityContext:
         runAsUser: 65532
         runAsGroup: 65532
         fsGroup: 65532
-      serviceAccountName: simplyblock-manager
+      serviceAccountName: simplyblock-operator
       {{- if .Values.controlplane.nodeSelector.create }}
       nodeSelector:
         {{ .Values.controlplane.nodeSelector.key }}: {{ .Values.controlplane.nodeSelector.value }}
@@ -73,13 +73,13 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: simplyblock-manager
+  name: simplyblock-operator
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: simplyblock-manager-clusterrole
+  name: simplyblock-operator-clusterrole
 rules:
 - apiGroups:
   - ""
@@ -239,13 +239,13 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   creationTimestamp: null
-  name: simplyblock-manager-clusterrolebinding
+  name: simplyblock-operator-clusterrolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: simplyblock-manager-clusterrole
+  name: simplyblock-operator-clusterrole
 subjects:
 - kind: ServiceAccount
-  name: simplyblock-manager
+  name: simplyblock-operator
   namespace: {{ .Release.Namespace }}
 {{- end }}
