@@ -538,25 +538,54 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 		return nil, fmt.Errorf("failed to execute nvme list: %v", err)
 	}
 
-	var response struct {
+	var newFormat struct {
+		Devices []struct {
+			Subsystems []struct {
+				Namespaces []struct {
+					NameSpace string `json:"NameSpace"`
+				} `json:"Namespaces"`
+			} `json:"Subsystems"`
+		} `json:"Devices"`
+	}
+	if err := json.Unmarshal(output, &newFormat); err == nil {
+		var devices []nvmeDeviceInfo
+		for _, host := range newFormat.Devices {
+			for _, sub := range host.Subsystems {
+				for _, ns := range sub.Namespaces {
+					if ns.NameSpace == "" {
+						continue
+					}
+					devices = append(devices, nvmeDeviceInfo{
+						devicePath: "/dev/" + ns.NameSpace,
+					})
+				}
+			}
+		}
+		if len(devices) > 0 {
+			return devices, nil
+		}
+	}
+
+	// Legacy flat format: Devices[].DevicePath
+	var legacyFormat struct {
 		Devices []struct {
 			DevicePath   string `json:"DevicePath"`
 			SerialNumber string `json:"SerialNumber"`
 		} `json:"Devices"`
 	}
-
-	if err := json.Unmarshal(output, &response); err != nil {
+	if err := json.Unmarshal(output, &legacyFormat); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nvme list output: %v", err)
 	}
-
 	var devices []nvmeDeviceInfo
-	for _, dev := range response.Devices {
+	for _, dev := range legacyFormat.Devices {
+		if dev.DevicePath == "" {
+			continue
+		}
 		devices = append(devices, nvmeDeviceInfo{
 			devicePath:   dev.DevicePath,
 			serialNumber: dev.SerialNumber,
 		})
 	}
-
 	return devices, nil
 }
 
