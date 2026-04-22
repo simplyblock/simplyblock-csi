@@ -83,6 +83,62 @@ spec:
                   Status is an optional desired-status hint for backend workflows.
                   FIXME: Unused for now
                 type: string
+              storageClassParameters:
+                description: StorageClassParameters sets default StorageClass parameter values for volumes in this pool.
+                properties:
+                  compression:
+                    default: "False"
+                    description: Compression enables compression for logical volumes.
+                    type: string
+                  encryption:
+                    default: false
+                    description: Encryption enables encryption for logical volumes.
+                    type: boolean
+                  fabric:
+                    default: tcp
+                    description: Fabric is the transport fabric (e.g. tcp).
+                    type: string
+                  lvolPriorityClass:
+                    default: "0"
+                    description: LvolPriorityClass sets the logical volume priority class.
+                    type: string
+                  maxNamespacePerSubsys:
+                    default: "1"
+                    description: MaxNamespacePerSubsys limits namespaces per NVMf subsystem.
+                    type: string
+                  numDataChunks:
+                    default: "1"
+                    description: NumDataChunks is the number of data chunks (distr_ndcs).
+                    type: string
+                  numParityChunks:
+                    default: "1"
+                    description: NumParityChunks is the number of parity chunks (distr_npcs).
+                    type: string
+                  qosRMbytes:
+                    default: "0"
+                    description: QosRMbytes sets the read throughput limit in MB/s (0 = unlimited).
+                    type: string
+                  qosRwIops:
+                    default: "0"
+                    description: QosRwIops sets the read/write IOPS limit (0 = unlimited).
+                    type: string
+                  qosRwMbytes:
+                    default: "0"
+                    description: QosRwMbytes sets the read/write throughput limit in MB/s (0 = unlimited).
+                    type: string
+                  qosWMbytes:
+                    default: "0"
+                    description: QosWMbytes sets the write throughput limit in MB/s (0 = unlimited).
+                    type: string
+                  replicate:
+                    default: false
+                    description: Replicate enables replication for logical volumes.
+                    type: boolean
+                  tune2fsReservedBlocks:
+                    default: "0"
+                    description: Tune2fsReservedBlocks sets the ext4 reserved-blocks percentage.
+                    type: string
+                type: object
             required:
             - clusterName
             - name

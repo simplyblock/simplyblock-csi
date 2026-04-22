@@ -130,12 +130,23 @@ rules:
   - ""
   resources:
   - nodes
+  - persistentvolumes
   verbs:
   - get
   - list
   - watch
   - update
   - patch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
 - apiGroups:
   - "rbac.authorization.k8s.io"
   resources:
