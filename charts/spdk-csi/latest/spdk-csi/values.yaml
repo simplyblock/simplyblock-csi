@@ -46,7 +46,7 @@ image:
     tag: v0.1.9
     pullPolicy: Always
   operator:
-    repository: simplyblock/simplyblock-manager
+    repository: simplyblock/simplyblock-operator
     tag: main
     pullPolicy: Always
   numaResource:
