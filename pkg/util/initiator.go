@@ -118,6 +118,12 @@ var (
 	devicePresentMap  = make(map[string]bool)
 	deviceToLvolIDMap = make(map[string]string)
 	mu                sync.Mutex
+
+	// maxSeenPathsMap caches the highest number of active NVMe-oF paths ever
+	// observed per NQN. Used by the connection monitor to detect degradation
+	// without querying the API on every cycle.
+	maxSeenPathsMap = make(map[string]int)
+	maxSeenMu       sync.Mutex
 )
 
 // clusterConfig represents the Kubernetes secret structure
@@ -532,25 +538,54 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 		return nil, fmt.Errorf("failed to execute nvme list: %v", err)
 	}
 
-	var response struct {
+	var deviceResponse struct {
+		Devices []struct {
+			Subsystems []struct {
+				Namespaces []struct {
+					NameSpace string `json:"NameSpace"`
+				} `json:"Namespaces"`
+			} `json:"Subsystems"`
+		} `json:"Devices"`
+	}
+	if err := json.Unmarshal(output, &deviceResponse); err == nil {
+		var devices []nvmeDeviceInfo
+		for _, host := range deviceResponse.Devices {
+			for _, sub := range host.Subsystems {
+				for _, ns := range sub.Namespaces {
+					if ns.NameSpace == "" {
+						continue
+					}
+					devices = append(devices, nvmeDeviceInfo{
+						devicePath: "/dev/" + ns.NameSpace,
+					})
+				}
+			}
+		}
+		if len(devices) > 0 {
+			return devices, nil
+		}
+	}
+
+	// Legacy flat format: Devices[].DevicePath
+	var legacyDeviceResp struct {
 		Devices []struct {
 			DevicePath   string `json:"DevicePath"`
 			SerialNumber string `json:"SerialNumber"`
 		} `json:"Devices"`
 	}
-
-	if err := json.Unmarshal(output, &response); err != nil {
+	if err := json.Unmarshal(output, &legacyDeviceResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nvme list output: %v", err)
 	}
-
 	var devices []nvmeDeviceInfo
-	for _, dev := range response.Devices {
+	for _, dev := range legacyDeviceResp.Devices {
+		if dev.DevicePath == "" {
+			continue
+		}
 		devices = append(devices, nvmeDeviceInfo{
 			devicePath:   dev.DevicePath,
 			serialNumber: dev.SerialNumber,
 		})
 	}
-
 	return devices, nil
 }
 
@@ -641,24 +676,32 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 				deviceToLvolIDMap[device.devicePath] = lvolID
 				mu.Unlock()
 
-				if len(subsystem.Paths) == 1 {
-					confirm := confirmSubsystemStillSinglePath(&subsystem, device.devicePath)
+				numActive := len(subsystem.Paths)
+				if numActive == 0 {
+					continue
+				}
 
-					if !confirm {
-						continue
-					}
-					for _, path := range subsystem.Paths {
-						if path.State == "connecting" && device.serialNumber == "single" ||
-							((path.ANAState == "optimized" || path.ANAState == "non-optimized") && device.serialNumber == "ha") {
-							if err := checkOnlineNode(clusterID, lvolID, device.devicePath, path); err != nil {
-								klog.Errorf("failed to reconnect subsystem for lvolID %s: %v", lvolID, err)
-							}
-						}
-					}
+				expected := resolveExpectedPathCount(subsystem.NQN, clusterID, lvolID, numActive)
+
+				needsRecovery := numActive < expected ||
+					(expected > 1 && hasConnectingPath(subsystem.Paths))
+
+				if !needsRecovery {
+					continue
+				}
+
+				if !confirmSubsystemNeedsRecovery(&subsystem, device.devicePath, numActive) {
+					continue
+				}
+
+				klog.Infof("Degraded subsystem: NQN=%s active=%d expected=%d device=%s",
+					subsystem.NQN, numActive, expected, device.devicePath)
+
+				if err := recoverPathsWithANA(clusterID, lvolID, device.devicePath, subsystem.Paths); err != nil {
+					klog.Errorf("failed to recover paths for lvolID %s: %v", lvolID, err)
 				}
 			}
 		}
-
 	}
 
 	var goneLvols []string
@@ -667,12 +710,9 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 	for devPath := range devicePresentMap {
 		if !currentDevices[devPath] {
 			lvolID := deviceToLvolIDMap[devPath]
-
 			klog.Errorf("Device %s is no longer present — all NVMe-oF connections were lost and the kernel removed the device (lvolID=%s)", devPath, lvolID)
-
 			delete(devicePresentMap, devPath)
 			delete(deviceToLvolIDMap, devPath)
-
 			if lvolID != "" {
 				goneLvols = append(goneLvols, lvolID)
 			}
@@ -687,77 +727,6 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 	}
 
 	return nil
-}
-
-func checkOnlineNode(clusterID, lvolID, devicePath string, path path) error {
-	sbcClient, err := NewsimplyBlockClient(clusterID)
-	if err != nil {
-		return fmt.Errorf("failed to create SPDK client: %w", err)
-	}
-
-	nodeInfo, err := fetchNodeInfo(sbcClient, lvolID)
-	if err != nil {
-		return fmt.Errorf("failed to fetch node info: %w", err)
-	}
-
-	for _, nodeID := range nodeInfo.Nodes {
-		if len(nodeInfo.NodeID) > 1 && !shouldConnectToNode(path.ANAState, nodeInfo.NodeID, nodeID) {
-			continue
-		}
-
-		if !isNodeOnline(sbcClient, nodeID) {
-			klog.Infof("Node %s is not yet online", nodeID)
-			continue
-		}
-
-		connections, err := fetchLvolConnection(sbcClient, lvolID)
-		if err != nil {
-			klog.Errorf("Failed to get lvol connection: %v", err)
-			continue
-		}
-
-		connCount := len(connections)
-		if connCount == 0 {
-			klog.Warningf("No NVMe connection found for lvol %s", lvolID)
-			continue
-		}
-
-		connIndex := 0
-		if path.ANAState == "optimized" && connCount > 1 {
-			connIndex = 1
-		}
-		conn := connections[connIndex]
-
-		targetIP := parseAddress(path.Address)
-		ctrlLossTmo := 60
-		if connCount == 1 && conn.IP != targetIP {
-			ctrlLossTmo *= 15
-
-			if err := disconnectViaNVMe(devicePath, path); err != nil {
-				return err
-			}
-			if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
-				return err
-			}
-			return nil
-		}
-
-		if connCount > 1 {
-			if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
-				return err
-			}
-			return nil
-		}
-	}
-
-	return nil
-}
-
-func shouldConnectToNode(anaState, currentNodeID, targetNodeID string) bool {
-	if anaState == "optimized" {
-		return currentNodeID != targetNodeID
-	}
-	return currentNodeID == targetNodeID
 }
 
 func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
@@ -840,7 +809,10 @@ func disconnectViaNVMe(devicePath string, path path) error {
 	return nil
 }
 
-func confirmSubsystemStillSinglePath(subsystem *subsystem, devicePath string) bool {
+// confirmSubsystemNeedsRecovery re-checks the subsystem 5 times over 5 seconds
+// and returns true only if the path count remained stable at initialPathCount for
+// all 5 checks. This debounces spurious triggers during normal ANA switchovers.
+func confirmSubsystemNeedsRecovery(subsystem *subsystem, devicePath string, initialPathCount int) bool {
 	for i := 0; i < 5; i++ {
 		recheck, err := getSubsystemsForDevice(devicePath)
 		if err != nil {
@@ -853,7 +825,7 @@ func confirmSubsystemStillSinglePath(subsystem *subsystem, devicePath string) bo
 			for _, s := range h.Subsystems {
 				if s.NQN == subsystem.NQN {
 					found = true
-					if len(s.Paths) != 1 {
+					if len(s.Paths) != initialPathCount {
 						return false
 					}
 				}
@@ -870,15 +842,225 @@ func confirmSubsystemStillSinglePath(subsystem *subsystem, devicePath string) bo
 	return true
 }
 
-// MonitorConnection monitors the connection to the SPDK node and reconnects if necessary
-// TODO: make this monitoring multiple connections
+// MonitorConnection monitors NVMe-oF connections and reconnects missing or
+// IP-changed paths. Supports 1-path, 2-path, and 3-path volumes
+// (1 optimized + up to 2 non-optimized).
 func MonitorConnection(markBroken func(lvolID string)) {
 	for {
 		if err := reconnectSubsystems(markBroken); err != nil {
-			klog.Errorf("Error: %v\n", err)
-			time.Sleep(3 * time.Second)
-			continue
+			klog.Errorf("MonitorConnection error: %v", err)
 		}
 		time.Sleep(3 * time.Second)
 	}
+}
+
+// hasConnectingPath reports whether any path has State == "connecting".
+// On a multi-path volume this typically means a node's IP changed and the kernel
+// is still trying to reach the old address.
+func hasConnectingPath(paths []path) bool {
+	for _, p := range paths {
+		if p.State == "connecting" {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveExpectedPathCount returns the expected number of NVMe-oF paths for the
+// given NQN. On first encounter it queries the API once to seed the cache so the
+// monitor works correctly even if started while a volume is already degraded.
+// Subsequent calls use the in-memory cache, which only grows upward.
+func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) int {
+	maxSeenMu.Lock()
+	cached, exists := maxSeenPathsMap[nqn]
+	if currentActive > cached {
+		cached = currentActive
+		maxSeenPathsMap[nqn] = cached
+	}
+	maxSeenMu.Unlock()
+
+	if exists {
+		return cached
+	}
+
+	sbcClient, err := NewsimplyBlockClient(clusterID)
+	if err != nil {
+		klog.Warningf("resolveExpectedPathCount: client error for NQN %s: %v", nqn, err)
+		return cached
+	}
+	conns, err := fetchLvolConnection(sbcClient, lvolID)
+	if err != nil {
+		klog.Warningf("resolveExpectedPathCount: fetch error for NQN %s: %v", nqn, err)
+		return cached
+	}
+
+	maxSeenMu.Lock()
+	if len(conns) > maxSeenPathsMap[nqn] {
+		maxSeenPathsMap[nqn] = len(conns)
+		cached = len(conns)
+	}
+	maxSeenMu.Unlock()
+
+	return cached
+}
+
+func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []path) error {
+	sbcClient, err := NewsimplyBlockClient(clusterID)
+	if err != nil {
+		return fmt.Errorf("failed to create SimplyBlock client: %w", err)
+	}
+
+	nodeInfo, err := fetchNodeInfo(sbcClient, lvolID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch node info for lvol %s: %w", lvolID, err)
+	}
+
+	expectedConns, err := fetchLvolConnection(sbcClient, lvolID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch connections for lvol %s: %w", lvolID, err)
+	}
+	if len(expectedConns) == 0 {
+		return fmt.Errorf("API returned no connections for lvol %s", lvolID)
+	}
+
+	nqn := expectedConns[0].Nqn
+	maxSeenMu.Lock()
+	if len(expectedConns) > maxSeenPathsMap[nqn] {
+		maxSeenPathsMap[nqn] = len(expectedConns)
+	}
+	maxSeenMu.Unlock()
+
+	ctrlLossTmo := 60
+
+	optConn := expectedConns[0]
+	nonOptConns := expectedConns[1:]
+
+	activeOpt := filterByANA(activePaths, "optimized")
+
+	var activeNonOpt []path
+	for _, p := range activePaths {
+		if parseAddress(p.Address) != optConn.IP {
+			activeNonOpt = append(activeNonOpt, p)
+		}
+	}
+
+	reconcileOptimizedPath(sbcClient, nodeInfo, devicePath, optConn, activeOpt, ctrlLossTmo)
+	reconcileNonOptimizedPaths(sbcClient, nodeInfo, devicePath, nonOptConns, activeNonOpt, ctrlLossTmo)
+
+	return nil
+}
+
+func reconcileOptimizedPath(
+	sbcClient *NodeNVMf,
+	nodeInfo *NodeInfo,
+	devicePath string,
+	conn *LvolConnectResp,
+	active []path,
+	ctrlLossTmo int,
+) {
+	if len(active) == 0 {
+		if !isNodeOnline(sbcClient, nodeInfo.NodeID) {
+			klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping", nodeInfo.NodeID)
+			return
+		}
+		klog.Infof("reconcileOptimizedPath: connecting missing optimized path ip=%s", conn.IP)
+		if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+			klog.Errorf("reconcileOptimizedPath: connect to %s failed: %v", conn.IP, err)
+		}
+		return
+	}
+
+	activeIP := parseAddress(active[0].Address)
+	if activeIP == conn.IP {
+		return
+	}
+
+	if !isNodeOnline(sbcClient, nodeInfo.NodeID) {
+		klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping IP change reconnect", nodeInfo.NodeID)
+		return
+	}
+	klog.Infof("reconcileOptimizedPath: IP changed old=%s new=%s, reconnecting", activeIP, conn.IP)
+	if err := disconnectViaNVMe(devicePath, active[0]); err != nil {
+		klog.Errorf("reconcileOptimizedPath: disconnect stale %s failed: %v", activeIP, err)
+		return
+	}
+	if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+		klog.Errorf("reconcileOptimizedPath: connect to new IP %s failed: %v", conn.IP, err)
+	}
+}
+
+// reconcileNonOptimizedPaths handles connections[1..N] (secondary nodes).
+// Works for both 2-path (1 secondary) and 3-path (2 secondaries).
+func reconcileNonOptimizedPaths(
+	sbcClient *NodeNVMf,
+	nodeInfo *NodeInfo,
+	devicePath string,
+	conns []*LvolConnectResp,
+	active []path,
+	ctrlLossTmo int,
+) {
+	if len(conns) == 0 {
+		return
+	}
+
+	activeIPMap := make(map[string]path)
+	for _, p := range active {
+		if ip := parseAddress(p.Address); ip != "" {
+			activeIPMap[ip] = p
+		}
+	}
+
+	// Build expected IP set.
+	expectedIPSet := make(map[string]bool)
+	for _, conn := range conns {
+		expectedIPSet[conn.IP] = true
+	}
+
+	// Step 1: disconnect stale paths (IP no longer expected → node IP changed).
+	for ip, p := range activeIPMap {
+		if !expectedIPSet[ip] {
+			klog.Infof("reconcileNonOptimizedPaths: stale IP %s disconnecting", ip)
+			if err := disconnectViaNVMe(devicePath, p); err != nil {
+				klog.Errorf("reconcileNonOptimizedPaths: disconnect stale %s failed: %v", ip, err)
+			}
+			delete(activeIPMap, ip)
+		}
+	}
+
+	onlineSecondaries := 0
+	totalSecondaries := 0
+	for _, nodeID := range nodeInfo.Nodes {
+		if nodeID == nodeInfo.NodeID {
+			continue // skip primary
+		}
+		totalSecondaries++
+		if isNodeOnline(sbcClient, nodeID) {
+			onlineSecondaries++
+		}
+	}
+	if totalSecondaries > 0 && onlineSecondaries == 0 {
+		klog.Infof("reconcileNonOptimizedPaths: all %d secondary node(s) offline, skipping", totalSecondaries)
+		return
+	}
+
+	for _, conn := range conns {
+		if _, exists := activeIPMap[conn.IP]; exists {
+			continue
+		}
+		klog.Infof("reconcileNonOptimizedPaths: connecting missing path ip=%s", conn.IP)
+		if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+			klog.Errorf("reconcileNonOptimizedPaths: connect to %s failed: %v", conn.IP, err)
+		}
+	}
+}
+
+// filterByANA returns the subset of paths whose ANAState matches anaState.
+func filterByANA(paths []path, anaState string) []path {
+	var result []path
+	for _, p := range paths {
+		if p.ANAState == anaState {
+			result = append(result, p)
+		}
+	}
+	return result
 }
