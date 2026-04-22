@@ -700,7 +700,6 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 	return nil
 }
 
-
 func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
 	resp, err := spdkNode.Client.CallSBCLI("GET", "/lvol/"+lvolID, nil)
 	if err != nil {
@@ -876,7 +875,6 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 	return cached
 }
 
-
 func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []path) error {
 	sbcClient, err := NewsimplyBlockClient(clusterID)
 	if err != nil {
@@ -909,7 +907,13 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 	nonOptConns := expectedConns[1:]
 
 	activeOpt := filterByANA(activePaths, "optimized")
-	activeNonOpt := filterByANA(activePaths, "non-optimized")
+
+	var activeNonOpt []path
+	for _, p := range activePaths {
+		if parseAddress(p.Address) != optConn.IP {
+			activeNonOpt = append(activeNonOpt, p)
+		}
+	}
 
 	reconcileOptimizedPath(sbcClient, nodeInfo, devicePath, optConn, activeOpt, ctrlLossTmo)
 	reconcileNonOptimizedPaths(sbcClient, nodeInfo, devicePath, nonOptConns, activeNonOpt, ctrlLossTmo)
@@ -939,7 +943,7 @@ func reconcileOptimizedPath(
 
 	activeIP := parseAddress(active[0].Address)
 	if activeIP == conn.IP {
-		return 
+		return
 	}
 
 	if !isNodeOnline(sbcClient, nodeInfo.NodeID) {
