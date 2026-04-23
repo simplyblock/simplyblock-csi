@@ -79,8 +79,8 @@ spec:
       {{- end }}
       containers:
         - name: fluent-bit
-          image: fluent/fluent-bit:1.8.11
-          imagePullPolicy: IfNotPresent
+          image: {{ .Values.controlplane.observability.fluentbit.repository }}:{{ .Values.controlplane.observability.fluentbit.tag }}
+          imagePullPolicy: {{ .Values.controlplane.observability.fluentbit.pullPolicy }}
           securityContext:
             privileged: true
           volumeMounts:

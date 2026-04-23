@@ -254,6 +254,10 @@ controlplane:
       repository: thanosio/thanos
       tag: v0.31.0
       pullPolicy: Always
+    fluentbit:
+      repository: fluent/fluent-bit
+      tag: "1.8.11"
+      pullPolicy: IfNotPresent
 
   tolerations:
     create: false
