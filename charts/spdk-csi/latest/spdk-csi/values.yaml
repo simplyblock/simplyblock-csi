@@ -254,6 +254,10 @@ controlplane:
       repository: thanosio/thanos
       tag: v0.31.0
       pullPolicy: Always
+    fluentbit:
+      repository: fluent/fluent-bit
+      tag: "1.8.11"
+      pullPolicy: IfNotPresent
 
   tolerations:
     create: false
@@ -272,6 +276,22 @@ controlplane:
 
   csiHostpathDriver:
     enabled: false
+    image:
+      csiProvisioner:
+        repository: registry.k8s.io/sig-storage/csi-provisioner
+        tag: v6.0.0
+      csiResizer:
+        repository: registry.k8s.io/sig-storage/csi-resizer
+        tag: v2.0.0
+      nodeDriverRegistrar:
+        repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
+        tag: v2.12.0
+      hostpathPlugin:
+        repository: registry.k8s.io/sig-storage/hostpathplugin
+        tag: v1.15.0
+      livenessProbe:
+        repository: registry.k8s.io/sig-storage/livenessprobe
+        tag: v2.15.0
 
   storageclass:  
     name:  
@@ -283,6 +303,19 @@ controlplane:
     # "double" = 3 coordinators (suitable for 3 workers, tolerates 1 failure)
     # "triple" = 5 coordinators (suitable for 5+ workers, tolerates 2 failures)
     redundancyMode: double
+    image:
+      operator:
+        repository: foundationdb/fdb-kubernetes-operator
+        tag: v2.13.0
+      monitor:
+        repository: foundationdb/fdb-kubernetes-monitor
+        tag: "7.3.63"
+      # Set baseImage to use a custom FDB image registry.
+      # When empty, no imageConfigs block is rendered and the operator uses its default.
+      mainContainer:
+        baseImage: ""
+      sidecarContainer:
+        baseImage: ""
 
 operator:
   enabled: false

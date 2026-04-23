@@ -32,7 +32,7 @@ spec:
       serviceAccountName: simplyblock-fdb-controller-manager
       initContainers:
         - name: foundationdb-kubernetes-init-7-3
-          image: foundationdb/fdb-kubernetes-monitor:7.3.63
+          image: {{ .Values.controlplane.foundationdb.image.monitor.repository }}:{{ .Values.controlplane.foundationdb.image.monitor.tag }}
           args:
             - "--copy-library"
             - "7.3"
@@ -54,7 +54,7 @@ spec:
             - /manager
           args:
             - "--health-probe-bind-address=:9443"
-          image: foundationdb/fdb-kubernetes-operator:v2.18.0
+          image: {{ .Values.controlplane.foundationdb.image.operator.repository }}:{{ .Values.controlplane.foundationdb.image.operator.tag }}
           name: manager
           env:
             - name: WATCH_NAMESPACE
@@ -343,9 +343,18 @@ spec:
 
   routing:
     defineDNSLocalityFields: true
+  {{- if .Values.controlplane.foundationdb.image.mainContainer.baseImage }}
+  mainContainer:
+    imageConfigs:
+    - baseImage: {{ .Values.controlplane.foundationdb.image.mainContainer.baseImage }}
+  {{- end }}
   sidecarContainer:
     enableLivenessProbe: true
     enableReadinessProbe: false
+    {{- if .Values.controlplane.foundationdb.image.sidecarContainer.baseImage }}
+    imageConfigs:
+    - baseImage: {{ .Values.controlplane.foundationdb.image.sidecarContainer.baseImage }}
+    {{- end }}
   useExplicitListenAddress: true
   version: 7.3.63
 {{- end }}
