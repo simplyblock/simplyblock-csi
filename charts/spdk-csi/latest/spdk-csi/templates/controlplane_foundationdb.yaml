@@ -54,7 +54,7 @@ spec:
             - /manager
           args:
             - "--health-probe-bind-address=:9443"
-          image: foundationdb/fdb-kubernetes-operator:v2.13.0
+          image: foundationdb/fdb-kubernetes-operator:v2.18.0
           name: manager
           env:
             - name: WATCH_NAMESPACE

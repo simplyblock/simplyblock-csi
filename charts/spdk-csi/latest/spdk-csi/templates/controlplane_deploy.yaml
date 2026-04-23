@@ -646,6 +646,41 @@ spec:
           resources:
 {{ toYaml .resources | nindent 12 }}
 {{- end }}
+
+        - name: tasks-runner-backup
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_backup.py"]
+          imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
+          env:
+            - name: PROMETHEUS_URL
+              value: "{{ .Values.prometheus.simplyblock.prometheusURL }}"
+            - name: PROMETHEUS_PORT
+              value: "{{ .Values.prometheus.simplyblock.prometheusPORT }}"
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
+        - name: tasks-runner-backup-merge
+          image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
+          command: ["python", "simplyblock_core/services/tasks_runner_backup_merge.py"]
+          imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
+          env:
+            - name: PROMETHEUS_URL
+              value: "{{ .Values.prometheus.simplyblock.prometheusURL }}"
+            - name: PROMETHEUS_PORT
+              value: "{{ .Values.prometheus.simplyblock.prometheusPORT }}"
+{{- with (include "simplyblock.commonContainer" . | fromYaml) }}
+{{ toYaml .env | nindent 12 }}
+          volumeMounts:
+{{ toYaml .volumeMounts | nindent 12 }}
+          resources:
+{{ toYaml .resources | nindent 12 }}
+{{- end }}
+
       volumes:
         - name: fdb-cluster-file
           configMap:
