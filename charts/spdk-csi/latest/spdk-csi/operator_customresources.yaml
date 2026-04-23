@@ -5,7 +5,7 @@ metadata:
   namespace: simplyblock
 spec:
   clusterName: simplyblock-cluster
-  mgmtIfname: eth0
+  mgmtIfname: br-ex
   fabricType: tcp
   isSingleNode: false
   enableNodeAffinity: false
@@ -38,18 +38,22 @@ metadata:
   namespace: simplyblock
 spec:
   clusterName: simplyblock-cluster
-  clusterImage: "public.ecr.aws/simply-block/simplyblock:R26.2-PRE"
-  mgmtIfname: eth0
-  maxLogicalVolumeCount: 10
+  clusterImage: "quay.io/simplyblock-io/simplyblock:R26.2-PRE"
+  mgmtIfname: br-ex
+  maxLogicalVolumeCount: 100
   partitions: 1
-  corePercentage: 65
+  corePercentage: 25
   coreIsolation: false
+  socketsToUse:
+    - "0"
+  dataIfname:
+    - br-ex
   journalManager:
     count: 3
     percentPerDevice: 3
   skipKubeletConfiguration: false
   enableCpuTopology: true
-  openShiftCluster: false
+  openShiftCluster: true
   ubuntuHost: false
-  forceFormat4K: false
+  forceFormat4K: true
   workerNodes: []
