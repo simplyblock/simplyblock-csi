@@ -160,7 +160,7 @@ spec:
         imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
         ports:
         - containerPort: 5000
-        command: ["python", "simplyblock_web/app.py"]
+        command: ["python3", "simplyblock_web/app.py"]
         env:
         - name: SIMPLYBLOCK_LOG_LEVEL
           valueFrom:
@@ -254,7 +254,7 @@ spec:
       containers:
         - name: storage-node-monitor
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/storage_node_monitor.py"]
+          command: ["python3", "simplyblock_core/services/storage_node_monitor.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -271,7 +271,7 @@ spec:
 
         - name: mgmt-node-monitor
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/mgmt_node_monitor.py"]
+          command: ["python3", "simplyblock_core/services/mgmt_node_monitor.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: BACKEND_TYPE
@@ -290,7 +290,7 @@ spec:
 
         - name: lvol-stats-collector
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/lvol_stat_collector.py"]
+          command: ["python3", "simplyblock_core/services/lvol_stat_collector.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -307,7 +307,7 @@ spec:
 
         - name: main-distr-event-collector
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/main_distr_event_collector.py"]
+          command: ["python3", "simplyblock_core/services/main_distr_event_collector.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -324,7 +324,7 @@ spec:
 
         - name: capacity-and-stats-collector
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/capacity_and_stats_collector.py"]
+          command: ["python3", "simplyblock_core/services/capacity_and_stats_collector.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -341,7 +341,7 @@ spec:
 
         - name: capacity-monitor
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/cap_monitor.py"]
+          command: ["python3", "simplyblock_core/services/cap_monitor.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -358,7 +358,7 @@ spec:
 
         - name: health-check
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/health_check_service.py"]
+          command: ["python3", "simplyblock_core/services/health_check_service.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -375,7 +375,7 @@ spec:
 
         - name: device-monitor
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/device_monitor.py"]
+          command: ["python3", "simplyblock_core/services/device_monitor.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -392,7 +392,7 @@ spec:
 
         - name: lvol-monitor
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/lvol_monitor.py"]
+          command: ["python3", "simplyblock_core/services/lvol_monitor.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -409,7 +409,7 @@ spec:
 
         - name: snapshot-monitor
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/snapshot_monitor.py"]
+          command: ["python3", "simplyblock_core/services/snapshot_monitor.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -477,7 +477,7 @@ spec:
       containers:
         - name: tasks-node-add-runner
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_node_add.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_node_add.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: LVOL_NVMF_PORT_START
@@ -496,7 +496,7 @@ spec:
 
         - name: tasks-runner-restart
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_restart.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_restart.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -513,7 +513,7 @@ spec:
 
         - name: tasks-runner-migration
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_migration.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_migration.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -530,7 +530,7 @@ spec:
 
         - name: tasks-runner-failed-migration
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_failed_migration.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_failed_migration.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -547,7 +547,7 @@ spec:
 
         - name: tasks-runner-cluster-status
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_cluster_status.py"]
+          command: ["python3", "simplyblock_core/services/tasks_cluster_status.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -564,7 +564,7 @@ spec:
 
         - name: tasks-runner-new-device-migration
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_new_dev_migration.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_new_dev_migration.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -581,7 +581,7 @@ spec:
 
         - name: tasks-runner-port-allow
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_port_allow.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_port_allow.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -598,7 +598,7 @@ spec:
 
         - name: tasks-runner-jc-comp-resume
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_jc_comp.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_jc_comp.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -615,7 +615,7 @@ spec:
 
         - name: tasks-runner-sync-lvol-del
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_sync_lvol_del.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_sync_lvol_del.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -632,7 +632,7 @@ spec:
 
         - name: tasks-runner-snapshot-replication
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/snapshot_replication.py"]
+          command: ["python3", "simplyblock_core/services/snapshot_replication.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -649,7 +649,7 @@ spec:
 
         - name: tasks-runner-backup
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_backup.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_backup.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
@@ -666,7 +666,7 @@ spec:
 
         - name: tasks-runner-backup-merge
           image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
-          command: ["python", "simplyblock_core/services/tasks_runner_backup_merge.py"]
+          command: ["python3", "simplyblock_core/services/tasks_runner_backup_merge.py"]
           imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
           env:
             - name: PROMETHEUS_URL
