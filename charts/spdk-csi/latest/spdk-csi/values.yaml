@@ -299,6 +299,19 @@ controlplane:
     # "double" = 3 coordinators (suitable for 3 workers, tolerates 1 failure)
     # "triple" = 5 coordinators (suitable for 5+ workers, tolerates 2 failures)
     redundancyMode: double
+    image:
+      operator:
+        repository: foundationdb/fdb-kubernetes-operator
+        tag: v2.13.0
+      monitor:
+        repository: foundationdb/fdb-kubernetes-monitor
+        tag: "7.3.63"
+      # Set baseImage to use a custom FDB image registry.
+      # When empty, no imageConfigs block is rendered and the operator uses its default.
+      mainContainer:
+        baseImage: ""
+      sidecarContainer:
+        baseImage: ""
 
 operator:
   enabled: false
