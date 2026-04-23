@@ -371,7 +371,7 @@ opensearch:
     enabled: true
     image: busybox
     storageClass: 
-    size: 20Gi
+    size: 40Gi
   image:
     repository: "opensearchproject/opensearch"
     tag: ""
@@ -451,7 +451,7 @@ prometheus:
       fsGroup: 65534
     persistentVolume:
       enabled: true
-      size: 5Gi
+      size: 20Gi
       storageClass:
     extraArgs:
       storage.tsdb.min-block-duration: 2h
