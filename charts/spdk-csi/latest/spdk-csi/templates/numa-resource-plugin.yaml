@@ -1,4 +1,6 @@
-{{- if and .Values.storagenode.create .Values.storagenode.enableCpuTopology  .Values.storagenode.enableDevicePlugin -}}
+{{- $storagenodeEnabled := and .Values.storagenode.create .Values.storagenode.enableCpuTopology .Values.storagenode.enableDevicePlugin -}}
+{{- $operatorEnabled := .Values.operator.enabled -}}
+{{- if or $storagenodeEnabled $operatorEnabled -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -37,7 +39,7 @@ spec:
       serviceAccountName: simplyblock-numa-resource-plugin
       priorityClassName: system-node-critical
       {{- $dsList := .Values.storagenode.daemonsets | default (list) -}}
-      {{- if gt (len $dsList) 0 }}
+      {{- if and $storagenodeEnabled (gt (len $dsList) 0) }}
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -51,6 +53,14 @@ spec:
                 - {{ $ds.nodeSelector.value | quote }}
                 {{- end }}
                 {{- end }}
+      {{- else if $operatorEnabled }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: io.simplyblock.node-type
+                operator: Exists
       {{- end }}
       tolerations:
         # Run on all nodes including control plane

@@ -13,6 +13,28 @@ keywords:
 - spdk-csi
 - simplyblock
 - controller
+- mgmt
+- sbcli
 home: https://github.com/simplyblock-io/spdk-csi
 sources:
 - https://github.com/simplyblock-io/spdk-csi/tree/master/charts/spdk-csi
+
+dependencies:
+  - name: mongodb-kubernetes
+    version: 1.4.0 
+    repository: https://mongodb.github.io/helm-charts
+    alias: mongodb
+    condition: controlplane.observability.enabled
+  - name: opensearch
+    version: 2.9.0
+    repository: https://opensearch-project.github.io/helm-charts
+    condition: controlplane.observability.enabled
+  - name: prometheus
+    version: "25.18.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: controlplane.enabled
+  - name: reloader
+    version: 1.3.0
+    repository: https://stakater.github.io/stakater-charts
+    alias: reloader
+    condition: controlplane.enabled
