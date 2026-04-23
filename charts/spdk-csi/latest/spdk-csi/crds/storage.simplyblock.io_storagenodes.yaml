@@ -179,6 +179,10 @@ spec:
               spdkImage:
                 description: SpdkImage is the SPDK image reference used by node services.
                 type: string
+              spdkProxyImage:
+                description: SpdkProxyImage is the SPDK proxy image reference used
+                  by node services.
+                type: string
               tolerations:
                 description: Tolerations configures pod tolerations for storage-node
                   pods.
