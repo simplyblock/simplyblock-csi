@@ -84,6 +84,7 @@ spec:
                   FIXME: Unused for now
                 type: string
               storageClassParameters:
+                default: {}
                 description: StorageClassParameters sets default StorageClass parameter values for volumes in this pool.
                 properties:
                   compression:
