@@ -58,6 +58,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: TLS_ENABLED
+              value: {{ .Values.tls.enabled | quote }}
           resources:
             limits:
               cpu: 500m
