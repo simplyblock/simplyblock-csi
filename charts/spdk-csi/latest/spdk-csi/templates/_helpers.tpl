@@ -22,6 +22,15 @@ volumeMounts:
   - name: fdb-cluster-file
     mountPath: /etc/foundationdb/fdb.cluster
     subPath: fdb.cluster
+{{- if .Values.tls.enabled }}
+  - name: tls
+    mountPath: /etc/simplyblock/tls
+    readOnly: true
+  - name: certificate-authority
+    mountPath: /etc/simplyblock/tls/ca.crt
+    subPath: service-ca.crt
+    readOnly: true
+{{- end }}
 
 resources:
   requests:

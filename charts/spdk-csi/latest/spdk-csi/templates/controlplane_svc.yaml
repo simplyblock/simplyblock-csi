@@ -6,7 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   {{ if .Values.tls.enabled }}
   annotations:
-    service.beta.openshift.io/serving-cert-secret-name: webappapi-tls
+    service.beta.openshift.io/serving-cert-secret-name: simplyblock-webappapi-tls
   {{ end }}
 spec:
   selector:
