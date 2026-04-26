@@ -91,10 +91,6 @@ spec:
         - name: tls
           mountPath: /etc/simplyblock/tls
           readOnly: true
-        - name: certificate-authority
-          mountPath: /etc/simplyblock/tls/ca.crt
-          subPath: service-ca.crt
-          readOnly: true
         {{- end }}
         resources:
           requests:
@@ -112,11 +108,15 @@ spec:
               path: fdb.cluster
       {{- if .Values.tls.enabled }}
       - name: tls
-        secret:
-          secretName: simplyblock-webappapi-tls
-      - name: certificate-authority
-        configMap:
-          name: simplyblock-certificate-authority
+        projected:
+          sources:
+          - secret:
+              name: simplyblock-webappapi-tls
+          - configMap:
+              name: simplyblock-certificate-authority
+              items:
+              - key: service-ca.crt
+                path: ca.crt
       {{- end }}
 ---
 apiVersion: apps/v1
@@ -215,10 +215,6 @@ spec:
         - name: tls
           mountPath: /etc/simplyblock/tls
           readOnly: true
-        - name: certificate-authority
-          mountPath: /etc/simplyblock/tls/ca.crt
-          subPath: service-ca.crt
-          readOnly: true
         {{- end }}
         resources:
           requests:
@@ -236,11 +232,15 @@ spec:
               path: fdb.cluster
       {{- if .Values.tls.enabled }}
       - name: tls
-        secret:
-          secretName: simplyblock-webappapi-tls
-      - name: certificate-authority
-        configMap:
-          name: simplyblock-certificate-authority
+        projected:
+          sources:
+          - secret:
+              name: simplyblock-webappapi-tls
+          - configMap:
+              name: simplyblock-certificate-authority
+              items:
+              - key: service-ca.crt
+                path: ca.crt
       {{- end }}
 ---
 apiVersion: apps/v1
@@ -466,11 +466,15 @@ spec:
                 path: fdb.cluster
         {{- if .Values.tls.enabled }}
         - name: tls
-          secret:
-            secretName: simplyblock-webappapi-tls
-        - name: certificate-authority
-          configMap:
-            name: simplyblock-certificate-authority
+          projected:
+            sources:
+            - secret:
+                name: simplyblock-webappapi-tls
+            - configMap:
+                name: simplyblock-certificate-authority
+                items:
+                - key: service-ca.crt
+                  path: ca.crt
         {{- end }}
 ---
 apiVersion: apps/v1
@@ -732,11 +736,15 @@ spec:
                 path: fdb.cluster
         {{- if .Values.tls.enabled }}
         - name: tls
-          secret:
-            secretName: simplyblock-webappapi-tls
-        - name: certificate-authority
-          configMap:
-            name: simplyblock-certificate-authority
+          projected:
+            sources:
+            - secret:
+                name: simplyblock-webappapi-tls
+            - configMap:
+                name: simplyblock-certificate-authority
+                items:
+                - key: service-ca.crt
+                  path: ca.crt
         {{- end }}
 
 ---

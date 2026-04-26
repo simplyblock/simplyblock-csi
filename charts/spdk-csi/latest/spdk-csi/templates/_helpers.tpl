@@ -26,10 +26,6 @@ volumeMounts:
   - name: tls
     mountPath: /etc/simplyblock/tls
     readOnly: true
-  - name: certificate-authority
-    mountPath: /etc/simplyblock/tls/ca.crt
-    subPath: service-ca.crt
-    readOnly: true
 {{- end }}
 
 resources:
