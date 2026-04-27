@@ -675,19 +675,9 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 }
 
 func selectMasterLvol(sbclient *util.NodeNVMf, poolName string) (string, error) {
-	lvstores, err := sbclient.LvStores()
+	poolUUID, err := sbclient.GetPoolUUIDByName(poolName)
 	if err != nil {
-		return "", fmt.Errorf("failed to list pools: %w", err)
-	}
-	var poolUUID string
-	for _, lv := range lvstores {
-		if lv.Name == poolName {
-			poolUUID = lv.UUID
-			break
-		}
-	}
-	if poolUUID == "" {
-		return "", fmt.Errorf("pool %q not found", poolName)
+		return "", err
 	}
 	masters, err := sbclient.GetMasterLvols(poolUUID)
 	if err != nil {

@@ -335,6 +335,31 @@ func (client *RPCClient) deleteVolume(lvolID string) error {
 	return err
 }
 
+// getPoolUUIDByName returns the UUID of a pool by its name
+func (client *RPCClient) getPoolUUIDByName(poolName string) (string, error) {
+	out, err := client.CallSBCLI("GET", "/pool", nil)
+	if err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal pools response: %w", err)
+	}
+	var pools []struct {
+		PoolName string `json:"pool_name"`
+		UUID     string `json:"uuid"`
+	}
+	if err := json.Unmarshal(b, &pools); err != nil {
+		return "", fmt.Errorf("failed to unmarshal pools response: %w", err)
+	}
+	for _, p := range pools {
+		if p.PoolName == poolName {
+			return p.UUID, nil
+		}
+	}
+	return "", fmt.Errorf("pool %q not found", poolName)
+}
+
 // getMasterLvols returns master lvols for a pool
 func (client *RPCClient) getMasterLvols(poolUUID string) ([]MasterLvol, error) {
 	out, err := client.CallSBCLI("GET", "/pool/get-master-lvols/"+poolUUID, nil)

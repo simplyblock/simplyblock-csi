@@ -127,6 +127,11 @@ func (node *NodeNVMf) GetMasterLvols(poolUUID string) ([]MasterLvol, error) {
 	return node.Client.getMasterLvols(poolUUID)
 }
 
+// GetPoolUUIDByName returns the UUID of the pool with the given name
+func (node *NodeNVMf) GetPoolUUIDByName(poolName string) (string, error) {
+	return node.Client.getPoolUUIDByName(poolName)
+}
+
 // ResizeVolume resizes a volume
 func (node *NodeNVMf) ResizeVolume(lvolID string, newSize int64) (bool, error) {
 	return node.Client.resizeVolume(lvolID, newSize)
