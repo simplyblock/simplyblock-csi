@@ -647,6 +647,15 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	}
 
+	if createVolReq.ModelID == "" {
+		masterID, masterErr := selectMasterLvol(sbclient, poolName)
+		if masterErr != nil {
+			klog.Warningf("could not select master lvol, creating as new master: %v", masterErr)
+		} else {
+			createVolReq.ModelID = masterID
+		}
+	}
+
 	// Store the effective QoS values into VolumeContext so the PV spec records
 	// what was actually applied.
 	vol.VolumeContext["qos_rw_iops"] = createVolReq.MaxRWIOPS
@@ -663,6 +672,33 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	klog.V(5).Info("successfully created volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return &vol, nil
+}
+
+func selectMasterLvol(sbclient *util.NodeNVMf, poolName string) (string, error) {
+	lvstores, err := sbclient.LvStores()
+	if err != nil {
+		return "", fmt.Errorf("failed to list pools: %w", err)
+	}
+	var poolUUID string
+	for _, lv := range lvstores {
+		if lv.Name == poolName {
+			poolUUID = lv.UUID
+			break
+		}
+	}
+	if poolUUID == "" {
+		return "", fmt.Errorf("pool %q not found", poolName)
+	}
+	masters, err := sbclient.GetMasterLvols(poolUUID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get master lvols: %w", err)
+	}
+	for _, m := range masters {
+		if m.Namespaces < m.MaxNamespaces {
+			return m.ID, nil
+		}
+	}
+	return "", nil
 }
 
 func getSPDKVol(csiVolumeID string) (*spdkVolume, error) {

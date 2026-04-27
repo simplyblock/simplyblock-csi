@@ -141,11 +141,8 @@ type RPCClient struct {
 
 // CSIPoolsResp is the response of /pool/get_pools
 type CSIPoolsResp struct {
-	FreeClusters  int64  `json:"free_clusters"`
-	ClusterSize   int64  `json:"cluster_size"`
-	TotalClusters int64  `json:"total_data_clusters"`
-	Name          string `json:"name"`
-	UUID          string `json:"uuid"`
+	Name string `json:"pool_name"`
+	UUID string `json:"uuid"`
 }
 
 // SnapshotResp is the response of /snapshot
@@ -178,6 +175,17 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// MasterLvol is the response of /pool/get-master-lvols/<pool_uuid>
+type MasterLvol struct {
+	ID            string `json:"Id"`
+	Name          string `json:"Name"`
+	Size          string `json:"Size"`
+	Hostname      string `json:"Hostname"`
+	Status        string `json:"Status"`
+	Namespaces    int    `json:"Namespaces"`
+	MaxNamespaces int    `json:"MaxNamespaces"`
+}
+
 func (client *RPCClient) info() string {
 	return client.ClusterID
 }
@@ -186,7 +194,7 @@ func (client *RPCClient) info() string {
 func (client *RPCClient) lvStores() ([]LvStore, error) {
 	var result []CSIPoolsResp
 
-	out, err := client.CallSBCLI("GET", "/pool/get_pools", nil)
+	out, err := client.CallSBCLI("GET", "/pool", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -201,8 +209,6 @@ func (client *RPCClient) lvStores() ([]LvStore, error) {
 		r := &result[i]
 		lvs[i].Name = r.Name
 		lvs[i].UUID = r.UUID
-		lvs[i].TotalSizeMiB = r.TotalClusters * r.ClusterSize / 1024 / 1024
-		lvs[i].FreeSizeMiB = r.FreeClusters * r.ClusterSize / 1024 / 1024
 	}
 
 	return lvs, nil
@@ -327,6 +333,23 @@ func (client *RPCClient) deleteVolume(lvolID string) error {
 	}
 
 	return err
+}
+
+// getMasterLvols returns master lvols for a pool
+func (client *RPCClient) getMasterLvols(poolUUID string) ([]MasterLvol, error) {
+	out, err := client.CallSBCLI("GET", "/pool/get-master-lvols/"+poolUUID, nil)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal master lvols response: %w", err)
+	}
+	var result []MasterLvol
+	if err := json.Unmarshal(b, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal master lvols response: %w", err)
+	}
+	return result, nil
 }
 
 // resizeVolume resizes a volume
