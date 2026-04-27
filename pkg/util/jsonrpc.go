@@ -366,13 +366,24 @@ func (client *RPCClient) getMasterLvols(poolUUID string) ([]MasterLvol, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal master lvols response: %w", err)
+	if out == nil {
+		return []MasterLvol{}, nil
+	}
+	var b []byte
+	if str, ok := out.(string); ok {
+		b = []byte(str)
+	} else {
+		b, err = json.Marshal(out)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal master lvols response: %w", err)
+		}
 	}
 	var result []MasterLvol
 	if err := json.Unmarshal(b, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal master lvols response: %w", err)
+	}
+	if result == nil {
+		return []MasterLvol{}, nil
 	}
 	return result, nil
 }
