@@ -684,7 +684,7 @@ func selectMasterLvol(sbclient *util.NodeNVMf, poolName string) (string, error) 
 		return "", fmt.Errorf("failed to get master lvols: %w", err)
 	}
 	for _, m := range masters {
-		if m.Namespaces < m.MaxNamespaces {
+		if m.Namespaces < m.MaxNamespaces-1 {
 			return m.ID, nil
 		}
 	}
