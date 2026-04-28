@@ -93,6 +93,18 @@ spec:
         - name: host-modules
           hostPath:
             path: /lib/modules
+        {{- if .Values.tls.enabled }}
+        - name: tls
+          projected:
+            sources:
+            - secret:
+                name: simplyblock-storage-node-api-tls
+            - configMap:
+                name: simplyblock-certificate-authority
+                items:
+                - key: service-ca.crt
+                  path: ca.crt
+        {{- end }}
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -155,6 +167,11 @@ spec:
             readOnly: true
           - name: host-mnt
             mountPath: /mnt
+          {{- if .Values.tls.enabled }}
+          - name: tls
+            mountPath: /etc/simplyblock/tls
+            readOnly: true
+          {{- end }}
         securityContext:
           privileged: true
       containers:

@@ -58,6 +58,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: TLS_ENABLED
+              value: {{ .Values.tls.enabled | quote }}
           resources:
             limits:
               cpu: 800m
@@ -69,6 +71,12 @@ spec:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             privileged: false
+          {{- if .Values.tls.enabled }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/simplyblock/tls
+              readOnly: true
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -81,6 +89,15 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+      {{- if .Values.tls.enabled }}
+      volumes:
+        - name: tls
+          configMap:
+            name: simplyblock-certificate-authority
+            items:
+              - key: service-ca.crt
+                path: ca.crt
+      {{- end }}
       terminationGracePeriodSeconds: 10
 
 ################# ROLE AND ROLE BINDING ##############################
@@ -304,6 +321,17 @@ rules:
   - kubeletconfigs
   - machineconfigpools
   - machineconfigs
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
   verbs:
   - create
   - get

@@ -87,6 +87,11 @@ spec:
         - name: fdb-cluster-file
           mountPath: /etc/foundationdb/fdb.cluster
           subPath: fdb.cluster
+        {{- if .Values.tls.enabled }}
+        - name: tls
+          mountPath: /etc/simplyblock/tls
+          readOnly: true
+        {{- end }}
         resources:
           requests:
             cpu: "200m"
@@ -101,6 +106,18 @@ spec:
           items:
             - key: cluster-file
               path: fdb.cluster
+      {{- if .Values.tls.enabled }}
+      - name: tls
+        projected:
+          sources:
+          - secret:
+              name: simplyblock-webappapi-tls
+          - configMap:
+              name: simplyblock-certificate-authority
+              items:
+              - key: service-ca.crt
+                path: ca.crt
+      {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -194,6 +211,11 @@ spec:
         - name: fdb-cluster-file
           mountPath: /etc/foundationdb/fdb.cluster
           subPath: fdb.cluster
+        {{- if .Values.tls.enabled }}
+        - name: tls
+          mountPath: /etc/simplyblock/tls
+          readOnly: true
+        {{- end }}
         resources:
           requests:
             cpu: "200m"
@@ -208,6 +230,18 @@ spec:
           items:
             - key: cluster-file
               path: fdb.cluster
+      {{- if .Values.tls.enabled }}
+      - name: tls
+        projected:
+          sources:
+          - secret:
+              name: simplyblock-webappapi-tls
+          - configMap:
+              name: simplyblock-certificate-authority
+              items:
+              - key: service-ca.crt
+                path: ca.crt
+      {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -430,6 +464,18 @@ spec:
             items:
               - key: cluster-file
                 path: fdb.cluster
+        {{- if .Values.tls.enabled }}
+        - name: tls
+          projected:
+            sources:
+            - secret:
+                name: simplyblock-webappapi-tls
+            - configMap:
+                name: simplyblock-certificate-authority
+                items:
+                - key: service-ca.crt
+                  path: ca.crt
+        {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -688,6 +734,18 @@ spec:
             items:
               - key: cluster-file
                 path: fdb.cluster
+        {{- if .Values.tls.enabled }}
+        - name: tls
+          projected:
+            sources:
+            - secret:
+                name: simplyblock-webappapi-tls
+            - configMap:
+                name: simplyblock-certificate-authority
+                items:
+                - key: service-ca.crt
+                  path: ca.crt
+        {{- end }}
 
 ---
 {{- if .Values.controlplane.observability.enabled }}

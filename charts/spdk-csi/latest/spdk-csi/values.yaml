@@ -508,3 +508,7 @@ prometheus:
     prometheus:
       repository: quay.io/prometheus-operator/prometheus-config-reloader
       tag: v0.72.0
+
+tls:
+  # TLS support currently depends on OpenShift service CA APIs.
+  enabled: false
