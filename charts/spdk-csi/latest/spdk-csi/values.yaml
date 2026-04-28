@@ -423,7 +423,7 @@ prometheus:
     podAnnotations:
       log-collector/enabled: "true"
       reloader.stakater.com/auto: "true"
-      reloader.stakater.com/configmap: "sbcli-simplyblock-prometheus-config"
+      reloader.stakater.com/configmap: "simplyblock-prometheus-config"
     nodeSelector: {}
     tolerations: []
     affinity:
@@ -488,11 +488,17 @@ prometheus:
       limits:
         cpu: "500m"
         memory: "1Gi"
-    configMapOverrideName: simplyblock-prometheus-config
+    configPath: /etc/simplyblock-config/prometheus.yml
     extraVolumes:
+      - name: simplyblock-prometheus-config
+        configMap:
+          name: simplyblock-prometheus-config
       - name: objstore-config
         configMap:
           name: simplyblock-objstore-config
+    extraVolumeMounts:
+      - name: simplyblock-prometheus-config
+        mountPath: /etc/simplyblock-config
   alertmanager:
     enabled: false
 
