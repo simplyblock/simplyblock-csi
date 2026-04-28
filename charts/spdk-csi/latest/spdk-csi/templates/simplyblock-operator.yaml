@@ -71,6 +71,12 @@ spec:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             privileged: false
+          {{- if .Values.tls.enabled }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/simplyblock/tls
+              readOnly: true
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -83,6 +89,15 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+      {{- if .Values.tls.enabled }}
+      volumes:
+        - name: tls
+          configMap:
+            name: simplyblock-certificate-authority
+            items:
+              - key: service-ca.crt
+                path: ca.crt
+      {{- end }}
       terminationGracePeriodSeconds: 10
 
 ################# ROLE AND ROLE BINDING ##############################
