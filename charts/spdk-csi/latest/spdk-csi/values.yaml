@@ -526,5 +526,15 @@ prometheus:
       image: defaultbackend-amd64
       tag: "1.5"
 tls:
-  # TLS support currently depends on OpenShift service CA APIs.
   enabled: false
+
+  # Provider responsible for issuing serving certificates. One of: openshift, cert-manager. Required if enabled.
+  provider: cert-manager
+
+  # Required if provider == cert-manager. Names a pre-existing ClusterIssuer
+  # which is used to mint the chart's own CA Certificate.
+  cert-manager:
+    cluster-issuer: ""
+
+  # Mutual TLS (clients present and verify certificates). Only allowed when provider == cert-manager.
+  mutual_enabled: false

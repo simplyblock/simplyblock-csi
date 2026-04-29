@@ -60,8 +60,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: TLS_ENABLED
-              value: {{ .Values.tls.enabled | quote }}
+            {{- include "simplyblock.tlsEnv" . | nindent 12 }}
           resources:
             limits:
               cpu: 800m
@@ -75,9 +74,7 @@ spec:
             privileged: false
           {{- if .Values.tls.enabled }}
           volumeMounts:
-            - name: tls
-              mountPath: /etc/simplyblock/tls
-              readOnly: true
+            {{- include "simplyblock.tlsVolumeMount" . | nindent 12 }}
           {{- end }}
           livenessProbe:
             httpGet:
@@ -93,12 +90,7 @@ spec:
             periodSeconds: 10
       {{- if .Values.tls.enabled }}
       volumes:
-        - name: tls
-          configMap:
-            name: simplyblock-certificate-authority
-            items:
-              - key: service-ca.crt
-                path: ca.crt
+        {{- include "simplyblock.clientTlsVolume" (dict "ctx" . "clientSecret" "simplyblock-operator-client-tls") | nindent 8 }}
       {{- end }}
       terminationGracePeriodSeconds: 10
 
@@ -212,6 +204,20 @@ rules:
   - patch
   - update
   - watch
+{{- if and .Values.tls.enabled (eq .Values.tls.provider "cert-manager") }}
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+{{- end }}
 - apiGroups:
   - ""
   resources:

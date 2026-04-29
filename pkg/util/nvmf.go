@@ -30,9 +30,45 @@ import (
 )
 
 const (
-	tlsCAFile          = "/etc/simplyblock/tls/ca.crt"
-	namespaceFile      = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+	envTLSConnect = "SB_TLS_CONNECT"
+	envTLSCAFile  = "SB_TLS_CERTIFICATE_AUTHORITY"
+	envTLSCert    = "SB_TLS_CERTIFICATE"
+	envTLSKey     = "SB_TLS_KEY"
+
+	defaultTLSCAFile = "/etc/simplyblock/tls/ca.crt"
+	defaultTLSCert   = "/etc/simplyblock/tls/tls.crt"
+	defaultTLSKey    = "/etc/simplyblock/tls/tls.key"
+
+	namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 )
+
+type tlsMode int
+
+const (
+	tlsDisabled tlsMode = iota
+	tlsAnonymous
+	tlsAuthenticated
+)
+
+func parseTLSMode(s string) (tlsMode, error) {
+	switch s {
+	case "", "disabled":
+		return tlsDisabled, nil
+	case "anonymous":
+		return tlsAnonymous, nil
+	case "authenticated":
+		return tlsAuthenticated, nil
+	default:
+		return tlsDisabled, fmt.Errorf("invalid %s value %q (want disabled, anonymous, or authenticated)", envTLSConnect, s)
+	}
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 // tlsServerName returns the FQDN service name that matches the TLS certificate
 // SANs (e.g. "simplyblock-webappapi.simplyblock.svc") derived from the URL host
@@ -60,27 +96,51 @@ type NodeNVMf struct {
 	Client *RPCClient
 }
 
-// NewNVMf creates a new NVMf client
-func NewNVMf(clusterID, clusterIP, clusterSecret string) *NodeNVMf {
-	transport := http.DefaultTransport
-	if caData, err := os.ReadFile(tlsCAFile); err == nil {
-		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM(caData)
-		clusterIP = strings.Replace(clusterIP, "http://", "https://", 1)
-		serverName := tlsServerName(clusterIP)
-		transport = &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: serverName},
-		}
+// NewNVMf creates a new NVMf client. The HTTP transport is selected by the
+// SB_TLS_CONNECT environment variable: "disabled" (or unset) uses plain HTTP;
+// "anonymous" uses HTTPS validated against SB_TLS_CERTIFICATE_AUTHORITY;
+// "authenticated" adds a client cert/key from SB_TLS_CERTIFICATE / SB_TLS_KEY.
+func NewNVMf(clusterID, clusterIP, clusterSecret string) (*NodeNVMf, error) {
+	mode, err := parseTLSMode(os.Getenv(envTLSConnect))
+	if err != nil {
+		return nil, err
 	}
+
+	transport := http.DefaultTransport
+	if mode != tlsDisabled {
+		caFile := envOr(envTLSCAFile, defaultTLSCAFile)
+		caData, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("read TLS CA %s: %w", caFile, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("no certificates parsed from TLS CA %s", caFile)
+		}
+
+		clusterIP = strings.Replace(clusterIP, "http://", "https://", 1)
+		tlsCfg := &tls.Config{RootCAs: pool, ServerName: tlsServerName(clusterIP)}
+
+		if mode == tlsAuthenticated {
+			certFile := envOr(envTLSCert, defaultTLSCert)
+			keyFile := envOr(envTLSKey, defaultTLSKey)
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				return nil, fmt.Errorf("load TLS client keypair (%s, %s): %w", certFile, keyFile, err)
+			}
+			tlsCfg.Certificates = []tls.Certificate{cert}
+		}
+
+		transport = &http.Transport{TLSClientConfig: tlsCfg}
+	}
+
 	client := RPCClient{
 		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second, Transport: transport},
 		ClusterID:     clusterID,
 		ClusterIP:     clusterIP,
 		ClusterSecret: clusterSecret,
 	}
-	return &NodeNVMf{
-		Client: &client,
-	}
+	return &NodeNVMf{Client: &client}, nil
 }
 
 func (node *NodeNVMf) Info() string {
