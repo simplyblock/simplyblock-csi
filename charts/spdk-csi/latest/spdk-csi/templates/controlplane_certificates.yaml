@@ -1,0 +1,77 @@
+{{- if and .Values.tls.enabled (eq .Values.tls.provider "cert-manager") }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: simplyblock-certificate-authority
+  namespace: {{ .Release.Namespace }}
+spec:
+  isCA: true
+  commonName: simplyblock-certificate-authority
+  secretName: simplyblock-certificate-authority-tls
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ index .Values.tls "cert-manager" "cluster-issuer" | quote }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: simplyblock-certificate-authority-issuer
+  namespace: {{ .Release.Namespace }}
+spec:
+  ca:
+    secretName: simplyblock-certificate-authority-tls
+{{- if .Values.tls.mutual_enabled }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: simplyblock-operator-client
+  namespace: {{ .Release.Namespace }}
+spec:
+  commonName: simplyblock-operator
+  secretName: simplyblock-operator-client-tls
+  issuerRef:
+    kind: Issuer
+    name: simplyblock-certificate-authority-issuer
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: simplyblock-csi-node-client
+  namespace: {{ .Release.Namespace }}
+spec:
+  commonName: simplyblock-csi-node
+  secretName: simplyblock-csi-node-client-tls
+  issuerRef:
+    kind: Issuer
+    name: simplyblock-certificate-authority-issuer
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: simplyblock-csi-controller-client
+  namespace: {{ .Release.Namespace }}
+spec:
+  commonName: simplyblock-csi-controller
+  secretName: simplyblock-csi-controller-client-tls
+  issuerRef:
+    kind: Issuer
+    name: simplyblock-certificate-authority-issuer
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+{{- end }}
+{{- end }}

@@ -1,0 +1,11 @@
+{{- if .Values.tls.enabled -}}
+{{-   if eq .Values.tls.provider "openshift" -}}
+{{-     if not (.Capabilities.APIVersions.Has "config.openshift.io/v1/ClusterVersion") -}}
+{{-       fail "tls.provider=openshift requires installing on an OpenShift cluster" -}}
+{{-     end -}}
+{{-   else if eq .Values.tls.provider "cert-manager" -}}
+{{-     if not (.Capabilities.APIVersions.Has "cert-manager.io/v1") -}}
+{{-       fail "tls.provider=cert-manager requires cert-manager.io/v1 to be installed in the cluster" -}}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}

@@ -93,18 +93,7 @@ spec:
         - name: host-modules
           hostPath:
             path: /lib/modules
-        {{- if .Values.tls.enabled }}
-        - name: tls
-          projected:
-            sources:
-            - secret:
-                name: simplyblock-storage-node-api-tls
-            - configMap:
-                name: simplyblock-certificate-authority
-                items:
-                - key: service-ca.crt
-                  path: ca.crt
-        {{- end }}
+        {{- include "simplyblock.tlsVolume" (dict "ctx" $ "secret" "simplyblock-storage-node-api-tls") | nindent 8 }}
       hostNetwork: true
       {{- if .tolerations.create }}
       tolerations:
@@ -126,6 +115,7 @@ spec:
         image: "{{ $.Values.image.simplyblock.repository }}:{{ $.Values.image.simplyblock.tag }}"
         imagePullPolicy: "{{ $.Values.image.simplyblock.pullPolicy }}"
         env:
+        {{- include "simplyblock.tlsEnv" $ | nindent 8 }}
         - name: HOSTNAME
           valueFrom:
             fieldRef:
@@ -167,11 +157,7 @@ spec:
             readOnly: true
           - name: host-mnt
             mountPath: /mnt
-          {{- if .Values.tls.enabled }}
-          - name: tls
-            mountPath: /etc/simplyblock/tls
-            readOnly: true
-          {{- end }}
+          {{- include "simplyblock.tlsVolumeMount" $ | nindent 10 }}
         securityContext:
           privileged: true
       containers:
@@ -180,6 +166,7 @@ spec:
         imagePullPolicy: "{{ $.Values.image.simplyblock.pullPolicy }}"
         command: ["python", "simplyblock_web/node_webapp.py", "storage_node_k8s"]
         env:
+        {{- include "simplyblock.tlsEnv" $ | nindent 8 }}
         - name: CORE_ISOLATION
           value: "{{ $.Values.storagenode.isolateCores }}"
         - name: UBUNTU_HOST
