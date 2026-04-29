@@ -134,6 +134,11 @@ spec:
         - name: csi-secret
           mountPath: /etc/spdkcsi-secret/
           readOnly: true
+        {{- if .Values.tls.enabled }}
+        - name: tls
+          mountPath: /etc/simplyblock/tls
+          readOnly: true
+        {{- end }}
       volumes:
       - name: socket-dir
         emptyDir:
@@ -144,3 +149,11 @@ spec:
       - name: csi-secret
         secret:
           secretName: simplyblock-csi-secret-v2
+      {{- if .Values.tls.enabled }}
+      - name: tls
+        configMap:
+          name: simplyblock-certificate-authority
+          items:
+          - key: service-ca.crt
+            path: ca.crt
+      {{- end }}

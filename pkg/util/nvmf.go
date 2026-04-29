@@ -17,13 +17,44 @@ limitations under the License.
 package util
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/klog"
 )
+
+const (
+	tlsCAFile          = "/etc/simplyblock/tls/ca.crt"
+	namespaceFile      = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+)
+
+// tlsServerName returns the FQDN service name that matches the TLS certificate
+// SANs (e.g. "simplyblock-webappapi.simplyblock.svc") derived from the URL host
+// and the pod's own namespace. Falls back to the bare hostname on any error.
+func tlsServerName(clusterIP string) string {
+	// strip scheme and port to get just the hostname
+	host := clusterIP
+	host = strings.TrimPrefix(host, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	if i := strings.LastIndex(host, ":"); i != -1 {
+		host = host[:i]
+	}
+	// if already a FQDN (contains a dot), use as-is
+	if strings.Contains(host, ".") {
+		return host
+	}
+	ns, err := os.ReadFile(namespaceFile)
+	if err != nil {
+		return host
+	}
+	return fmt.Sprintf("%s.%s.svc", host, strings.TrimSpace(string(ns)))
+}
 
 type NodeNVMf struct {
 	Client *RPCClient
@@ -31,8 +62,18 @@ type NodeNVMf struct {
 
 // NewNVMf creates a new NVMf client
 func NewNVMf(clusterID, clusterIP, clusterSecret string) *NodeNVMf {
+	transport := http.DefaultTransport
+	if caData, err := os.ReadFile(tlsCAFile); err == nil {
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM(caData)
+		clusterIP = strings.Replace(clusterIP, "http://", "https://", 1)
+		serverName := tlsServerName(clusterIP)
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: serverName},
+		}
+	}
 	client := RPCClient{
-		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second},
+		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second, Transport: transport},
 		ClusterID:     clusterID,
 		ClusterIP:     clusterIP,
 		ClusterSecret: clusterSecret,
