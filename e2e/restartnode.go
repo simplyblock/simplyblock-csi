@@ -52,7 +52,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 				}
 
 				annotations, _ := yamlContent["metadata"].(map[string]interface{})["annotations"].(map[string]interface{})
-				annotations["simplybk/host-id"] = storageNodeID
+				annotations["simplyblock.io/host-id"] = storageNodeID
 				updatedData, err := yaml.Marshal(yamlContent)
 				if err != nil {
 					ginkgo.Fail(err.Error())
@@ -102,7 +102,7 @@ var _ = ginkgo.Describe("SPDKCSI-NodeRestart", func() {
 
 			ginkgo.By("restarting the storage node", func() {
 				pvc, _ := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(context.TODO(), "spdkcsi-pvc", metav1.GetOptions{})
-				storageNodeID := pvc.Annotations["simplybk/host-id"]
+				storageNodeID := pvc.Annotations["simplyblock.io/host-id"]
 				fmt.Println()
 				err := restartStorageNode(c, storageNodeID)
 				if err != nil {

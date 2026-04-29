@@ -43,13 +43,28 @@ const (
 	CSIStorageBaseKey         = "csi.storage.k8s.io/pvc"
 	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
 	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
-	annotationLvolID          = "simplybk/lvol-id"
-	annotationSecretName      = "simplybk/secret-name"
-	annotationSecretNamespace = "simplybk/secret-namespace"
-	annotationQoSRWIOPS       = "simplybk/qos-rw-iops"
-	annotationQoSRWmBytes     = "simplybk/qos-rw-mbytes"
-	annotationQoSRmBytes      = "simplybk/qos-r-mbytes"
-	annotationQoSWmBytes      = "simplybk/qos-w-mbytes"
+
+	annotationNvmfModelID     = "simplyblock.io/nvmf-model-id"
+	annotationLvolID          = "simplyblock.io/lvol-id"
+	annotationSecretName      = "simplyblock.io/secret-name"
+	annotationSecretNamespace = "simplyblock.io/secret-namespace"
+	annotationHostID          = "simplyblock.io/host-id"
+	annotationQoSRWIOPS       = "simplyblock.io/qos-rw-iops"
+	annotationQoSRWMBps       = "simplyblock.io/qos-rw-mbps"
+	annotationQoSRMBps        = "simplyblock.io/qos-r-mbps"
+	annotationQoSWMBps        = "simplyblock.io/qos-w-mbps"
+
+	// Deprecated annotation keys — still supported for backward compatibility.
+	deprecatedAnnotationNvmfModelID     = "simplybk/nvmf-model-id"
+	deprecatedAnnotationLvolID          = "simplybk/lvol-id"
+	deprecatedAnnotationSecretName      = "simplybk/secret-name"
+	deprecatedAnnotationSecretNamespace = "simplybk/secret-namespace"
+	deprecatedAnnotationHostID          = "simplybk/host-id"
+	deprecatedAnnotationQoSRWIOPS       = "simplybk/qos-rw-iops"
+	deprecatedAnnotationQoSRWMBps       = "simplybk/qos-rw-mbytes"
+	deprecatedAnnotationQoSRMBps        = "simplybk/qos-r-mbytes"
+	deprecatedAnnotationQoSWMBps        = "simplybk/qos-w-mbytes"
+	
 	paramClusterID            = "cluster_id"
 	paramZoneClusterMap       = "zone_cluster_map"
 	paramRegionClusterMap     = "region_cluster_map"
@@ -557,14 +572,14 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		if qos.RWIOPS != "" {
 			maxRWIOPS = qos.RWIOPS
 		}
-		if qos.RWMBytes != "" {
-			maxRWmBytes = qos.RWMBytes
+		if qos.RWMBps != "" {
+			maxRWmBytes = qos.RWMBps
 		}
-		if qos.RMBytes != "" {
-			maxRmBytes = qos.RMBytes
+		if qos.RMBps != "" {
+			maxRmBytes = qos.RMBps
 		}
-		if qos.WMBytes != "" {
-			maxWmBytes = qos.WMBytes
+		if qos.WMBps != "" {
+			maxWmBytes = qos.WMBps
 		}
 	}
 
@@ -1022,8 +1037,9 @@ func GetCryptoKeys(ctx context.Context, pvcName, pvcNamespace string) (cryptoKey
 		return "", "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	secretName := pvc.ObjectMeta.Annotations[annotationSecretName]
-	secretNamespace := pvc.ObjectMeta.Annotations[annotationSecretNamespace]
+	ann := pvc.ObjectMeta.Annotations
+	secretName := pvcAnnotation(ann, annotationSecretName, deprecatedAnnotationSecretName)
+	secretNamespace := pvcAnnotation(ann, annotationSecretNamespace, deprecatedAnnotationSecretNamespace)
 
 	secret, err := clientset.CoreV1().Secrets(secretNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
@@ -1062,8 +1078,8 @@ func getHostIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (str
 		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	hostID, ok := pvc.ObjectMeta.Annotations["simplybk/host-id"]
-	if !ok {
+	hostID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationHostID, deprecatedAnnotationHostID)
+	if hostID == "" {
 		return "", nil
 	}
 
@@ -1089,20 +1105,55 @@ func getLvolIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (str
 		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	lvolID, ok := pvc.ObjectMeta.Annotations[annotationLvolID]
-	if !ok {
+	lvolID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationLvolID, deprecatedAnnotationLvolID)
+	if lvolID == "" {
 		return "", nil
 	}
 
 	return lvolID, nil
 }
 
+func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Errorf("failed to get in-cluster config: %v", err)
+		return "", fmt.Errorf("could not get in-cluster config: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Errorf("failed to create clientset: %v", err)
+		return "", fmt.Errorf("could not create clientset: %w", err)
+	}
+
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
+		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
+	}
+
+	modelID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationNvmfModelID, deprecatedAnnotationNvmfModelID)
+	if modelID == "" {
+		return "", nil
+	}
+
+	return modelID, nil
+}
+
+// pvcAnnotation returns the value for newKey, falling back to deprecatedKey for backward compat.
+func pvcAnnotation(annotations map[string]string, newKey, deprecatedKey string) string {
+	if v, ok := annotations[newKey]; ok {
+		return v
+	}
+	return annotations[deprecatedKey]
+}
+
 // qosAnnotations holds per-PVC QoS override values read from PVC annotations.
 type qosAnnotations struct {
-	RWIOPS   string
-	RWMBytes string
-	RMBytes  string
-	WMBytes  string
+	RWIOPS  string
+	RWMBps  string
+	RMBps   string
+	WMBps   string
 }
 
 // getQoSAnnotations returns per-PVC QoS overrides from PVC annotations.
@@ -1127,9 +1178,9 @@ func getQoSAnnotations(ctx context.Context, pvcName, pvcNamespace string) (qosAn
 
 	annotations := pvc.ObjectMeta.Annotations
 	return qosAnnotations{
-		RWIOPS:   annotations[annotationQoSRWIOPS],
-		RWMBytes: annotations[annotationQoSRWmBytes],
-		RMBytes:  annotations[annotationQoSRmBytes],
-		WMBytes:  annotations[annotationQoSWmBytes],
+		RWIOPS: pvcAnnotation(annotations, annotationQoSRWIOPS, deprecatedAnnotationQoSRWIOPS),
+		RWMBps: pvcAnnotation(annotations, annotationQoSRWMBps, deprecatedAnnotationQoSRWMBps),
+		RMBps:  pvcAnnotation(annotations, annotationQoSRMBps, deprecatedAnnotationQoSRMBps),
+		WMBps:  pvcAnnotation(annotations, annotationQoSWMBps, deprecatedAnnotationQoSWMBps),
 	}, nil
 }
