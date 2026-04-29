@@ -17,13 +17,18 @@ limitations under the License.
 package util
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	"k8s.io/klog"
 )
+
+const tlsCAFile = "/etc/simplyblock/tls/ca.crt"
 
 type NodeNVMf struct {
 	Client *RPCClient
@@ -31,8 +36,16 @@ type NodeNVMf struct {
 
 // NewNVMf creates a new NVMf client
 func NewNVMf(clusterID, clusterIP, clusterSecret string) *NodeNVMf {
+	transport := http.DefaultTransport
+	if caData, err := os.ReadFile(tlsCAFile); err == nil {
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM(caData)
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool},
+		}
+	}
 	client := RPCClient{
-		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second},
+		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second, Transport: transport},
 		ClusterID:     clusterID,
 		ClusterIP:     clusterIP,
 		ClusterSecret: clusterSecret,
