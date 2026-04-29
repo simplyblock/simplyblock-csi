@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/klog"
@@ -43,6 +44,7 @@ func NewNVMf(clusterID, clusterIP, clusterSecret string) *NodeNVMf {
 		transport = &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: pool},
 		}
+		clusterIP = strings.Replace(clusterIP, "http://", "https://", 1)
 	}
 	client := RPCClient{
 		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second, Transport: transport},
