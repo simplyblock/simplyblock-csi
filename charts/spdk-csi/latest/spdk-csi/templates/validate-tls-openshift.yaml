@@ -1,3 +1,0 @@
-{{- if and .Values.tls.enabled (not (.Capabilities.APIVersions.Has "config.openshift.io/v1/ClusterVersion")) -}}
-{{- fail "tls.enabled=true is only supported when installing this chart on an OpenShift cluster" -}}
-{{- end -}}

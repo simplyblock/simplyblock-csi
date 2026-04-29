@@ -62,6 +62,8 @@ spec:
                   fieldPath: spec.nodeName
             - name: TLS_ENABLED
               value: {{ .Values.tls.enabled | quote }}
+            - name: TLS_PROVIDER
+              value: {{ .Values.tls.provider | quote }}
           resources:
             limits:
               cpu: 800m
@@ -93,12 +95,7 @@ spec:
             periodSeconds: 10
       {{- if .Values.tls.enabled }}
       volumes:
-        - name: tls
-          configMap:
-            name: simplyblock-certificate-authority
-            items:
-              - key: service-ca.crt
-                path: ca.crt
+        {{- include "simplyblock.caVolume" . | nindent 8 }}
       {{- end }}
       terminationGracePeriodSeconds: 10
 
@@ -212,6 +209,22 @@ rules:
   - patch
   - update
   - watch
+{{- if and .Values.tls.enabled (eq .Values.tls.provider "cert-manager") }}
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  - certificaterequests
+  - issuers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+{{- end }}
 - apiGroups:
   - ""
   resources:

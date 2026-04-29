@@ -61,6 +61,7 @@ spec:
         imagePullPolicy: "{{ .Values.image.simplyblock.pullPolicy }}"
         command: ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]
         env:
+        {{- include "simplyblock.tlsEnv" . | nindent 8 }}
         - name: LVOL_NVMF_PORT_START
           value: "{{ .Values.controlplane.ports.lvolNvmfPortStart }}"
         - name: PROMETHEUS_URL
@@ -106,18 +107,7 @@ spec:
           items:
             - key: cluster-file
               path: fdb.cluster
-      {{- if .Values.tls.enabled }}
-      - name: tls
-        projected:
-          sources:
-          - secret:
-              name: simplyblock-webappapi-tls
-          - configMap:
-              name: simplyblock-certificate-authority
-              items:
-              - key: service-ca.crt
-                path: ca.crt
-      {{- end }}
+      {{- include "simplyblock.tlsVolume" (dict "ctx" . "secret" "simplyblock-webappapi-tls") | nindent 6 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -196,6 +186,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        {{- include "simplyblock.tlsEnv" . | nindent 8 }}
 {{- if .Values.controlplane.observability.enabled }}
         - name: MONITORING_SECRET
           valueFrom:
@@ -230,18 +221,7 @@ spec:
           items:
             - key: cluster-file
               path: fdb.cluster
-      {{- if .Values.tls.enabled }}
-      - name: tls
-        projected:
-          sources:
-          - secret:
-              name: simplyblock-webappapi-tls
-          - configMap:
-              name: simplyblock-certificate-authority
-              items:
-              - key: service-ca.crt
-                path: ca.crt
-      {{- end }}
+      {{- include "simplyblock.tlsVolume" (dict "ctx" . "secret" "simplyblock-webappapi-tls") | nindent 6 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -464,18 +444,7 @@ spec:
             items:
               - key: cluster-file
                 path: fdb.cluster
-        {{- if .Values.tls.enabled }}
-        - name: tls
-          projected:
-            sources:
-            - secret:
-                name: simplyblock-webappapi-tls
-            - configMap:
-                name: simplyblock-certificate-authority
-                items:
-                - key: service-ca.crt
-                  path: ca.crt
-        {{- end }}
+        {{- include "simplyblock.tlsVolume" (dict "ctx" . "secret" "simplyblock-webappapi-tls") | nindent 8 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -734,18 +703,7 @@ spec:
             items:
               - key: cluster-file
                 path: fdb.cluster
-        {{- if .Values.tls.enabled }}
-        - name: tls
-          projected:
-            sources:
-            - secret:
-                name: simplyblock-webappapi-tls
-            - configMap:
-                name: simplyblock-certificate-authority
-                items:
-                - key: service-ca.crt
-                  path: ca.crt
-        {{- end }}
+        {{- include "simplyblock.tlsVolume" (dict "ctx" . "secret" "simplyblock-webappapi-tls") | nindent 8 }}
 
 ---
 {{- if .Values.controlplane.observability.enabled }}

@@ -1,0 +1,27 @@
+{{- if and .Values.tls.enabled (eq .Values.tls.provider "cert-manager") }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: simplyblock-certificate-authority
+  namespace: {{ .Release.Namespace }}
+spec:
+  isCA: true
+  commonName: simplyblock-certificate-authority
+  secretName: simplyblock-certificate-authority-tls
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ index .Values.tls "cert-manager" "cluster-issuer" | quote }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: simplyblock-certificate-authority-issuer
+  namespace: {{ .Release.Namespace }}
+spec:
+  ca:
+    secretName: simplyblock-certificate-authority-tls
+{{- end }}
