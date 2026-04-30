@@ -38,7 +38,7 @@ metadata:
   namespace: simplyblock
 spec:
   clusterName: simplyblock-cluster
-  clusterImage: "public.ecr.aws/simply-block/simplyblock:26.1.2"
+  clusterImage: "public.ecr.aws/simply-block/simplyblock:R26.2-PRE"
   mgmtIfname: eth0
   maxLogicalVolumeCount: 10
   partitions: 1
