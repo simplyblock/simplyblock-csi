@@ -10,6 +10,14 @@ labels:
   chartVersion: "{{ .Chart.Version }}"
 {{- end -}}
 
+{{- define "simplyblock.controlPlaneAddr" -}}
+{{- if .Values.csiConfig.simplybk.ip -}}
+{{ .Values.csiConfig.simplybk.ip }}
+{{- else if .Values.operator.enabled -}}
+http://simplyblock-webappapi.{{ .Release.Namespace }}.svc.cluster.local:5000
+{{- end -}}
+{{- end -}}
+
 {{- define "simplyblock.commonContainer" }}
 env:
   - name: SIMPLYBLOCK_LOG_LEVEL
