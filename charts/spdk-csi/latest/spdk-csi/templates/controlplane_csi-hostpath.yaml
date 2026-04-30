@@ -1,4 +1,4 @@
-{{- if and .Values.controlplane.enabled .Values.controlplane.csiHostpathDriver.enabled }}
+{{- if and .Values.operator.enabled .Values.controlplane.csiHostpathDriver.enabled }}
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
