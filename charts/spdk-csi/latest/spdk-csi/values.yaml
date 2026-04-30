@@ -7,7 +7,7 @@ driverName: csi.simplyblock.io
 image:
   csi:
     repository: simplyblock/spdkcsi
-    tag: latest
+    tag: v0.2.6
     pullPolicy: Always
   csiProvisioner:
     repository: registry.k8s.io/sig-storage/csi-provisioner
@@ -39,7 +39,7 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: public.ecr.aws/simply-block/simplyblock
-    tag: "26.1.2"
+    tag: "R26.2-PRE"
     pullPolicy: Always
   storageNode:
     repository: simplyblock/storage-node-handler
@@ -47,7 +47,7 @@ image:
     pullPolicy: Always
   operator:
     repository: simplyblock/simplyblock-operator
-    tag: main
+    tag: v0.2.0
     pullPolicy: Always
   numaResource:
     repository: simplyblock/numa-resource-plugin
