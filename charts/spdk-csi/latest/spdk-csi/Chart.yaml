@@ -23,7 +23,7 @@ dependencies:
   - name: mongodb-kubernetes
     version: 1.4.0 
     repository: https://mongodb.github.io/helm-charts
-    alias: mongodb
+    alias: mongodb-kubernetes
     condition: controlplane.observability.enabled
   - name: opensearch
     version: 2.9.0

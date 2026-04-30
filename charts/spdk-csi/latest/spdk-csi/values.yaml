@@ -231,7 +231,7 @@ storagenode:
 
 controlplane:
   observability:
-    enabled: false
+    enabled: true
     secret: "sWbpOgba1bKnCfcPkVQi"
     deletionInterval: "3d"
     level: "DEBUG"
@@ -317,9 +317,9 @@ controlplane:
         baseImage: "quay.io/simplyblock-io/foundationdb-kubernetes-sidecar"
 
 operator:
-  enabled: false
+  enabled: true
 
-mongodb:
+mongodb-kubernetes:
   name: "simplyblock-mongodb"
   deployment_name: "simplyblock-mongodb"
   resources:
