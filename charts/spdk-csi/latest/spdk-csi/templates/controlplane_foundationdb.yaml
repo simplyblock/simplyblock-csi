@@ -1,4 +1,4 @@
-{{- if .Values.controlplane.enabled }}
+{{- if .Values.operator.enabled }}
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -230,7 +230,6 @@ storagenode:
       
 
 controlplane:
-  enabled: false
   observability:
     enabled: false
     secret: "sWbpOgba1bKnCfcPkVQi"

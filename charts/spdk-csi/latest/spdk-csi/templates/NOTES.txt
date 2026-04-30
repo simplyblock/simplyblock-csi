@@ -1,10 +1,19 @@
-The Simplyblock SPDK Driver is getting deployed to your cluster.
+The Simplyblock Operator is getting deployed to your cluster.
 
 The following components are being installed or updated:
 - Simplyblock CSI Driver
-- Simplyblock Storage Node
-- Simpylblock Control Plane
+{{- if .Values.operator.enabled }}
+- Simplyblock Control Plane
+{{- end }}
 
-To follow the Simplyblock SPDK's pods status, please run:
+{{- if .Values.operator.enabled }}
+
+The Operator components and its CRDs are installed. Please refer to our documentation to get started:
+
+  https://docs.simplyblock.io/dev/deployments/kubernetes/k8s-storage-plane/
+{{- else }}
+
+To follow the pods status, please run:
 
   kubectl --namespace={{ .Release.Namespace }} get pods --watch
+{{- end }}
