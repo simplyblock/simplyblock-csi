@@ -319,7 +319,7 @@ controlplane:
 operator:
   enabled: false
 
-mongodb:
+mongodb-kubernetes:
   name: "simplyblock-mongodb"
   deployment_name: "simplyblock-mongodb"
   resources:
