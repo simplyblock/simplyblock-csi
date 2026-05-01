@@ -17,4 +17,4 @@ jobs:
         with:
           check_filenames: true
           skip: ./.git,./.github/workflows/codespell.yml,.git,*.png,*.jpg,*.svg,*.sum,./vendor,go.sum
-          ignore_words_list: "browseable,ro"
+          ignore_words_list: "browseable,ro,NotIn"
