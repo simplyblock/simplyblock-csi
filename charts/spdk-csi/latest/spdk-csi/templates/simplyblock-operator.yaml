@@ -260,14 +260,16 @@ rules:
 - apiGroups:
   - storage.simplyblock.io
   resources:
-  - pools
-  - lvols
-  - storageclusters
-  - storagenodes
+  - backuppolicies
+  - backuprestores
   - devices
-  - tasks
+  - lvols
+  - pools
   - snapshotreplications
   - storagebackups
+  - storageclusters
+  - storagenodes
+  - tasks
   verbs:
   - create
   - delete
@@ -279,28 +281,32 @@ rules:
 - apiGroups:
   - storage.simplyblock.io
   resources:
-  - pools/finalizers
-  - lvols/finalizers
-  - storageclusters/finalizers
-  - storagenodes/finalizers
+  - backuppolicies/finalizers
+  - backuprestores/finalizers
   - devices/finalizers
-  - tasks/finalizers
+  - lvols/finalizers
+  - pools/finalizers
   - snapshotreplications/finalizers
   - storagebackups/finalizers
+  - storageclusters/finalizers
+  - storagenodes/finalizers
+  - tasks/finalizers
   verbs:
   - update
   - delete
 - apiGroups:
   - storage.simplyblock.io
   resources:
-  - pools/status
+  - backuppolicies/status
+  - backuprestores/status
+  - devices/status
   - lvols/status
+  - pools/status
+  - snapshotreplications/status
+  - storagebackups/status
   - storageclusters/status
   - storagenodes/status
-  - devices/status
   - tasks/status
-  - snapshotreplications/status
-  - storagebackups/status  
   verbs:
   - get
   - patch

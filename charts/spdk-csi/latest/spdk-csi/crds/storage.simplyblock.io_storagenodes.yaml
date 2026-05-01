@@ -344,6 +344,12 @@ spec:
                       description: NvmfPort is the NVMf service port.
                       format: int32
                       type: integer
+                    postedAt:
+                      description: |-
+                        PostedAt is when the storage-node add request was sent. Used to detect
+                        timeout without blocking the reconcile goroutine.
+                      format: date-time
+                      type: string
                     rpcPort:
                       description: RpcPort is the node RPC service port.
                       format: int32
