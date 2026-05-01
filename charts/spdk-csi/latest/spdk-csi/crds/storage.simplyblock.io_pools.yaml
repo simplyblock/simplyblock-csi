@@ -85,7 +85,8 @@ spec:
                 type: string
               storageClassParameters:
                 default: {}
-                description: StorageClassParameters sets default StorageClass parameter values for volumes in this pool.
+                description: StorageClassParameters sets default StorageClass parameter
+                  values for volumes in this pool.
                 properties:
                   compression:
                     default: "False"
@@ -101,11 +102,13 @@ spec:
                     type: string
                   lvolPriorityClass:
                     default: "0"
-                    description: LvolPriorityClass sets the logical volume priority class.
+                    description: LvolPriorityClass sets the logical volume priority
+                      class.
                     type: string
                   maxNamespacePerSubsys:
                     default: "1"
-                    description: MaxNamespacePerSubsys limits namespaces per NVMf subsystem.
+                    description: MaxNamespacePerSubsys limits namespaces per NVMf
+                      subsystem.
                     type: string
                   numDataChunks:
                     default: "1"
@@ -117,7 +120,8 @@ spec:
                     type: string
                   qosRMbytes:
                     default: "0"
-                    description: QosRMbytes sets the read throughput limit in MB/s (0 = unlimited).
+                    description: QosRMbytes sets the read throughput limit in MB/s
+                      (0 = unlimited).
                     type: string
                   qosRwIops:
                     default: "0"
@@ -125,11 +129,13 @@ spec:
                     type: string
                   qosRwMbytes:
                     default: "0"
-                    description: QosRwMbytes sets the read/write throughput limit in MB/s (0 = unlimited).
+                    description: QosRwMbytes sets the read/write throughput limit
+                      in MB/s (0 = unlimited).
                     type: string
                   qosWMbytes:
                     default: "0"
-                    description: QosWMbytes sets the write throughput limit in MB/s (0 = unlimited).
+                    description: QosWMbytes sets the write throughput limit in MB/s
+                      (0 = unlimited).
                     type: string
                   replicate:
                     default: false
@@ -137,7 +143,8 @@ spec:
                     type: boolean
                   tune2fsReservedBlocks:
                     default: "0"
-                    description: Tune2fsReservedBlocks sets the ext4 reserved-blocks percentage.
+                    description: Tune2fsReservedBlocks sets the ext4 reserved-blocks
+                      percentage.
                     type: string
                 type: object
             required:
