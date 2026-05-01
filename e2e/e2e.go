@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	"k8s.io/klog"
@@ -32,6 +33,20 @@ func init() {
 }
 
 var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
+	if operatorMode {
+		ginkgo.By("Waiting for StorageCluster to be active")
+		err := waitForStorageClusterActive(30 * time.Minute)
+		framework.ExpectNoError(err, "wait for StorageCluster to become active")
+
+		ginkgo.By("Waiting for StorageNodes to be online")
+		err = waitForStorageNodeOnline(30 * time.Minute)
+		framework.ExpectNoError(err, "wait for StorageNodes to come online")
+
+		ginkgo.By("Waiting for Pool to be ready")
+		err = waitForPoolReady(15 * time.Minute)
+		framework.ExpectNoError(err, "wait for Pool to become ready")
+	}
+
 	ginkgo.By("Watching for pod logs in 'default' namespace")
 	cs, err := framework.LoadClientset()
 	framework.ExpectNoError(err, "create client set")

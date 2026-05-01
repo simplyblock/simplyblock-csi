@@ -26,6 +26,10 @@ import (
 )
 
 var nameSpace string
+var systemNamespace string
+var clusterName string
+var poolName string
+var operatorMode bool
 
 const (
 
@@ -68,6 +72,19 @@ func init() {
 	if nameSpace == "" {
 		nameSpace = "default"
 	}
+	systemNamespace = os.Getenv("CSI_SYSTEM_NAMESPACE")
+	if systemNamespace == "" {
+		systemNamespace = nameSpace
+	}
+	clusterName = os.Getenv("CLUSTER_NAME")
+	if clusterName == "" {
+		clusterName = "simplyblock-cluster"
+	}
+	poolName = os.Getenv("POOL_NAME")
+	if poolName == "" {
+		poolName = "testing1"
+	}
+	operatorMode = os.Getenv("OPERATOR_MODE") == "true"
 }
 
 func deployTestPod() {
@@ -213,7 +230,7 @@ func deleteMultiPvcsAndTestPodWithMultiPvcs() {
 
 func waitForControllerReady(c kubernetes.Interface, timeout time.Duration) error {
 	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		sts, err := c.AppsV1().StatefulSets(nameSpace).Get(ctx, controllerStsName, metav1.GetOptions{})
+		sts, err := c.AppsV1().StatefulSets(systemNamespace).Get(ctx, controllerStsName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -230,7 +247,7 @@ func waitForControllerReady(c kubernetes.Interface, timeout time.Duration) error
 
 func waitForNodeServerReady(c kubernetes.Interface, timeout time.Duration) error {
 	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		ds, err := c.AppsV1().DaemonSets(nameSpace).Get(ctx, nodeDsName, metav1.GetOptions{})
+		ds, err := c.AppsV1().DaemonSets(systemNamespace).Get(ctx, nodeDsName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -808,7 +825,7 @@ func createstorageClassWithHostID(c kubernetes.Interface, storageClassName, host
 		Provisioner: "csi.simplyblock.io",
 		Parameters: map[string]string{
 			"hostID":                    hostID,
-			"pool_name":                 "testing1",
+			"pool_name":                 poolName,
 			"distr_ndcs":                "1",
 			"distr_npcs":                "1",
 			"qos_rw_iops":               "0",
@@ -826,10 +843,88 @@ func createstorageClassWithHostID(c kubernetes.Interface, storageClassName, host
 	return err
 }
 
+// getSimplyBlockCredsOperator reads cluster credentials from the operator-created
+// secret and fetches the management IP from the StorageCluster CR status.
+func getSimplyBlockCredsOperator(c kubernetes.Interface) (SimplyBlock, error) {
+	secretName := "simplyblock-cluster-" + clusterName
+	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		return SimplyBlock{}, fmt.Errorf("failed to get cluster secret %s: %w", secretName, err)
+	}
+	uuid := strings.TrimSpace(string(secret.Data["uuid"]))
+	clusterSecret := strings.TrimSpace(string(secret.Data["secret"]))
+
+	mgmtIpRaw, err := e2ekubectl.RunKubectl(nameSpace, "get",
+		"storageclusters.storage.simplyblock.io", clusterName,
+		"-o", "jsonpath={.status.mgmtIp}")
+	if err != nil {
+		return SimplyBlock{}, fmt.Errorf("failed to get StorageCluster mgmtIp: %w", err)
+	}
+	return SimplyBlock{UUID: uuid, IP: strings.TrimSpace(mgmtIpRaw), Secret: clusterSecret}, nil
+}
+
+func waitForStorageClusterActive(timeout time.Duration) error {
+	err := wait.PollImmediate(15*time.Second, timeout, func() (bool, error) {
+		out, err := e2ekubectl.RunKubectl(nameSpace, "get",
+			"storageclusters.storage.simplyblock.io", clusterName,
+			"-o", "jsonpath={.status.state}")
+		if err != nil {
+			return false, nil
+		}
+		return strings.EqualFold(strings.TrimSpace(out), "active"), nil
+	})
+	if err != nil {
+		return fmt.Errorf("StorageCluster %s did not become active: %w", clusterName, err)
+	}
+	return nil
+}
+
+func waitForStorageNodeOnline(timeout time.Duration) error {
+	err := wait.PollImmediate(15*time.Second, timeout, func() (bool, error) {
+		out, err := e2ekubectl.RunKubectl(nameSpace, "get",
+			"storagenodes.storage.simplyblock.io",
+			"-o", "jsonpath={.items[*].status.nodes[*].state}")
+		if err != nil || strings.TrimSpace(out) == "" {
+			return false, nil
+		}
+		for _, state := range strings.Fields(out) {
+			if !strings.EqualFold(state, "online") {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("StorageNodes did not all come online: %w", err)
+	}
+	return nil
+}
+
+func waitForPoolReady(timeout time.Duration) error {
+	err := wait.PollImmediate(15*time.Second, timeout, func() (bool, error) {
+		out, err := e2ekubectl.RunKubectl(nameSpace, "get",
+			"pools.storage.simplyblock.io", poolName,
+			"-o", "jsonpath={.status.uuid}")
+		if err != nil {
+			return false, nil
+		}
+		return strings.TrimSpace(out) != "", nil
+	})
+	if err != nil {
+		return fmt.Errorf("Pool %s did not become ready: %w", poolName, err)
+	}
+	return nil
+}
+
 func getStorageNode(c kubernetes.Interface, random int) (string, string, error) {
-	// get the credentials from the configmap
-	// get the storage node from the simplyblock api
-	// return the storage node
+	if operatorMode {
+		s, err := getSimplyBlockCredsOperator(c)
+		if err != nil {
+			return "", "", err
+		}
+		return s.getStoragenode(random)
+	}
+
 	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
 	if err != nil {
 		return "", "", err
@@ -841,7 +936,6 @@ func getStorageNode(c kubernetes.Interface, random int) (string, string, error) 
 		return "", "", err
 	}
 
-	// use k8s client go to get the value of the secret spdkcsi-secret
 	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
 	if err != nil {
 		return "", "", err
@@ -859,7 +953,16 @@ func getStorageNode(c kubernetes.Interface, random int) (string, string, error) 
 	}
 	return sn, snid, nil
 }
+
 func numberOfNodes(c kubernetes.Interface) (int, error) {
+	if operatorMode {
+		s, err := getSimplyBlockCredsOperator(c)
+		if err != nil {
+			return 0, err
+		}
+		return s.numberOfNodes()
+	}
+
 	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
 	if err != nil {
 		return 0, err
@@ -871,7 +974,6 @@ func numberOfNodes(c kubernetes.Interface) (int, error) {
 		return 0, err
 	}
 
-	// use k8s client go to get the value of the secret s pdkcsi-secret
 	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
 	if err != nil {
 		return 0, err
@@ -884,7 +986,6 @@ func numberOfNodes(c kubernetes.Interface) (int, error) {
 
 	s := creds.Simplyblock
 	sn, err := s.numberOfNodes()
-
 	if err != nil {
 		return 0, err
 	}
@@ -892,6 +993,14 @@ func numberOfNodes(c kubernetes.Interface) (int, error) {
 }
 
 func restartStorageNode(c kubernetes.Interface, nodeID string) error {
+	if operatorMode {
+		s, err := getSimplyBlockCredsOperator(c)
+		if err != nil {
+			return err
+		}
+		return s.restartStorageNode(nodeID)
+	}
+
 	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -903,7 +1012,6 @@ func restartStorageNode(c kubernetes.Interface, nodeID string) error {
 		return err
 	}
 
-	// use k8s client go to get the value of the secret spdkcsi-secret
 	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -915,11 +1023,7 @@ func restartStorageNode(c kubernetes.Interface, nodeID string) error {
 	}
 
 	s := creds.Simplyblock
-	err = s.restartStorageNode(nodeID)
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.restartStorageNode(nodeID)
 }
 func writeDataToPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPath string) {
 	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, opt)
