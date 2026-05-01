@@ -216,8 +216,18 @@ rules:
   - ""
   resources:
   - nodes
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumes
   verbs:
+  - create
   - get
   - list
   - watch
@@ -342,6 +352,7 @@ rules:
   - endpointslices
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
