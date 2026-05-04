@@ -250,6 +250,7 @@ rules:
   - clusterroles
   verbs:
   - create
+  - delete
   - get
   - list
   - watch
@@ -262,6 +263,7 @@ rules:
   - clusterrolebindings
   verbs:
   - create
+  - delete
   - get
   - list
   - watch
