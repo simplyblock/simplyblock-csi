@@ -38,7 +38,7 @@ metadata:
   namespace: simplyblock
 spec:
   clusterName: simplyblock-cluster
-  clusterImage: "quay.io/simplyblock-io/simplyblock:R26.2-PRE"
+  clusterImage: "quay.io/simplyblock-io/simplyblock:26.2.2-PRE"
   mgmtIfname: br-ex
   maxLogicalVolumeCount: 100
   partitions: 1
