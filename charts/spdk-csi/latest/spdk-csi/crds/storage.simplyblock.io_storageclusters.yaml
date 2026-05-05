@@ -60,6 +60,10 @@ spec:
                 enum:
                 - activate
                 - expand
+                - shutdown
+                - start
+                - restart
+                - node-recycle
                 type: string
               backup:
                 description: Backup specifies the specification for backup to S3 configuration
@@ -162,6 +166,15 @@ spec:
                   MgmtIfname is the management network interface name used for cluster communication.
                   FIXME: Unused for now
                 type: string
+              nodeRecycle:
+                description: NodeRecycle configures the node-recycle action.
+                properties:
+                  refreshSNodeAPI:
+                    description: |-
+                      RefreshSNodeAPI restarts the storage-node DaemonSet pod on each node
+                      before shutting it down, ensuring the latest image is running.
+                    type: boolean
+                type: object
               nvmfBasePort:
                 description: NvmfBasePort defines the base NVMf service port.
                 format: int32
@@ -284,6 +297,32 @@ spec:
                   FIXME: Unused for now (API update required?)
                 format: int32
                 type: integer
+              nodeRecycleStatus:
+                description: NodeRecycleStatus tracks in-progress state for the node-recycle
+                  action.
+                properties:
+                  nodePhase:
+                    description: |-
+                      NodePhase is the current step for the node being recycled:
+                      "snode-refresh" | "snode-refresh-wait" | "shutting-down" | "restarting" | "rebalancing"
+                    type: string
+                  pendingNodes:
+                    description: PendingNodes is the ordered list of node UUIDs still
+                      to be recycled.
+                    items:
+                      type: string
+                    type: array
+                  phaseTriggered:
+                    description: PhaseTriggered indicates the API call for the current
+                      NodePhase was already sent.
+                    type: boolean
+                  processedNodes:
+                    description: ProcessedNodes is the list of node UUIDs already
+                      recycled.
+                    items:
+                      type: string
+                    type: array
+                type: object
               nqn:
                 description: NQN is the cluster NVM subsystem qualified name.
                 type: string
