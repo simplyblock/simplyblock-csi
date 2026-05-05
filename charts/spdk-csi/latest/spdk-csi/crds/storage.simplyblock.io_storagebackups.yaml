@@ -59,8 +59,9 @@ spec:
                 description: ClusterName is the target storage cluster name.
                 type: string
               pvcRef:
-                description: PVCRef identifies the PVC whose backing Simplyblock volume
-                  should be snapshotted and backed up.
+                description: |-
+                  PVCRef identifies the PVC whose backing Simplyblock volume should be snapshotted and backed up.
+                  Not required when SourceClusterUUID is set (imported backup).
                 properties:
                   name:
                     description: Name is the PVC name.
@@ -76,9 +77,14 @@ spec:
                 description: SnapshotName optionally overrides the internally-created
                   snapshot name.
                 type: string
+              sourceClusterUUID:
+                description: |-
+                  SourceClusterUUID, when non-empty, marks this StorageBackup as imported from another cluster.
+                  The StorageBackup controller will not create snapshots or backups for imported resources.
+                  Set by the BackupImport controller; do not set manually.
+                type: string
             required:
             - clusterName
-            - pvcRef
             type: object
           status:
             description: status defines the observed state of StorageBackup
@@ -156,6 +162,12 @@ spec:
               snapshotName:
                 description: SnapshotName is the snapshot name used for the backup
                   request.
+                type: string
+              sourceClusterUUID:
+                description: |-
+                  SourceClusterUUID is set for imported backups; identifies the cluster that originally
+                  created the backup. When non-empty and different from the restore target cluster UUID,
+                  BackupRestore will automatically perform source-switch operations around the restore.
                 type: string
             type: object
         required:
