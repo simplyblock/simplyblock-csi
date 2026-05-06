@@ -178,6 +178,16 @@ func (node *NodeNVMf) ResizeVolume(lvolID string, newSize int64) (bool, error) {
 	return node.Client.resizeVolume(lvolID, newSize)
 }
 
+// UpdateQoS updates QoS limits on an existing logical volume
+func (node *NodeNVMf) UpdateQoS(lvolID string, maxRWIOPS, maxRWMBytes, maxRMBytes, maxWMBytes int) error {
+	return node.Client.updateQoS(lvolID, &UpdateQoSReq{
+		MaxRWIOPS:   maxRWIOPS,
+		MaxRWMBytes: maxRWMBytes,
+		MaxRMBytes:  maxRMBytes,
+		MaxWMBytes:  maxWMBytes,
+	})
+}
+
 // ListSnapshots returns a list of snapshots
 func (node *NodeNVMf) ListSnapshots() ([]*SnapshotResp, error) {
 	return node.Client.listSnapshots()

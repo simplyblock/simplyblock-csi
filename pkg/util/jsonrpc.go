@@ -401,6 +401,20 @@ func (client *RPCClient) resizeVolume(lvolID string, size int64) (bool, error) {
 	return true, nil
 }
 
+// UpdateQoSReq is the request body for PUT /lvol/{uuid}
+type UpdateQoSReq struct {
+	MaxRWIOPS   int `json:"max-rw-iops"`
+	MaxRWMBytes int `json:"max-rw-mbytes"`
+	MaxRMBytes  int `json:"max-r-mbytes"`
+	MaxWMBytes  int `json:"max-w-mbytes"`
+}
+
+// updateQoS updates QoS limits on an existing logical volume
+func (client *RPCClient) updateQoS(lvolID string, params *UpdateQoSReq) error {
+	_, err := client.CallSBCLI("PUT", "/lvol/"+lvolID, params)
+	return err
+}
+
 // cloneVolume clones a volume
 func (client *RPCClient) cloneVolume(lvolID, cloneName, newSize, pvcName string) (string, error) {
 	params := struct {

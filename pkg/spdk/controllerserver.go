@@ -795,6 +795,71 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 	}, nil
 }
 
+// ControllerModifyVolume applies mutable parameters (QoS) to an existing volume.
+// It is called by the external-resizer sidecar when a PVC's VolumeAttributesClass changes.
+// Supported mutable parameters: qos_rw_iops, qos_rw_mbytes, qos_r_mbytes, qos_w_mbytes.
+func (cs *controllerServer) ControllerModifyVolume(_ context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume ID is required")
+	}
+
+	params := req.GetMutableParameters()
+	if len(params) == 0 {
+		return &csi.ControllerModifyVolumeResponse{}, nil
+	}
+
+	spdkVol, err := getSPDKVol(volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID %q: %v", volumeID, err)
+	}
+
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create client for cluster %s: %v", spdkVol.clusterID, err)
+	}
+
+	rwIOPS, err := parseQoSParam(params, "qos_rw_iops")
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "qos_rw_iops: %v", err)
+	}
+	rwMBytes, err := parseQoSParam(params, "qos_rw_mbytes")
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "qos_rw_mbytes: %v", err)
+	}
+	rMBytes, err := parseQoSParam(params, "qos_r_mbytes")
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "qos_r_mbytes: %v", err)
+	}
+	wMBytes, err := parseQoSParam(params, "qos_w_mbytes")
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "qos_w_mbytes: %v", err)
+	}
+
+	if err := sbclient.UpdateQoS(spdkVol.lvolID, rwIOPS, rwMBytes, rMBytes, wMBytes); err != nil {
+		klog.Errorf("ControllerModifyVolume: failed to update QoS for lvol %s: %v", spdkVol.lvolID, err)
+		return nil, status.Errorf(codes.Internal, "failed to update QoS: %v", err)
+	}
+
+	klog.V(4).Infof("ControllerModifyVolume: updated QoS for lvol %s (rw-iops=%d rw-mbytes=%d r-mbytes=%d w-mbytes=%d)",
+		spdkVol.lvolID, rwIOPS, rwMBytes, rMBytes, wMBytes)
+
+	return &csi.ControllerModifyVolumeResponse{}, nil
+}
+
+// parseQoSParam extracts a non-negative integer from params[key], returning 0 if the key is absent.
+func parseQoSParam(params map[string]string, key string) (int, error) {
+	val, ok := params[key]
+	if !ok || val == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("must be a non-negative integer, got %q", val)
+	}
+	return n, nil
+}
+
 // ListSnapshots lists all snapshots across all clusters
 func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 
