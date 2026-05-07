@@ -52,9 +52,9 @@ Caller pipes through `nindent N`.
 {{/*
 Volume named "tls" holding only ca.crt, for client-only consumers without mTLS.
 - openshift: cabundle ConfigMap (renamed key).
-- cert-manager: project ca.crt out of the chart's CA Secret
-  (simplyblock-certificate-authority-tls), populated by cert-manager from the
-  CA Certificate in controlplane_certificates.yaml.
+- cert-manager: project ca.crt out of simplyblock-ca-bundle-tls, a Certificate
+  issued by the chart's ClusterIssuer into the release namespace. The root CA
+  secret lives in the cert-manager namespace and cannot be mounted directly.
 Caller pipes through `nindent N`.
 */}}
 {{- define "simplyblock.caVolume" -}}
@@ -69,7 +69,10 @@ Caller pipes through `nindent N`.
 {{- else if eq .Values.tls.provider "cert-manager" }}
 - name: tls
   secret:
-    secretName: simplyblock-certificate-authority-tls
+    # simplyblock-ca-bundle-tls is issued in the release namespace by the chart's
+    # ClusterIssuer, so pods can mount it. The CA secret itself lives in the
+    # cert-manager namespace and is not directly mountable from here.
+    secretName: simplyblock-ca-bundle-tls
     items:
     - key: ca.crt
       path: ca.crt
@@ -104,15 +107,10 @@ Caller pipes through `nindent N`.
           path: ca.crt
 {{- else if eq $ctx.Values.tls.provider "cert-manager" }}
 - name: tls
-  projected:
-    sources:
-    - secret:
-        name: {{ $clientSecret }}
-    - secret:
-        name: simplyblock-certificate-authority-tls
-        items:
-        - key: ca.crt
-          path: ca.crt
+  secret:
+    # cert-manager populates the client cert secret with tls.crt, tls.key, and
+    # ca.crt, so a projected volume is not needed.
+    secretName: {{ $clientSecret }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
