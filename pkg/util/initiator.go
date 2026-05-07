@@ -168,7 +168,7 @@ func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 		clusterConfig.ClusterID,
 		clusterConfig.ClusterEndpoint,
 	)
-	return NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret), nil
+	return NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret)
 }
 
 // NewSpdkCsiInitiator creates a new SpdkCsiInitiator based on the target type

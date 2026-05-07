@@ -125,6 +125,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        {{- include "simplyblock.tlsEnv" . | nindent 8 }}
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
@@ -134,11 +135,7 @@ spec:
         - name: csi-secret
           mountPath: /etc/spdkcsi-secret/
           readOnly: true
-        {{- if .Values.tls.enabled }}
-        - name: tls
-          mountPath: /etc/simplyblock/tls
-          readOnly: true
-        {{- end }}
+        {{- include "simplyblock.tlsVolumeMount" . | nindent 8 }}
       volumes:
       - name: socket-dir
         emptyDir:
@@ -149,11 +146,4 @@ spec:
       - name: csi-secret
         secret:
           secretName: simplyblock-csi-secret-v2
-      {{- if .Values.tls.enabled }}
-      - name: tls
-        configMap:
-          name: simplyblock-certificate-authority
-          items:
-          - key: service-ca.crt
-            path: ca.crt
-      {{- end }}
+      {{- include "simplyblock.clientTlsVolume" (dict "ctx" . "clientSecret" "simplyblock-csi-controller-client-tls") | nindent 6 }}

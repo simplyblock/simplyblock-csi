@@ -92,6 +92,7 @@ spec:
               fieldPath: spec.nodeName
         - name: GUARDIAN_MIN_BROKEN_FOR
           value: "30s"
+        {{- include "simplyblock.tlsEnv" . | nindent 8 }}
         lifecycle:
           postStart:
             exec:
@@ -134,11 +135,7 @@ spec:
           readOnly: true
         - name: guardian-state
           mountPath: /var/run/simplyblock/guardian
-        {{- if .Values.tls.enabled }}
-        - name: tls
-          mountPath: /etc/simplyblock/tls
-          readOnly: true
-        {{- end }}
+        {{- include "simplyblock.tlsVolumeMount" . | nindent 8 }}
       volumes:
       - name: socket-dir
         hostPath:
@@ -183,11 +180,4 @@ spec:
       - name: csi-secret
         secret:
           secretName: simplyblock-csi-secret-v2
-      {{- if .Values.tls.enabled }}
-      - name: tls
-        configMap:
-          name: simplyblock-certificate-authority
-          items:
-          - key: service-ca.crt
-            path: ca.crt
-      {{- end }}
+      {{- include "simplyblock.clientTlsVolume" (dict "ctx" . "clientSecret" "simplyblock-csi-node-client-tls") | nindent 6 }}
