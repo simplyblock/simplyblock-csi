@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	osexec "os/exec"
 	"strconv"
 	"time"
@@ -206,6 +207,12 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 		segments[topologyKeyRegionStable] = region
 	}
 
+	for key, val := range node.Labels {
+		if strings.HasPrefix(key, "simplyblock.io/pool.") && val == "allowed" {
+			segments[key] = val
+		}
+	}
+
 	if len(segments) == 0 {
 		return nil
 	}
@@ -309,6 +316,17 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	vc := req.GetVolumeContext()
 
 	vc["stagingParentPath"] = stagingParentPath
+
+	if ns.kubeClient != nil {
+		nodeName := ns.Driver.GetNodeID()
+		node, nodeErr := ns.kubeClient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if nodeErr == nil {
+			vc["hostNQN"] = fmt.Sprintf("nqn.2014-08.io.simplyblock:uuid:%s", node.UID)
+		} else {
+			klog.Warningf("failed to get node %s for hostNQN: %v", nodeName, nodeErr)
+		}
+	}
+
 	initiator, err = util.NewSpdkCsiInitiator(vc)
 	if err != nil {
 		klog.Errorf("failed to create spdk initiator, volumeID: %s err: %v", volumeID, err)
