@@ -237,8 +237,12 @@ func deleteMultiPvcsAndTestPodWithMultiPvcs() {
 }
 
 func waitForControllerReady(c kubernetes.Interface, timeout time.Duration) error {
+	ns := nameSpace
+	if operatorMode {
+		ns = systemNamespace
+	}
 	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		sts, err := c.AppsV1().StatefulSets(nameSpace).Get(ctx, controllerStsName, metav1.GetOptions{})
+		sts, err := c.AppsV1().StatefulSets(ns).Get(ctx, controllerStsName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -254,8 +258,12 @@ func waitForControllerReady(c kubernetes.Interface, timeout time.Duration) error
 }
 
 func waitForNodeServerReady(c kubernetes.Interface, timeout time.Duration) error {
+	ns := nameSpace
+	if operatorMode {
+		ns = systemNamespace
+	}
 	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		ds, err := c.AppsV1().DaemonSets(nameSpace).Get(ctx, nodeDsName, metav1.GetOptions{})
+		ds, err := c.AppsV1().DaemonSets(ns).Get(ctx, nodeDsName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
