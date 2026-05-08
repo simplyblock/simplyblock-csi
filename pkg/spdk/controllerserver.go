@@ -43,7 +43,6 @@ const (
 	CSIStorageBaseKey         = "csi.storage.k8s.io/pvc"
 	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
 	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
-	annotationNvmfModelID     = "simplybk/nvmf-model-id"
 	annotationLvolID          = "simplybk/lvol-id"
 	annotationSecretName      = "simplybk/secret-name"
 	annotationSecretNamespace = "simplybk/secret-namespace"
@@ -545,11 +544,6 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		return nil, err
 	}
 
-	modelID, err := getNvmfModelIDAnnotation(ctx, pvcName, pvcNamespace)
-	if err != nil {
-		return nil, err
-	}
-
 	// QoS from StorageClass, overridable per-PVC via annotations.
 	maxRWIOPS := params["qos_rw_iops"]
 	maxRWmBytes := params["qos_rw_mbytes"]
@@ -595,7 +589,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		CryptoKey2:   cryptoKey2,
 		HostID:       hostID,
 		LvolID:       lvolID,
-		ModelID:      modelID,
+		Namespaced:   maxNamespace > 1,
 		PvcName:      pvcFullName,
 	}
 	return &createVolReq, nil
@@ -647,15 +641,6 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	}
 
-	if createVolReq.ModelID == "" {
-		masterID, masterErr := selectMasterLvol(sbclient, poolName)
-		if masterErr != nil {
-			klog.Warningf("could not select master lvol, creating as new master: %v", masterErr)
-		} else {
-			createVolReq.ModelID = masterID
-		}
-	}
-
 	// Store the effective QoS values into VolumeContext so the PV spec records
 	// what was actually applied.
 	vol.VolumeContext["qos_rw_iops"] = createVolReq.MaxRWIOPS
@@ -672,23 +657,6 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	klog.V(5).Info("successfully created volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return &vol, nil
-}
-
-func selectMasterLvol(sbclient *util.NodeNVMf, poolName string) (string, error) {
-	poolUUID, err := sbclient.GetPoolUUIDByName(poolName)
-	if err != nil {
-		return "", err
-	}
-	masters, err := sbclient.GetMasterLvols(poolUUID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get master lvols: %w", err)
-	}
-	for _, m := range masters {
-		if m.Namespaces < m.MaxNamespaces-1 {
-			return m.ID, nil
-		}
-	}
-	return "", nil
 }
 
 func getSPDKVol(csiVolumeID string) (*spdkVolume, error) {
@@ -1124,33 +1092,6 @@ func getLvolIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (str
 	}
 
 	return lvolID, nil
-}
-
-func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("failed to get in-cluster config: %v", err)
-		return "", fmt.Errorf("could not get in-cluster config: %w", err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorf("failed to create clientset: %v", err)
-		return "", fmt.Errorf("could not create clientset: %w", err)
-	}
-
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
-		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
-	}
-
-	modelID, ok := pvc.ObjectMeta.Annotations[annotationNvmfModelID]
-	if !ok {
-		return "", nil
-	}
-
-	return modelID, nil
 }
 
 // qosAnnotations holds per-PVC QoS override values read from PVC annotations.
