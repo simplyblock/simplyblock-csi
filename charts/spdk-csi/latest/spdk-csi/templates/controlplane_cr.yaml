@@ -1,0 +1,9 @@
+{{- if .Values.operator.enabled }}
+---
+apiVersion: storage.simplyblock.io/v1alpha1
+kind: ControlPlane
+metadata:
+  name: simplyblock
+  namespace: {{ .Release.Namespace }}
+spec: {}
+{{- end }}
