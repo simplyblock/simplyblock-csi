@@ -2,7 +2,7 @@
 # Copyright (c) Arm Limited and Contributors
 # Copyright (c) Intel Corporation
 
-{{- if .Values.storageclass.create -}}
+{{- if and .Values.storageclass.create (not .Values.operator.enabled) -}}
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass

@@ -26,6 +26,7 @@ import (
 )
 
 var nameSpace string
+var storageClassName string
 
 const (
 
@@ -68,6 +69,29 @@ func init() {
 	if nameSpace == "" {
 		nameSpace = "default"
 	}
+	storageClassName = os.Getenv("STORAGE_CLASS_NAME")
+	if storageClassName == "" {
+		storageClassName = "simplyblock-csi-sc"
+	}
+}
+
+func applyTemplateWithStorageClass(ns, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	modified := strings.ReplaceAll(string(data), "simplyblock-csi-sc", storageClassName)
+	tmp, err := os.CreateTemp("", "e2e-*.yaml")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err = tmp.WriteString(modified); err != nil {
+		return err
+	}
+	tmp.Close()
+	_, err = e2ekubectl.RunKubectl(ns, "apply", "-f", tmp.Name())
+	return err
 }
 
 func deployTestPod() {
@@ -99,8 +123,7 @@ func deleteCacheTestPod() {
 }
 
 func deployPVC() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", pvcPath)
-	if err != nil {
+	if err := applyTemplateWithStorageClass(nameSpace, pvcPath); err != nil {
 		framework.Logf("failed to create pvc: %s", err)
 	}
 }
@@ -113,8 +136,7 @@ func deletePVC() {
 }
 
 func deploySnapshot() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithSnapshotPath)
-	if err != nil {
+	if err := applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath); err != nil {
 		framework.Logf("failed to deployed snapshot: %s", err)
 	}
 }
@@ -127,8 +149,7 @@ func deleteSnapshot() {
 }
 
 func deploySnapshot2() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithSnapshotPath2)
-	if err != nil {
+	if err := applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath2); err != nil {
 		framework.Logf("failed to deployed snapshot: %s", err)
 	}
 }
@@ -141,8 +162,7 @@ func deleteSnapshot2() {
 }
 
 func deployClone() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithClonePath)
-	if err != nil {
+	if err := applyTemplateWithStorageClass(nameSpace, testPodWithClonePath); err != nil {
 		framework.Logf("failed to deployed Cloned Volume: %s", err)
 	}
 }
@@ -160,8 +180,7 @@ func deletePVCAndTestPod() {
 }
 
 func deployCachePVC() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", cachepvcPath)
-	if err != nil {
+	if err := applyTemplateWithStorageClass(nameSpace, cachepvcPath); err != nil {
 		framework.Logf("failed to create cache pvc: %s", err)
 	}
 }
@@ -193,8 +212,7 @@ func deleteTestPodWithMultiPvcs() {
 }
 
 func deployMultiPvcs() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", multiPvcsPath)
-	if err != nil {
+	if err := applyTemplateWithStorageClass(nameSpace, multiPvcsPath); err != nil {
 		framework.Logf("failed to create pvcs: %s", err)
 	}
 }
