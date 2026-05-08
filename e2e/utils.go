@@ -27,6 +27,8 @@ import (
 
 var nameSpace string
 var storageClassName string
+var operatorMode bool
+var systemNamespace string
 
 const (
 
@@ -72,6 +74,11 @@ func init() {
 	storageClassName = os.Getenv("STORAGE_CLASS_NAME")
 	if storageClassName == "" {
 		storageClassName = "simplyblock-csi-sc"
+	}
+	operatorMode = os.Getenv("OPERATOR_MODE") == "true"
+	systemNamespace = os.Getenv("CSI_SYSTEM_NAMESPACE")
+	if systemNamespace == "" {
+		systemNamespace = "simplyblock"
 	}
 }
 
@@ -468,6 +475,54 @@ type SimplyBlock struct {
 	Secret string `json:"secret"`
 }
 
+type csiClusterEntry struct {
+	ClusterID       string `json:"cluster_id"`
+	ClusterEndpoint string `json:"cluster_endpoint"`
+	ClusterSecret   string `json:"cluster_secret"`
+}
+
+type csiCredentialsV2 struct {
+	Clusters []csiClusterEntry `json:"clusters"`
+}
+
+// getSimplyBlockCreds returns cluster credentials from the appropriate source.
+// In operator mode it reads simplyblock-csi-secret-v2 from systemNamespace;
+// otherwise it reads simplyblock-csi-cm + simplyblock-csi-secret from nameSpace.
+func getSimplyBlockCreds(c kubernetes.Interface) (SimplyBlock, error) {
+	if operatorMode {
+		secret, err := c.CoreV1().Secrets(systemNamespace).Get(ctx, "simplyblock-csi-secret-v2", metav1.GetOptions{})
+		if err != nil {
+			return SimplyBlock{}, err
+		}
+		var creds csiCredentialsV2
+		if err := json.Unmarshal(secret.Data["secret.json"], &creds); err != nil {
+			return SimplyBlock{}, err
+		}
+		if len(creds.Clusters) == 0 {
+			return SimplyBlock{}, errors.New("no clusters found in simplyblock-csi-secret-v2")
+		}
+		c0 := creds.Clusters[0]
+		return SimplyBlock{IP: c0.ClusterEndpoint, UUID: c0.ClusterID, Secret: c0.ClusterSecret}, nil
+	}
+
+	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
+	if err != nil {
+		return SimplyBlock{}, err
+	}
+	var creds simplyblockCreds
+	if err := json.Unmarshal([]byte(cm.Data["config.json"]), &creds); err != nil {
+		return SimplyBlock{}, err
+	}
+	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
+	if err != nil {
+		return SimplyBlock{}, err
+	}
+	if err := json.Unmarshal(secret.Data["secret.json"], &creds); err != nil {
+		return SimplyBlock{}, err
+	}
+	return creds.Simplyblock, nil
+}
+
 type StorageNodes struct {
 	Nodes []StorageNode `json:"results"`
 }
@@ -845,99 +900,26 @@ func createstorageClassWithHostID(c kubernetes.Interface, storageClassName, host
 }
 
 func getStorageNode(c kubernetes.Interface, random int) (string, string, error) {
-	// get the credentials from the configmap
-	// get the storage node from the simplyblock api
-	// return the storage node
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
+	s, err := getSimplyBlockCreds(c)
 	if err != nil {
 		return "", "", err
 	}
-	value := cm.Data["config.json"]
-	var creds simplyblockCreds
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return "", "", err
-	}
-
-	// use k8s client go to get the value of the secret spdkcsi-secret
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
-	if err != nil {
-		return "", "", err
-	}
-	value = string(secret.Data["secret.json"])
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return "", "", err
-	}
-
-	s := creds.Simplyblock
-	sn, snid, err := s.getStoragenode(random)
-	if err != nil {
-		return "", "", err
-	}
-	return sn, snid, nil
+	return s.getStoragenode(random)
 }
 func numberOfNodes(c kubernetes.Interface) (int, error) {
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
+	s, err := getSimplyBlockCreds(c)
 	if err != nil {
 		return 0, err
 	}
-	value := cm.Data["config.json"]
-	var creds simplyblockCreds
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return 0, err
-	}
-
-	// use k8s client go to get the value of the secret s pdkcsi-secret
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
-	if err != nil {
-		return 0, err
-	}
-	value = string(secret.Data["secret.json"])
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return 0, err
-	}
-
-	s := creds.Simplyblock
-	sn, err := s.numberOfNodes()
-
-	if err != nil {
-		return 0, err
-	}
-	return sn, nil
+	return s.numberOfNodes()
 }
 
 func restartStorageNode(c kubernetes.Interface, nodeID string) error {
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
+	s, err := getSimplyBlockCreds(c)
 	if err != nil {
 		return err
 	}
-	value := cm.Data["config.json"]
-	var creds simplyblockCreds
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return err
-	}
-
-	// use k8s client go to get the value of the secret spdkcsi-secret
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	value = string(secret.Data["secret.json"])
-	err = json.Unmarshal([]byte(value), &creds)
-	if err != nil {
-		return err
-	}
-
-	s := creds.Simplyblock
-	err = s.restartStorageNode(nodeID)
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.restartStorageNode(nodeID)
 }
 func writeDataToPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPath string) {
 	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, opt)
