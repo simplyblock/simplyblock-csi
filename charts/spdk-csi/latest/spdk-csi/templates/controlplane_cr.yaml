@@ -5,5 +5,6 @@ kind: ControlPlane
 metadata:
   name: simplyblock
   namespace: {{ .Release.Namespace }}
-spec: {}
+spec:
+  image: "{{ .Values.image.simplyblock.repository }}:{{ .Values.image.simplyblock.tag }}"
 {{- end }}
