@@ -535,6 +535,10 @@ tls:
   # which is used to mint the chart's own CA Certificate.
   cert-manager:
     cluster-issuer: ""
+    # Namespace where cert-manager is installed. The chart's CA secret is placed
+    # here so that the ClusterIssuer can locate it (ClusterIssuers always read CA
+    # secrets from the cert-manager controller namespace).
+    namespace: cert-manager
 
   # Mutual TLS (clients present and verify certificates). Only allowed when provider == cert-manager.
   mutual_enabled: false

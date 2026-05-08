@@ -15,7 +15,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "cluster-issuer": { "type": "string" }
+            "cluster-issuer": { "type": "string" },
+            "namespace": { "type": "string" }
           }
         }
       },
