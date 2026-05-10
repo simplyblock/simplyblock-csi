@@ -139,6 +139,12 @@ type RPCClient struct {
 	HTTPClient    *http.Client
 }
 
+// ClusterInfo is a partial view of the GET /cluster response. We only
+// model the fields the CSI cares about; the backend may return more.
+type ClusterInfo struct {
+	Status string `json:"status"`
+}
+
 // CSIPoolsResp is the response of /pool/get_pools
 type CSIPoolsResp struct {
 	Name string `json:"pool_name"`
@@ -188,6 +194,34 @@ type MasterLvol struct {
 
 func (client *RPCClient) info() string {
 	return client.ClusterID
+}
+
+// clusterInfo fetches GET /cluster and returns the first entry. The
+// backend returns an array; we treat the first element as the cluster
+// this client is authenticated against. No caching — callers that need
+// it should layer that on top.
+func (client *RPCClient) clusterInfo() (*ClusterInfo, error) {
+	resp, err := client.CallSBCLI("GET", "/cluster", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// CallSBCLI returns an interface{}; round-trip through JSON to
+	// decode into our typed struct, matching the pattern used by
+	// the guardian for the same endpoint.
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return nil, fmt.Errorf("marshal /cluster response: %w", err)
+	}
+
+	var list []ClusterInfo
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, fmt.Errorf("unmarshal /cluster response: %w", err)
+	}
+	if len(list) == 0 {
+		return nil, fmt.Errorf("empty /cluster response")
+	}
+	return &list[0], nil
 }
 
 // lvStores returns all available logical volume stores
