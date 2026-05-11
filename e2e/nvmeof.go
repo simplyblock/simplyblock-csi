@@ -29,20 +29,14 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 
 		ginkgo.It("Test the flow for Dynamic volume provisioning", func() {
 			testPodName := "spdkcsi-test"
-			ginkgo.By("creating a PVC and verify dynamic PV", func() {
-				deployPVC()
-				defer deletePVC()
-				err := verifyDynamicPVCreation(f.ClientSet, "spdkcsi-pvc", 5*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-
+			// WaitForFirstConsumer StorageClasses defer provisioning until a pod is scheduled.
+			// Deploy a pod alongside the PVC so the CSI provisioner is triggered, then verify
+			// the PV is created and the pod reaches Running before testing persistence.
 			ginkgo.By("creating a PVC and binding it to a pod", func() {
 				deployPVC()
 				deployTestPod()
 				defer deletePVCAndTestPod()
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
+				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
