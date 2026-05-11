@@ -360,6 +360,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			klog.Errorf("Failed to get lvol connection: %v", err)
 			return "", err
 		}
+		klog.V(5).Infof("fetchLvolConnection returned %d connections: %+v", len(connections), connections)
 
 		connected := 0
 		var lastErr error
@@ -367,7 +368,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		for i, _ := range nvmf.connections {
 			cmdLine := []string{
 				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-				"-a", connections[i].IP, "-s", strconv.Itoa(connections[i].Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
+				"-a", connections[i].IP, "-s", strconv.Itoa(connections[i].Port), "-n", connections[i].Nqn, "-l", strconv.Itoa(ctrlLossTmo),
 				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 			}
 
