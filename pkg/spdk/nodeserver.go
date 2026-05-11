@@ -327,6 +327,28 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 		}
 	}
 
+	// When the volume was provisioned against a pool with allowed_hosts, the controller
+	// couldn't fetch connection info (no host NQN available there). Re-fetch it here using
+	// the node's host NQN so that NewSpdkCsiInitiator gets the fields it needs.
+	if vc["nqn"] == "" || vc["targetType"] == "" {
+		spdkVol, parseErr := getSPDKVol(volumeID)
+		if parseErr == nil {
+			sbcClient, clientErr := util.NewsimplyBlockClient(spdkVol.clusterID)
+			if clientErr == nil {
+				connInfo, infoErr := sbcClient.VolumeInfo(spdkVol.lvolID, vc["hostNQN"])
+				if infoErr != nil {
+					klog.Errorf("failed to fetch volume connection info for %s: %v", volumeID, infoErr)
+				} else {
+					for k, v := range connInfo {
+						if vc[k] == "" {
+							vc[k] = v
+						}
+					}
+				}
+			}
+		}
+	}
+
 	initiator, err = util.NewSpdkCsiInitiator(vc)
 	if err != nil {
 		klog.Errorf("failed to create spdk initiator, volumeID: %s err: %v", volumeID, err)
