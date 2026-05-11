@@ -15,11 +15,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -buildvc
 
 FROM simplyblock/spdkcsi:base_image_rhel
 
-USER simplyblock
 WORKDIR /app
 
 COPY --from=builder /workspace/spdkcsi spdkcsi
-RUN sudo chown simplyblock:simplyblock /app/spdkcsi
-RUN sudo chmod +x /app/spdkcsi
+RUN chown simplyblock:simplyblock /app/spdkcsi && \
+    chmod +x /app/spdkcsi
+
+USER simplyblock
 
 ENTRYPOINT ["sudo", "-E", "/app/spdkcsi"]
