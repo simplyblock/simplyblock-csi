@@ -348,6 +348,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		return "", err
 	}
 
+	var connections []*LvolConnectResp
 	if !alreadyConnected {
 		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
 		sbcClient, err := NewsimplyBlockClient(clusterID)
@@ -355,7 +356,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
 		}
-		connections, err := fetchLvolConnection(sbcClient, lvolID)
+		connections, err = fetchLvolConnection(sbcClient, lvolID)
 		if err != nil {
 			klog.Errorf("Failed to get lvol connection: %v", err)
 			return "", err
@@ -394,9 +395,13 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		}
 	}
 
-	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
+	deviceModel := nvmf.model
+	if len(connections) > 0 && connections[0].Model != "" && connections[0].Nqn != nvmf.nqn {
+		deviceModel = connections[0].Model
+	}
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", deviceModel, nvmf.nsId))
 
-	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
+	deviceGlobOld := fmt.Sprintf(DevDiskByID, deviceModel)
 
 	devicePath, err := waitForDeviceReady(deviceGlob, 20)
 	if err != nil {
