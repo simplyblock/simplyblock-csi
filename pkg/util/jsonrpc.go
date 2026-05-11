@@ -88,7 +88,7 @@ var (
 type SpdkNode interface {
 	Info() string
 	LvStores() ([]LvStore, error)
-	VolumeInfo(lvolID string) (map[string]string, error)
+	VolumeInfo(lvolID string, hostNQN string) (map[string]string, error)
 	CreateVolume(lvolName, lvsName string, sizeMiB int64) (string, error)
 	GetVolume(lvolName, lvsName string) (string, error)
 	DeleteVolume(lvolID string) error
@@ -276,10 +276,14 @@ func (client *RPCClient) listVolumes() ([]*BDev, error) {
 }
 
 // getVolumeInfo gets a volume along with its connection info
-func (client *RPCClient) getVolumeInfo(lvolID string) (map[string]string, error) {
+func (client *RPCClient) getVolumeInfo(lvolID string, hostNQN string) (map[string]string, error) {
 	var result []*LvolConnectResp
 
-	out, err := client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+	path := "/lvol/connect/" + lvolID
+	if hostNQN != "" {
+		path += "?host_nqn=" + hostNQN
+	}
+	out, err := client.CallSBCLI("GET", path, nil)
 	if err != nil {
 		klog.Error(err)
 		if errorMatches(err, ErrJSONNoSuchDevice) {

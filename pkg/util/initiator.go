@@ -67,6 +67,7 @@ type initiatorNVMf struct {
 	model          string
 	nsId           string
 	hostIface      string
+	hostNQN        string
 }
 
 // initiatorCache is an implementation of NVMf cache initiator
@@ -194,6 +195,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			model:          volumeContext["model"],
 			nsId:           volumeContext["nsId"],
 			hostIface:      volumeContext["hostIface"],
+			hostNQN:        volumeContext["hostNQN"],
 		}, nil
 
 	case "cache":
@@ -355,7 +357,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
 		}
-		connections, err := fetchLvolConnection(sbcClient, lvolID)
+		connections, err := fetchLvolConnection(sbcClient, lvolID, nvmf.hostNQN)
 		if err != nil {
 			klog.Errorf("Failed to get lvol connection: %v", err)
 			return "", err
@@ -373,6 +375,10 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 
 			if nvmf.hostIface != "" {
 				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
+			}
+
+			if nvmf.hostNQN != "" {
+				cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
 			}
 
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
@@ -762,8 +768,12 @@ func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
 	return status[0].Status == "online"
 }
 
-func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string) ([]*LvolConnectResp, error) {
-	resp, err := spdkNode.Client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
+	path := "/lvol/connect/" + lvolID
+	if hostNQN != "" {
+		path += "?host_nqn=" + hostNQN
+	}
+	resp, err := spdkNode.Client.CallSBCLI("GET", path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch connection: %v", err)
 	}
@@ -888,7 +898,7 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 		klog.Warningf("resolveExpectedPathCount: client error for NQN %s: %v", nqn, err)
 		return cached
 	}
-	conns, err := fetchLvolConnection(sbcClient, lvolID)
+	conns, err := fetchLvolConnection(sbcClient, lvolID, "")
 	if err != nil {
 		klog.Warningf("resolveExpectedPathCount: fetch error for NQN %s: %v", nqn, err)
 		return cached
@@ -915,7 +925,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 		return fmt.Errorf("failed to fetch node info for lvol %s: %w", lvolID, err)
 	}
 
-	expectedConns, err := fetchLvolConnection(sbcClient, lvolID)
+	expectedConns, err := fetchLvolConnection(sbcClient, lvolID, "")
 	if err != nil {
 		return fmt.Errorf("failed to fetch connections for lvol %s: %w", lvolID, err)
 	}

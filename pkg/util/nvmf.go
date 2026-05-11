@@ -153,13 +153,9 @@ func (node *NodeNVMf) LvStores() ([]LvStore, error) {
 
 // VolumeInfo returns a string:string map containing information necessary
 // for CSI node(initiator) to connect to this target and identify the disk.
-func (node *NodeNVMf) VolumeInfo(lvolID string) (map[string]string, error) {
-	lvol, err := node.Client.getVolumeInfo(lvolID)
-	if err != nil {
-		return nil, err
-	}
-
-	return lvol, nil
+// hostNQN is passed to the sbcli API when the volume has allowed_hosts configured.
+func (node *NodeNVMf) VolumeInfo(lvolID string, hostNQN string) (map[string]string, error) {
+	return node.Client.getVolumeInfo(lvolID, hostNQN)
 }
 
 // CreateLVolData is the data structure for creating a logical volume

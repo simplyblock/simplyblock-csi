@@ -703,10 +703,13 @@ func (cs *controllerServer) publishVolume(volumeID string, sbclient *util.NodeNV
 		return nil, err
 	}
 
-	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID)
+	// hostNQN is not available in the controller path; pass empty string.
+	// If the volume has allowed_hosts configured, this call will fail and the
+	// node will re-fetch connection info at NodeStageVolume time using its own NQN.
+	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID, "")
 	if err != nil {
-		cs.unpublishVolume(volumeID) //nolint:errcheck // we can do little
-		return nil, err
+		klog.Warningf("failed to get volume info for %s (will be fetched at stage time): %v", spdkVol.lvolID, err)
+		return map[string]string{}, nil
 	}
 	return volumeInfo, nil
 }
@@ -878,7 +881,7 @@ func (cs *controllerServer) ControllerGetVolume(_ context.Context, req *csi.Cont
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID)
+	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID, "")
 	if err != nil {
 		klog.Errorf("failed to get spdkVol for %s: %v", volumeID, err)
 
