@@ -15,6 +15,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -buildvc
 
 FROM simplyblock/spdkcsi:base_image_rhel
 
+USER root
 WORKDIR /app
 
 COPY --from=builder /workspace/spdkcsi spdkcsi
