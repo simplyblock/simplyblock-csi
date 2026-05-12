@@ -23,21 +23,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build spdkcsi binary
-        run: CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -o ./_out/spdkcsi ./cmd/
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Build image for scanning (linux/amd64 only)
         uses: docker/build-push-action@v6
         with:
-          context: ./_out
+          context: .
           file: deploy/image/Dockerfile
           platforms: linux/amd64
           load: true
