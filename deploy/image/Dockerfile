@@ -18,10 +18,6 @@ FROM simplyblock/spdkcsi:base_image_rhel
 USER root
 WORKDIR /app
 
-COPY --from=builder /workspace/spdkcsi spdkcsi
-RUN chown simplyblock:simplyblock /app/spdkcsi && \
-    chmod +x /app/spdkcsi
+COPY --from=builder --chmod=0755 /workspace/spdkcsi spdkcsi
 
-USER simplyblock
-
-ENTRYPOINT ["sudo", "-E", "/app/spdkcsi"]
+ENTRYPOINT ["/app/spdkcsi"]
