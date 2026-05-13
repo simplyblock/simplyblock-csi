@@ -484,17 +484,24 @@ func (g *Guardian) tick(ctx context.Context) {
 }
 
 func (g *Guardian) isClusterActiveByID(clusterID string) (ok bool, realStatus string, err error) {
-	node, err := NewsimplyBlockClient(clusterID)
+	node, err := NewsimplyBlockClient(clusterID, "")
 	if err != nil {
 		return false, "", err
 	}
 
-	info, err := node.ClusterInfo()
+	clusterPath := fmt.Sprintf("api/v2/clusters/%s/", clusterID)
+	resp, err := node.Client.CallSBCLI("GET", clusterPath, nil)
 	if err != nil {
 		return false, "", err
 	}
 
-	realStatus = strings.ToLower(strings.TrimSpace(info.Status))
+	var status ClusterStatus
+	data, _ := json.Marshal(resp)
+	if err := json.Unmarshal(data, &status); err != nil {
+		return false, "", err
+	}
+
+	realStatus = strings.ToLower(strings.TrimSpace(status.Status))
 	ok = (realStatus == "active" || realStatus == "degraded")
 	return ok, realStatus, nil
 }

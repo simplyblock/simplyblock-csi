@@ -151,12 +151,6 @@ func (node *NodeNVMf) LvStores() ([]LvStore, error) {
 	return node.Client.lvStores()
 }
 
-// ClusterInfo returns the typed GET /cluster response for this client's
-// cluster.
-func (node *NodeNVMf) ClusterInfo() (*ClusterInfo, error) {
-	return node.Client.clusterInfo()
-}
-
 // VolumeInfo returns a string:string map containing information necessary
 // for CSI node(initiator) to connect to this target and identify the disk.
 // hostNQN is passed to the sbcli API when the volume has allowed_hosts configured.
@@ -181,7 +175,7 @@ type CreateLVolData struct {
 	MaxNamespace int    `json:"max_namespace_per_subsys"`
 	DistNdcs     int    `json:"ndcs"`
 	DistNpcs     int    `json:"npcs"`
-	PriorClass   int    `json:"lvol_priority_class"`
+	PriorClass   int    `json:"priority_class"`
 	HostID       string `json:"host_id"`
 	LvolID       string `json:"uid"`
 	Namespaced   bool   `json:"namespaced"`
@@ -238,8 +232,11 @@ func (node *NodeNVMf) ResizeVolume(lvolID string, newSize int64) (bool, error) {
 	return node.Client.resizeVolume(lvolID, newSize)
 }
 
-// ListSnapshots returns a list of snapshots
+// ListSnapshots returns a list of snapshots. When PoolID is not set, iterates all pools.
 func (node *NodeNVMf) ListSnapshots() ([]*SnapshotResp, error) {
+	if node.Client.PoolID == "" {
+		return node.Client.listAllSnapshots()
+	}
 	return node.Client.listSnapshots()
 }
 
@@ -263,15 +260,16 @@ func (node *NodeNVMf) CloneVolume(lvolID, cloneName, newSize, pvcName string) (s
 	return lvolID, nil
 }
 
-// CreateSnapshot creates a snapshot of a volume
+// CreateSnapshot creates a snapshot of a volume.
+// Returns a 3-part CSI snapshot ID: {clusterID}:{poolID}:{snapshotUUID}
 func (node *NodeNVMf) CreateSnapshot(lvolID, snapshotName string) (string, error) {
 	snapshotID, err := node.Client.snapshot(lvolID, snapshotName)
 	if err != nil {
 		return "", err
 	}
-	snapshotID = fmt.Sprintf("%s:%s", node.Client.ClusterID, snapshotID)
-	klog.V(5).Infof("snapshot created: %s", snapshotID)
-	return snapshotID, nil
+	csiID := fmt.Sprintf("%s:%s:%s", node.Client.ClusterID, node.Client.PoolID, snapshotID)
+	klog.V(5).Infof("snapshot created: %s", csiID)
+	return csiID, nil
 }
 
 // DeleteVolume deletes a volume
