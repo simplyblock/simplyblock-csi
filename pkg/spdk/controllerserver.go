@@ -40,9 +40,9 @@ import (
 
 // var errVolumeInCreation = status.Error(codes.Internal, "volume in creation")
 const (
-	CSIStorageBaseKey         = "csi.storage.k8s.io/pvc"
-	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
-	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
+	CSIStorageBaseKey      = "csi.storage.k8s.io/pvc"
+	CSIStorageNameKey      = CSIStorageBaseKey + "/name"
+	CSIStorageNamespaceKey = CSIStorageBaseKey + "/namespace"
 
 	annotationNvmfModelID     = "simplyblock.io/nvmf-model-id"
 	annotationLvolID          = "simplyblock.io/lvol-id"
@@ -53,6 +53,27 @@ const (
 	annotationQoSRWMBps       = "simplyblock.io/qos-rw-mbps"
 	annotationQoSRMBps        = "simplyblock.io/qos-r-mbps"
 	annotationQoSWMBps        = "simplyblock.io/qos-w-mbps"
+	annotationLvolName        = "simplyblock.io/name"
+	annotationLvolSize        = "simplyblock.io/size"
+	annotationPool            = "simplyblock.io/pool"
+	annotationFabric          = "simplyblock.io/fabric"
+	annotationCompression     = "simplyblock.io/comp"
+	annotationEncryption      = "simplyblock.io/crypto"
+	annotationReplicate       = "simplyblock.io/do_replicate"
+	annotationMaxRWIOPS       = "simplyblock.io/max_rw_iops"
+	annotationMaxRWmBytes     = "simplyblock.io/max_rw_mbytes"
+	annotationMaxRmBytes      = "simplyblock.io/max_r_mbytes"
+	annotationMaxWmBytes      = "simplyblock.io/max_w_mbytes"
+	annotationMaxSize         = "simplyblock.io/max_size"
+	annotationMaxNamespace    = "simplyblock.io/max_namespace_per_subsys"
+	annotationDistNdcs        = "simplyblock.io/ndcs"
+	annotationDistNpcs        = "simplyblock.io/npcs"
+	annotationPriorClass      = "simplyblock.io/lvol_priority_class"
+	annotationCryptoKey1      = "simplyblock.io/crypto_key1"
+	annotationCryptoKey2      = "simplyblock.io/crypto_key2"
+	annotationLvolUID         = "simplyblock.io/uid"
+	annotationNamespaced      = "simplyblock.io/namespaced"
+	annotationPVCName         = "simplyblock.io/pvc_name"
 
 	// Deprecated annotation keys — still supported for backward compatibility.
 	deprecatedAnnotationNvmfModelID     = "simplybk/nvmf-model-id"
@@ -64,13 +85,13 @@ const (
 	deprecatedAnnotationQoSRWMBps       = "simplybk/qos-rw-mbytes"
 	deprecatedAnnotationQoSRMBps        = "simplybk/qos-r-mbytes"
 	deprecatedAnnotationQoSWMBps        = "simplybk/qos-w-mbytes"
-	
-	paramClusterID            = "cluster_id"
-	paramZoneClusterMap       = "zone_cluster_map"
-	paramRegionClusterMap     = "region_cluster_map"
-	topologyKeyZoneStable     = "topology.kubernetes.io/zone"
-	topologyKeyZoneBeta       = "failure-domain.beta.kubernetes.io/zone"
-	topologyKeyRegionStable   = "topology.kubernetes.io/region"
+
+	paramClusterID          = "cluster_id"
+	paramZoneClusterMap     = "zone_cluster_map"
+	paramRegionClusterMap   = "region_cluster_map"
+	topologyKeyZoneStable   = "topology.kubernetes.io/zone"
+	topologyKeyZoneBeta     = "failure-domain.beta.kubernetes.io/zone"
+	topologyKeyRegionStable = "topology.kubernetes.io/region"
 )
 
 type controllerServer struct {
@@ -495,6 +516,127 @@ func getBoolParameter(params map[string]string, key string) bool {
 	return exists && (valueStr == "true" || valueStr == "True")
 }
 
+func getPVCAnnotations(ctx context.Context, pvcName, pvcNamespace string) (map[string]string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Errorf("failed to get in-cluster config: %v", err)
+		return nil, fmt.Errorf("could not get in-cluster config: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Errorf("failed to create clientset: %v", err)
+		return nil, fmt.Errorf("could not create clientset: %w", err)
+	}
+
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
+		return nil, fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
+	}
+
+	return pvc.ObjectMeta.Annotations, nil
+}
+
+func annotationValue(annotations map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := annotations[key]; ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func overrideStringFromAnnotation(value string, annotations map[string]string, keys ...string) string {
+	if override := annotationValue(annotations, keys...); override != "" {
+		return override
+	}
+	return value
+}
+
+func overrideIntFromAnnotation(value int, annotations map[string]string, fieldName string, keys ...string) (int, error) {
+	override := annotationValue(annotations, keys...)
+	if override == "" {
+		return value, nil
+	}
+	parsed, err := strconv.Atoi(override)
+	if err != nil {
+		return 0, fmt.Errorf("error converting PVC annotation %s: %w", fieldName, err)
+	}
+	return parsed, nil
+}
+
+func overrideBoolFromAnnotation(value bool, annotations map[string]string, fieldName string, keys ...string) (bool, error) {
+	override := annotationValue(annotations, keys...)
+	if override == "" {
+		return value, nil
+	}
+	parsed, err := strconv.ParseBool(override)
+	if err != nil {
+		return false, fmt.Errorf("error converting PVC annotation %s: %w", fieldName, err)
+	}
+	return parsed, nil
+}
+
+func applyLvolAddAnnotationOverrides(createVolReq *util.CreateLVolData, annotations map[string]string) error {
+	if len(annotations) == 0 {
+		return nil
+	}
+
+	var err error
+	createVolReq.LvolName = overrideStringFromAnnotation(createVolReq.LvolName, annotations, annotationLvolName)
+	createVolReq.Size = overrideStringFromAnnotation(createVolReq.Size, annotations, annotationLvolSize)
+	createVolReq.LvsName = overrideStringFromAnnotation(createVolReq.LvsName, annotations, annotationPool)
+	createVolReq.Fabric = overrideStringFromAnnotation(createVolReq.Fabric, annotations, annotationFabric)
+	createVolReq.MaxRWIOPS = overrideStringFromAnnotation(createVolReq.MaxRWIOPS, annotations, annotationMaxRWIOPS, annotationQoSRWIOPS, deprecatedAnnotationQoSRWIOPS)
+	createVolReq.MaxRWmBytes = overrideStringFromAnnotation(createVolReq.MaxRWmBytes, annotations, annotationMaxRWmBytes, annotationQoSRWMBps, deprecatedAnnotationQoSRWMBps)
+	createVolReq.MaxRmBytes = overrideStringFromAnnotation(createVolReq.MaxRmBytes, annotations, annotationMaxRmBytes, annotationQoSRMBps, deprecatedAnnotationQoSRMBps)
+	createVolReq.MaxWmBytes = overrideStringFromAnnotation(createVolReq.MaxWmBytes, annotations, annotationMaxWmBytes, annotationQoSWMBps, deprecatedAnnotationQoSWMBps)
+	createVolReq.MaxSize = overrideStringFromAnnotation(createVolReq.MaxSize, annotations, annotationMaxSize)
+	createVolReq.CryptoKey1 = overrideStringFromAnnotation(createVolReq.CryptoKey1, annotations, annotationCryptoKey1)
+	createVolReq.CryptoKey2 = overrideStringFromAnnotation(createVolReq.CryptoKey2, annotations, annotationCryptoKey2)
+	createVolReq.HostID = overrideStringFromAnnotation(createVolReq.HostID, annotations, annotationHostID, deprecatedAnnotationHostID)
+	createVolReq.LvolID = overrideStringFromAnnotation(createVolReq.LvolID, annotations, annotationLvolUID, annotationLvolID, deprecatedAnnotationLvolID)
+	createVolReq.PvcName = overrideStringFromAnnotation(createVolReq.PvcName, annotations, annotationPVCName)
+
+	createVolReq.MaxNamespace, err = overrideIntFromAnnotation(createVolReq.MaxNamespace, annotations, annotationMaxNamespace, annotationMaxNamespace)
+	if err != nil {
+		return err
+	}
+	createVolReq.DistNdcs, err = overrideIntFromAnnotation(createVolReq.DistNdcs, annotations, annotationDistNdcs, annotationDistNdcs)
+	if err != nil {
+		return err
+	}
+	createVolReq.DistNpcs, err = overrideIntFromAnnotation(createVolReq.DistNpcs, annotations, annotationDistNpcs, annotationDistNpcs)
+	if err != nil {
+		return err
+	}
+	createVolReq.PriorClass, err = overrideIntFromAnnotation(createVolReq.PriorClass, annotations, annotationPriorClass, annotationPriorClass)
+	if err != nil {
+		return err
+	}
+
+	createVolReq.Compression, err = overrideBoolFromAnnotation(createVolReq.Compression, annotations, annotationCompression, annotationCompression)
+	if err != nil {
+		return err
+	}
+	createVolReq.Encryption, err = overrideBoolFromAnnotation(createVolReq.Encryption, annotations, annotationEncryption, annotationEncryption)
+	if err != nil {
+		return err
+	}
+	createVolReq.Replicate, err = overrideBoolFromAnnotation(createVolReq.Replicate, annotations, annotationReplicate, annotationReplicate)
+	if err != nil {
+		return err
+	}
+	createVolReq.Namespaced = createVolReq.MaxNamespace > 1
+	createVolReq.Namespaced, err = overrideBoolFromAnnotation(createVolReq.Namespaced, annotations, annotationNamespaced, annotationNamespaced)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, capacityBytes int64) (*util.CreateLVolData, error) {
 	params := req.GetParameters()
 
@@ -524,6 +666,18 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	pvcName, pvcNameSelected := params[CSIStorageNameKey]
 	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
 
+	var pvcAnnotations map[string]string
+	if pvcNameSelected && pvcNamespaceSelected {
+		pvcAnnotations, err = getPVCAnnotations(ctx, pvcName, pvcNamespace)
+		if err != nil {
+			return nil, err
+		}
+	}
+	encryption, err = overrideBoolFromAnnotation(encryption, pvcAnnotations, annotationEncryption, annotationEncryption)
+	if err != nil {
+		return nil, err
+	}
+
 	var cryptoKey1 string
 	var cryptoKey2 string
 	var pvcFullName string
@@ -534,7 +688,10 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		pvcFullName = pvcName
 	}
 
-	if encryption {
+	cryptoKey1 = annotationValue(pvcAnnotations, annotationCryptoKey1)
+	cryptoKey2 = annotationValue(pvcAnnotations, annotationCryptoKey2)
+
+	if encryption && (cryptoKey1 == "" || cryptoKey2 == "") {
 		if pvcNameSelected && pvcNamespaceSelected {
 			cryptoKey1, cryptoKey2, err = GetCryptoKeys(ctx, pvcName, pvcNamespace)
 			if err != nil {
@@ -549,49 +706,15 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		}
 	}
 
-	hostID, err := getHostIDAnnotation(ctx, pvcName, pvcNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	lvolID, err := getLvolIDAnnotation(ctx, pvcName, pvcNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	// QoS from StorageClass, overridable per-PVC via annotations.
-	maxRWIOPS := params["qos_rw_iops"]
-	maxRWmBytes := params["qos_rw_mbytes"]
-	maxRmBytes := params["qos_r_mbytes"]
-	maxWmBytes := params["qos_w_mbytes"]
-	if pvcNameSelected && pvcNamespaceSelected {
-		qos, qosErr := getQoSAnnotations(ctx, pvcName, pvcNamespace)
-		if qosErr != nil {
-			return nil, qosErr
-		}
-		if qos.RWIOPS != "" {
-			maxRWIOPS = qos.RWIOPS
-		}
-		if qos.RWMBps != "" {
-			maxRWmBytes = qos.RWMBps
-		}
-		if qos.RMBps != "" {
-			maxRmBytes = qos.RMBps
-		}
-		if qos.WMBps != "" {
-			maxWmBytes = qos.WMBps
-		}
-	}
-
 	createVolReq := util.CreateLVolData{
 		LvolName:     req.GetName(),
 		Size:         strconv.FormatInt(capacityBytes, 10),
 		LvsName:      params["pool_name"],
 		Fabric:       params["fabric"],
-		MaxRWIOPS:    maxRWIOPS,
-		MaxRWmBytes:  maxRWmBytes,
-		MaxRmBytes:   maxRmBytes,
-		MaxWmBytes:   maxWmBytes,
+		MaxRWIOPS:    params["qos_rw_iops"],
+		MaxRWmBytes:  params["qos_rw_mbytes"],
+		MaxRmBytes:   params["qos_r_mbytes"],
+		MaxWmBytes:   params["qos_w_mbytes"],
 		MaxSize:      params["max_size"],
 		MaxNamespace: maxNamespace,
 		PriorClass:   priorClass,
@@ -602,10 +725,11 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		DistNpcs:     distrNpcs,
 		CryptoKey1:   cryptoKey1,
 		CryptoKey2:   cryptoKey2,
-		HostID:       hostID,
-		LvolID:       lvolID,
 		Namespaced:   maxNamespace > 1,
 		PvcName:      pvcFullName,
+	}
+	if err := applyLvolAddAnnotationOverrides(&createVolReq, pvcAnnotations); err != nil {
+		return nil, err
 	}
 	return &createVolReq, nil
 }
@@ -1150,10 +1274,10 @@ func pvcAnnotation(annotations map[string]string, newKey, deprecatedKey string) 
 
 // qosAnnotations holds per-PVC QoS override values read from PVC annotations.
 type qosAnnotations struct {
-	RWIOPS  string
-	RWMBps  string
-	RMBps   string
-	WMBps   string
+	RWIOPS string
+	RWMBps string
+	RMBps  string
+	WMBps  string
 }
 
 // getQoSAnnotations returns per-PVC QoS overrides from PVC annotations.
