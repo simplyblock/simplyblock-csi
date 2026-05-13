@@ -4,6 +4,8 @@ import (
 	"time"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
@@ -37,6 +39,66 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				deployTestPod()
 				defer deletePVCAndTestPod()
 				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+		})
+
+		ginkgo.It("Test filesystem volume expansion", func() {
+			testPodName := "spdkcsi-test"
+			pvcName := "spdkcsi-pvc"
+			expandedSize := resource.MustParse("2Gi")
+			testPodLabel := metav1.ListOptions{
+				LabelSelector: "app=spdkcsi-pvc",
+			}
+
+			ginkgo.By("creating a PVC and pod", func() {
+				deployPVC()
+				deployTestPod()
+				defer deletePVCAndTestPod()
+
+				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = resizePVC(f.ClientSet, pvcName, expandedSize)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = waitForPVCStorageCapacity(f.ClientSet, pvcName, expandedSize, 5*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = waitForFilesystemSize(f, &testPodLabel, "/spdkvol", expandedSize.Value()*9/10, 5*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+		})
+
+		ginkgo.It("Test mounted volume stats", func() {
+			testPodName := "spdkcsi-test"
+			testPodLabel := metav1.ListOptions{
+				LabelSelector: "app=spdkcsi-pvc",
+			}
+
+			ginkgo.By("creating a mounted PVC with data", func() {
+				deployPVC()
+				deployTestPod()
+				defer deletePVCAndTestPod()
+
+				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				writeDataToPod(f, &testPodLabel, "volume stats test data", "/spdkvol/stats-test")
+
+				err = waitForMountedVolumeStats(f.ClientSet, testPodName, 5*time.Minute)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}
