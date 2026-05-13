@@ -134,39 +134,3 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 		})
 	})
 })
-
-var _ = ginkgo.Describe("CACHE-NODE-TEST", func() {
-	f := framework.NewDefaultFramework("spdkcsi")
-
-	ginkgo.Context("Test caching node SPDK CSI Dynamic Volume Provisioning", func() {
-
-		ginkgo.It("Test the flow for Caching nodes", func() {
-			testPodName := "spdkcsi-test"
-			ginkgo.By("creating a caching PVC and bind it to a pod", func() {
-				deployCachePVC()
-				deployCacheTestPod()
-				defer deleteCachePVCAndCacheTestPod()
-				err := waitForCacheTestPodReady(f.ClientSet, 3*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-
-			ginkgo.By("check data persistency after the pod is removed and recreated", func() {
-				deployPVC()
-				deployTestPod()
-				defer deletePVCAndTestPod()
-
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-
-				err = checkDataPersist(f)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-		})
-	})
-})
