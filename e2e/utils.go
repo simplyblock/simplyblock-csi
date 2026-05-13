@@ -32,6 +32,11 @@ var storageClassName string
 var operatorMode bool
 var systemNamespace string
 
+type storageNode struct {
+	UUID   string `json:"uuid"`
+	NodeIP string `json:"node_ip"`
+}
+
 const (
 
 	// deployment yaml files
