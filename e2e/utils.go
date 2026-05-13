@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
@@ -469,6 +471,132 @@ func verifyDynamicPVCreation(c kubernetes.Interface, pvcName string, timeout tim
 	})
 	if err != nil {
 		return fmt.Errorf("failed to verify dynamic PV creation for PVC %s: %w", pvcName, err)
+	}
+	return nil
+}
+
+func resizePVC(c kubernetes.Interface, pvcName string, newSize resource.Quantity) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if pvc.Spec.Resources.Requests == nil {
+			pvc.Spec.Resources.Requests = corev1.ResourceList{}
+		}
+		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
+		_, err = c.CoreV1().PersistentVolumeClaims(nameSpace).Update(ctx, pvc, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+func waitForPVCStorageCapacity(c kubernetes.Interface, pvcName string, minSize resource.Quantity, timeout time.Duration) error {
+	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
+		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		capacity, ok := pvc.Status.Capacity[corev1.ResourceStorage]
+		if !ok {
+			return false, nil
+		}
+
+		return capacity.Cmp(minSize) >= 0, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to wait for PVC %s capacity to reach %s: %w", pvcName, minSize.String(), err)
+	}
+	return nil
+}
+
+func waitForFilesystemSize(f *framework.Framework, opt *metav1.ListOptions, mountPath string, minBytes int64, timeout time.Duration) error {
+	err := wait.PollImmediate(5*time.Second, timeout, func() (bool, error) {
+		sizeBytes, err := filesystemSizeBytes(f, opt, mountPath)
+		if err != nil {
+			framework.Logf("failed to read filesystem size: %v", err)
+			return false, nil
+		}
+		return sizeBytes >= minBytes, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to wait for filesystem at %s to reach at least %d bytes: %w", mountPath, minBytes, err)
+	}
+	return nil
+}
+
+func filesystemSizeBytes(f *framework.Framework, opt *metav1.ListOptions, mountPath string) (int64, error) {
+	stdOut, stdErr := execCommandInPod(f, fmt.Sprintf("df -P -k %s | awk 'NR==2 {print $2}'", mountPath), nameSpace, opt)
+	if stdErr != "" {
+		return 0, fmt.Errorf("df stderr: %s", stdErr)
+	}
+	kib, err := strconv.ParseInt(strings.TrimSpace(stdOut), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse df output %q: %w", stdOut, err)
+	}
+	return kib * 1024, nil
+}
+
+type kubeletStatsSummary struct {
+	Pods []struct {
+		PodRef struct {
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+			UID       string `json:"uid"`
+		} `json:"podRef"`
+		VolumeStats []struct {
+			Name           string  `json:"name"`
+			AvailableBytes *uint64 `json:"availableBytes"`
+			CapacityBytes  *uint64 `json:"capacityBytes"`
+			UsedBytes      *uint64 `json:"usedBytes"`
+		} `json:"volume"`
+	} `json:"pods"`
+}
+
+func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout time.Duration) error {
+	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+		pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if pod.Spec.NodeName == "" {
+			return false, nil
+		}
+
+		raw, err := c.CoreV1().RESTClient().Get().
+			Resource("nodes").
+			Name(pod.Spec.NodeName).
+			SubResource("proxy").
+			Suffix("stats", "summary").
+			DoRaw(ctx)
+		if err != nil {
+			framework.Logf("failed to read kubelet stats summary from node %s: %v", pod.Spec.NodeName, err)
+			return false, nil
+		}
+
+		var summary kubeletStatsSummary
+		if err := json.Unmarshal(raw, &summary); err != nil {
+			return false, fmt.Errorf("failed to parse kubelet stats summary: %w", err)
+		}
+
+		for _, podStats := range summary.Pods {
+			if podStats.PodRef.Namespace != nameSpace || podStats.PodRef.Name != podName {
+				continue
+			}
+			for _, volume := range podStats.VolumeStats {
+				if volume.CapacityBytes != nil && *volume.CapacityBytes > 0 &&
+					volume.AvailableBytes != nil &&
+					volume.UsedBytes != nil {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to wait for kubelet volume stats for pod %s: %w", podName, err)
 	}
 	return nil
 }
