@@ -515,7 +515,7 @@ func waitForFilesystemSize(f *framework.Framework, opt *metav1.ListOptions, moun
 		sizeBytes, err := filesystemSizeBytes(f, opt, mountPath)
 		if err != nil {
 			framework.Logf("failed to read filesystem size: %v", err)
-			return false, nil
+			return false, err
 		}
 		return sizeBytes >= minBytes, nil
 	})
@@ -571,7 +571,7 @@ func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout t
 			DoRaw(ctx)
 		if err != nil {
 			framework.Logf("failed to read kubelet stats summary from node %s: %v", pod.Spec.NodeName, err)
-			return false, nil
+			return false, fmt.Errorf("failed to read kubelet stats summary from node %s: %w", pod.Spec.NodeName, err)
 		}
 
 		var summary kubeletStatsSummary
