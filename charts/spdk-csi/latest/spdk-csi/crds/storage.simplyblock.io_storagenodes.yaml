@@ -62,9 +62,6 @@ spec:
               clusterName:
                 description: ClusterName is the target storage cluster name.
                 type: string
-              coreIsolation:
-                description: CoreIsolation enables CPU core isolation mode.
-                type: boolean
               corePercentage:
                 description: CorePercentage is the percentage of cores to be used
                   for spdk (0-99).
@@ -377,10 +374,9 @@ spec:
         - message: nodeUUID is required when action is specified
           rule: '!(has(self.spec.action) && self.spec.action != "" && (!has(self.spec.nodeUUID)
             || self.spec.nodeUUID == ""))'
-        - message: clusterImage, maxLogicalVolumeCount, and workerNodes are required
-            when action is not specified
-          rule: (has(self.spec.action) && self.spec.action != "") || (has(self.spec.clusterImage)
-            && self.spec.clusterImage != "" && has(self.spec.maxLogicalVolumeCount)
+        - message: maxLogicalVolumeCount and workerNodes are required when action
+            is not specified
+          rule: (has(self.spec.action) && self.spec.action != "") || (has(self.spec.maxLogicalVolumeCount)
             && has(self.spec.workerNodes) && size(self.spec.workerNodes) > 0)
     served: true
     storage: true
