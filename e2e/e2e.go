@@ -25,6 +25,7 @@ func init() {
 	config.CopyFlags(config.Flags, flag.CommandLine)
 	framework.RegisterCommonFlags(flag.CommandLine)
 	framework.RegisterClusterFlags(flag.CommandLine)
+	klog.InitFlags(flag.CommandLine)
 
 	testing.Init()
 	flag.Parse()
