@@ -297,6 +297,7 @@ controlplane:
     allowedTopologyZones: []
 
   foundationdb:
+    enabled: true
     multiAZ: false
     # redundancyMode controls FDB coordinator count:
     # "double" = 3 coordinators (suitable for 3 workers, tolerates 1 failure)
