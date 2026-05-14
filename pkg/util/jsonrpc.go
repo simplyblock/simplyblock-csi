@@ -449,7 +449,7 @@ func (client *RPCClient) cloneVolume(lvolID, cloneName, newSize, pvcName string)
 
 	klog.V(5).Infof("cloneVolume size: %s", newSize)
 
-	out, err := client.CallSBCLI("GET", path, nil)
+	out, err := client.CallSBCLI("POST", path, nil)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
