@@ -679,7 +679,7 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+client.ClusterSecret)
+	req.Header.Set("Authorization", client.authorizationHeader(path))
 	if args != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -722,6 +722,13 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 		return nil, fmt.Errorf("%s: failed to decode response: %w", method, err)
 	}
 	return result, nil
+}
+
+func (client *RPCClient) authorizationHeader(path string) string {
+	if strings.HasPrefix(path, "api/v2/") {
+		return "Bearer " + client.ClusterSecret
+	}
+	return client.ClusterID + " " + client.ClusterSecret
 }
 
 // locationToUUID extracts the last path segment from a Location header value.
