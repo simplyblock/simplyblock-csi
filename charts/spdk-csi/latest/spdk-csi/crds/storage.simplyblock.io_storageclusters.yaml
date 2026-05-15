@@ -101,9 +101,7 @@ spec:
                 description: ClientDataIfname defines the client data network interface.
                 type: string
               clientQpairCount:
-                description: |-
-                  ClientQpairCount defines client-side queue-pair count.
-                  FIXME: Unused for now
+                description: ClientQpairCount defines client-side queue-pair count.
                 format: int32
                 type: integer
               criticalThreshold:
@@ -125,23 +123,12 @@ spec:
                 description: EnableNodeAffinity enables node-affinity placement for
                   storage components.
                 type: boolean
-              eventLogEntries:
-                description: |-
-                  EventLogEntries limits the number of event-log entries returned/retained.
-                  FIXME: Unused for now
-                format: int32
-                type: integer
               fabricType:
                 description: FabricType defines the storage fabric type.
                 type: string
               haType:
                 description: HAType defines the backend high-availability mode.
                 type: string
-              includeEventLog:
-                description: |-
-                  IncludeEventLog controls whether event logs are included in responses/exports.
-                  FIXME: Unused for now
-                type: boolean
               inflightIOThreshold:
                 description: InflightIOThreshold defines the inflight I/O threshold.
                 format: int32
@@ -158,11 +145,6 @@ spec:
                 description: MaxQueueSize defines the maximum backend queue size.
                 format: int32
                 type: integer
-              mgmtIfname:
-                description: |-
-                  MgmtIfname is the management network interface name used for cluster communication.
-                  FIXME: Unused for now
-                type: string
               nodeRecycle:
                 description: NodeRecycle configures the node-recycle action.
                 properties:
@@ -180,11 +162,6 @@ spec:
                 description: PageSizeInBlocks defines page size expressed in blocks.
                 format: int32
                 type: integer
-              qosClasses:
-                description: |-
-                  QoSClasses defines backend QosSpec class configuration.
-                  FIXME: Unused for now
-                type: string
               qpairCount:
                 description: QpairCount defines the NVMe queue-pair count used by
                   the cluster.
