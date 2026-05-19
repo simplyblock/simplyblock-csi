@@ -333,7 +333,7 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	if vc["nqn"] == "" || vc["targetType"] == "" {
 		spdkVol, parseErr := getSPDKVol(volumeID)
 		if parseErr == nil {
-			sbcClient, clientErr := util.NewsimplyBlockClient(spdkVol.clusterID)
+			sbcClient, clientErr := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 			if clientErr == nil {
 				connInfo, infoErr := sbcClient.VolumeInfo(spdkVol.lvolID, vc["hostNQN"])
 				if infoErr != nil {
