@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -41,8 +40,6 @@ const (
 	TargetTypeTCP  = "tcp"
 	TargetTypeRDMA = "rdma"
 
-	// TargetTypeISCSI is the target type for cache
-	TargetTypeCache = "cache"
 )
 
 // SpdkCsiInitiator defines interface for NVMeoF/iSCSI initiator
@@ -67,22 +64,6 @@ type initiatorNVMf struct {
 	nsId           string
 	hostIface      string
 	hostNQN        string
-}
-
-// initiatorCache is an implementation of NVMf cache initiator
-type initiatorCache struct {
-	lvol   string
-	model  string
-	client RPCClient // TODO: support multi cluster for cache
-}
-
-type cachingNodeList struct {
-	Hostname string `json:"hostname"`
-	UUID     string `json:"id"`
-}
-
-type lVolCachingNodeConnect struct {
-	LvolID string `json:"lvol_id"`
 }
 
 type path struct {
@@ -232,132 +213,9 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			hostNQN:        volumeContext["hostNQN"],
 		}, nil
 
-	case "cache":
-		return &initiatorCache{
-			lvol:  volumeContext["uuid"],
-			model: volumeContext["model"],
-		}, nil
-
 	default:
 		return nil, fmt.Errorf("unknown initiator: %s", targetType)
 	}
-}
-
-func (cache *initiatorCache) Connect() (string, error) {
-	// get the hostname
-	hostname, err := os.Hostname()
-	if err != nil {
-		panic(err)
-	}
-	hostname = strings.Split(hostname, ".")[0]
-	klog.Info("hostname: ", hostname)
-
-	out, err := cache.client.CallSBCLI("GET", "/cachingnode", nil)
-	if err != nil {
-		klog.Error(err)
-		return "", err
-	}
-
-	data, err := json.Marshal(out)
-	if err != nil {
-		return "", err
-	}
-	var cnodes []*cachingNodeList
-	err = json.Unmarshal(data, &cnodes)
-	if err != nil {
-		return "", err
-	}
-
-	klog.Info("found caching nodes: ", cnodes)
-
-	isCachingNodeConnected := false
-	for _, cnode := range cnodes {
-		if hostname != cnode.Hostname {
-			continue
-		}
-
-		var resp interface{}
-		req := lVolCachingNodeConnect{
-			LvolID: cache.lvol,
-		}
-		klog.Info("connecting caching node: ", cnode.Hostname, " with lvol: ", cache.lvol)
-		resp, err = cache.client.CallSBCLI("PUT", "/cachingnode/connect/"+cnode.UUID, req)
-		if err != nil {
-			klog.Error("caching node connect error:", err)
-			return "", err
-		}
-		klog.Info("caching node connect resp: ", resp)
-		isCachingNodeConnected = true
-	}
-
-	if !isCachingNodeConnected {
-		return "", errors.New("failed to find the caching node")
-	}
-
-	// get the caching node ID associated with the hostname
-	// connect lvol and caching node
-
-	deviceGlob := fmt.Sprintf(DevDiskByID, cache.model)
-	devicePath, err := waitForDeviceReady(deviceGlob, 20)
-	if err != nil {
-		return "", err
-	}
-	return devicePath, nil
-}
-
-func (cache *initiatorCache) Disconnect() error {
-	// get the hostname
-	// get the caching node ID associated with the hostname
-	// connect lvol and caching node
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		os.Exit(1)
-	}
-	hostname = strings.Split(hostname, ".")[0]
-	klog.Info("hostname: ", hostname)
-
-	out, err := cache.client.CallSBCLI("GET", "/cachingnode", nil)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	data, err := json.Marshal(out)
-	if err != nil {
-		return err
-	}
-	var cnodes []*cachingNodeList
-	err = json.Unmarshal(data, &cnodes)
-	if err != nil {
-		return err
-	}
-	klog.Info("found caching nodes: ", cnodes)
-
-	isCachingNodeConnected := false
-	for _, cnode := range cnodes {
-		if hostname != cnode.Hostname {
-			continue
-		}
-		klog.Info("disconnect caching node: ", cnode.Hostname, "with lvol: ", cache.lvol)
-		req := lVolCachingNodeConnect{
-			LvolID: cache.lvol,
-		}
-		resp, err := cache.client.CallSBCLI("PUT", "/cachingnode/disconnect/"+cnode.UUID, req)
-		if err != nil {
-			klog.Error("caching node disconnect error:", err)
-			return err
-		}
-		klog.Info("caching node disconnect resp: ", resp)
-		isCachingNodeConnected = true
-	}
-
-	if !isCachingNodeConnected {
-		return errors.New("failed to find the caching node")
-	}
-
-	deviceGlob := fmt.Sprintf(DevDiskByID, cache.model)
-	return waitForDeviceGone(deviceGlob)
 }
 
 func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
