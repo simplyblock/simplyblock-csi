@@ -117,9 +117,6 @@ csiConfig:
 csiSecret:
   simplybk:
     secret:
-  simplybkPvc:
-    crypto_key1: N2IzNjk1MjY4ZTJhNjYxMWEyNWFjNGIxZWUxNWYyN2Y5YmY2ZWE5NzgzZGFkYTY2YTRhNzMwZWJmMDQ5MmJmZA==
-    crypto_key2: Nzg1MDU2MzZjODEzM2Q5YmU0MmUzNDdmODI3ODViODFhODc5Y2Q4MTMzMDQ2ZjhmYzBiMzZmMTdiMDc4YWQwYw==
 
 logicalVolume:
   pool_name: testing1

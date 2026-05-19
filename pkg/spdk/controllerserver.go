@@ -44,26 +44,22 @@ const (
 	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
 	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
 
-	annotationNvmfModelID     = "simplyblock.io/nvmf-model-id"
-	annotationLvolID          = "simplyblock.io/lvol-id"
-	annotationSecretName      = "simplyblock.io/secret-name"
-	annotationSecretNamespace = "simplyblock.io/secret-namespace"
-	annotationHostID          = "simplyblock.io/host-id"
-	annotationQoSRWIOPS       = "simplyblock.io/qos-rw-iops"
-	annotationQoSRWMBps       = "simplyblock.io/qos-rw-mbps"
-	annotationQoSRMBps        = "simplyblock.io/qos-r-mbps"
-	annotationQoSWMBps        = "simplyblock.io/qos-w-mbps"
+	annotationNvmfModelID = "simplyblock.io/nvmf-model-id"
+	annotationLvolID      = "simplyblock.io/lvol-id"
+	annotationHostID      = "simplyblock.io/host-id"
+	annotationQoSRWIOPS   = "simplyblock.io/qos-rw-iops"
+	annotationQoSRWMBps   = "simplyblock.io/qos-rw-mbps"
+	annotationQoSRMBps    = "simplyblock.io/qos-r-mbps"
+	annotationQoSWMBps    = "simplyblock.io/qos-w-mbps"
 
 	// Deprecated annotation keys — still supported for backward compatibility.
-	deprecatedAnnotationNvmfModelID     = "simplybk/nvmf-model-id"
-	deprecatedAnnotationLvolID          = "simplybk/lvol-id"
-	deprecatedAnnotationSecretName      = "simplybk/secret-name"
-	deprecatedAnnotationSecretNamespace = "simplybk/secret-namespace"
-	deprecatedAnnotationHostID          = "simplybk/host-id"
-	deprecatedAnnotationQoSRWIOPS       = "simplybk/qos-rw-iops"
-	deprecatedAnnotationQoSRWMBps       = "simplybk/qos-rw-mbytes"
-	deprecatedAnnotationQoSRMBps        = "simplybk/qos-r-mbytes"
-	deprecatedAnnotationQoSWMBps        = "simplybk/qos-w-mbytes"
+	deprecatedAnnotationNvmfModelID = "simplybk/nvmf-model-id"
+	deprecatedAnnotationLvolID      = "simplybk/lvol-id"
+	deprecatedAnnotationHostID      = "simplybk/host-id"
+	deprecatedAnnotationQoSRWIOPS   = "simplybk/qos-rw-iops"
+	deprecatedAnnotationQoSRWMBps   = "simplybk/qos-rw-mbytes"
+	deprecatedAnnotationQoSRMBps    = "simplybk/qos-r-mbytes"
+	deprecatedAnnotationQoSWMBps    = "simplybk/qos-w-mbytes"
 	
 	paramClusterID            = "cluster_id"
 	paramZoneClusterMap       = "zone_cluster_map"
@@ -524,29 +520,11 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	pvcName, pvcNameSelected := params[CSIStorageNameKey]
 	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
 
-	var cryptoKey1 string
-	var cryptoKey2 string
 	var pvcFullName string
-
 	if pvcNameSelected && pvcNamespaceSelected {
 		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
 	} else {
 		pvcFullName = pvcName
-	}
-
-	if encryption {
-		if pvcNameSelected && pvcNamespaceSelected {
-			cryptoKey1, cryptoKey2, err = GetCryptoKeys(ctx, pvcName, pvcNamespace)
-			if err != nil {
-				klog.Errorf("failed to get crypto keys: %v", err)
-				return nil, fmt.Errorf("failed to get crypto keys: %w", err)
-			}
-			if cryptoKey1 == "" || cryptoKey2 == "" {
-				return nil, errors.New("encryption is requested but crypto keys are missing")
-			}
-		} else {
-			return nil, errors.New("encryption requested but PVC name or namespace is not provided")
-		}
 	}
 
 	hostID, err := getHostIDAnnotation(ctx, pvcName, pvcNamespace)
@@ -600,8 +578,6 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		Replicate:    replicate,
 		DistNdcs:     distrNdcs,
 		DistNpcs:     distrNpcs,
-		CryptoKey1:   cryptoKey1,
-		CryptoKey2:   cryptoKey2,
 		HostID:       hostID,
 		LvolID:       lvolID,
 		Namespaced:   maxNamespace > 1,
@@ -1016,47 +992,6 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 	klog.V(5).Info("successfully created clone volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
-}
-
-func GetCryptoKeys(ctx context.Context, pvcName, pvcNamespace string) (cryptoKey1, cryptoKey2 string, err error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("failed to get in-cluster config: %v", err)
-		return "", "", fmt.Errorf("could not get in-cluster config: %w", err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorf("failed to create clientset: %v", err)
-		return "", "", fmt.Errorf("could not create clientset: %w", err)
-	}
-
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
-		return "", "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
-	}
-
-	ann := pvc.ObjectMeta.Annotations
-	secretName := pvcAnnotation(ann, annotationSecretName, deprecatedAnnotationSecretName)
-	secretNamespace := pvcAnnotation(ann, annotationSecretNamespace, deprecatedAnnotationSecretNamespace)
-
-	secret, err := clientset.CoreV1().Secrets(secretNamespace).Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get secret %s in namespace %s: %v", secretName, secretNamespace, err)
-		return "", "", fmt.Errorf("could not get secret %s in namespace %s: %w", secretName, secretNamespace, err)
-	}
-
-	key1, ok := secret.Data["crypto_key1"]
-	if !ok {
-		return "", "", fmt.Errorf("crypto_key1 not found in secret %s", secretName)
-	}
-	key2, ok := secret.Data["crypto_key2"]
-	if !ok {
-		return "", "", fmt.Errorf("crypto_key2 not found in secret %s", secretName)
-	}
-
-	return strings.TrimSpace(string(key1)), strings.TrimSpace(string(key2)), nil
 }
 
 func getHostIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {

@@ -151,6 +151,12 @@ func (node *NodeNVMf) LvStores() ([]LvStore, error) {
 	return node.Client.lvStores()
 }
 
+// ClusterInfo returns the typed GET /cluster response for this client's
+// cluster.
+func (node *NodeNVMf) ClusterInfo() (*ClusterInfo, error) {
+	return node.Client.clusterInfo()
+}
+
 // VolumeInfo returns a string:string map containing information necessary
 // for CSI node(initiator) to connect to this target and identify the disk.
 // hostNQN is passed to the sbcli API when the volume has allowed_hosts configured.
@@ -176,8 +182,6 @@ type CreateLVolData struct {
 	DistNdcs     int    `json:"ndcs"`
 	DistNpcs     int    `json:"npcs"`
 	PriorClass   int    `json:"lvol_priority_class"`
-	CryptoKey1   string `json:"crypto_key1"`
-	CryptoKey2   string `json:"crypto_key2"`
 	HostID       string `json:"host_id"`
 	LvolID       string `json:"uid"`
 	Namespaced   bool   `json:"namespaced"`

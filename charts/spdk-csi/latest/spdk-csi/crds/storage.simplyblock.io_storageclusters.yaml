@@ -129,6 +129,19 @@ spec:
               haType:
                 description: HAType defines the backend high-availability mode.
                 type: string
+              hashicorpVaultSettings:
+                description: HashicorpVaultSettings configures the Vault endpoint
+                  used by the cluster for key storage.
+                properties:
+                  baseURL:
+                    description: BaseURL is the HashiCorp Vault endpoint (e.g. https://vault.example.com:8200).
+                    type: string
+                type: object
+              includeEventLog:
+                description: |-
+                  IncludeEventLog controls whether event logs are included in responses/exports.
+                  FIXME: Unused for now
+                type: boolean
               inflightIOThreshold:
                 description: InflightIOThreshold defines the inflight I/O threshold.
                 format: int32

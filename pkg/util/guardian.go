@@ -38,10 +38,6 @@ type GuardianConfig struct {
 	CSIDriverName string
 }
 
-type ClusterStatus struct {
-	Status string `json:"status"`
-}
-
 // NewDefaultGuardianConfig returns sane defaults.
 func NewDefaultGuardianConfig(nodeName string) GuardianConfig {
 	return GuardianConfig{
@@ -493,21 +489,12 @@ func (g *Guardian) isClusterActiveByID(clusterID string) (ok bool, realStatus st
 		return false, "", err
 	}
 
-	resp, err := node.Client.CallSBCLI("GET", "/cluster", nil)
+	info, err := node.ClusterInfo()
 	if err != nil {
 		return false, "", err
 	}
 
-	var status []ClusterStatus
-	data, _ := json.Marshal(resp)
-	if err := json.Unmarshal(data, &status); err != nil {
-		return false, "", err
-	}
-	if len(status) == 0 {
-		return false, "", fmt.Errorf("empty cluster status response")
-	}
-
-	realStatus = strings.ToLower(strings.TrimSpace(status[0].Status))
+	realStatus = strings.ToLower(strings.TrimSpace(info.Status))
 	ok = (realStatus == "active" || realStatus == "degraded")
 	return ok, realStatus, nil
 }

@@ -721,7 +721,7 @@ func (s SimplyBlock) numberOfNodes() (int, error) {
 
 }
 
-func checkNodeStatus(nodeID string, expected string, rpcClient util.RPCClient, retries int, delay time.Duration) error {
+func checkNodeStatus(nodeID string, expected string, rpcClient *util.RPCClient, retries int, delay time.Duration) error {
 	for try := 1; try <= retries; try++ {
 		time.Sleep(delay)
 
@@ -783,7 +783,7 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 	retries := 20
 	delay := 10 * time.Second
 
-	err := checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
+	err := checkNodeStatus(nodeID, expectedStatus, &rpcClient, retries, delay)
 
 	if err != nil {
 		return err
@@ -797,7 +797,7 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 
 	//check whether the node has shutdown
 	expectedStatus = "offline"
-	err = checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
+	err = checkNodeStatus(nodeID, expectedStatus, &rpcClient, retries, delay)
 
 	if err != nil {
 		return err
@@ -826,7 +826,7 @@ func (s SimplyBlock) restartStorageNode(nodeID string) error {
 	}
 
 	expectedStatus = "online"
-	err = checkNodeStatus(nodeID, expectedStatus, rpcClient, retries, delay)
+	err = checkNodeStatus(nodeID, expectedStatus, &rpcClient, retries, delay)
 
 	if err != nil {
 		return err
