@@ -529,6 +529,9 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 	if output != nil {
 		klog.Infof("command returned: %s", output)
 	}
+	if err != nil && len(output) > 0 {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+	}
 	return err
 }
 
