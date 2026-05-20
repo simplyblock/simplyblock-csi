@@ -1,11 +1,16 @@
 name: Linux Unit tests and docker push
+
 on:
-  pull_request:
   push:
-    branches: ['master', 'dev']
+    branches: ['**']
   release:
     types: [created]
   workflow_dispatch:
+
+env:
+  IMAGE_NAME: docker.io/simplyblock/spdkcsi
+  ECR_IMAGE_NAME: public.ecr.aws/simply-block/spdkcsi
+  QUAY_IMAGE_NAME: quay.io/simplyblock-io/spdkcsi
 
 jobs:
 
@@ -13,104 +18,73 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-    - name: Check out code into the Go module directory
+    - name: Check out code
       uses: actions/checkout@v4
 
-    - name: Set up Go 1.x
+    - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version-file: go.mod
-      id: go
 
     - name: Tidy Go modules
-      run: |
-        go mod tidy
-        
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-
-    - name: Install QEMU
-      uses: docker/setup-qemu-action@v2
-      with:
-        platforms: linux/arm64,linux/amd64
-        
-    - name: Enable Docker BuildKit and Buildx
-      run: |
-        export DOCKER_CLI_EXPERIMENTAL=enabled
-        export DOCKER_BUILDKIT=1
-        docker buildx create --use
+      run: go mod tidy
 
     - name: Test
-      run: |
-        make test
-
-    - name: Set docker image tag
-      id: get_info
-      run: |
-        if [[ "${{github.ref}}" == refs/pull/* ]]; then
-          tag=${GITHUB_REF/\/merge/}
-          echo "TAG=$(echo pr-${tag:10})" >> $GITHUB_ENV
-        else
-          echo "TAG=$(echo ${GITHUB_REF#refs/*/} | sed 's/\//-/g')" >> $GITHUB_ENV
-        fi
-        echo "BRANCH=$([ -z '${{ github.event.pull_request.head.sha }}' ] && echo ${GITHUB_REF#refs/*/} || echo $GITHUB_HEAD_REF)" >> $GITHUB_ENV
-        echo "SHA=$([ -z '${{ github.event.pull_request.head.sha }}' ] && echo $GITHUB_SHA || echo '${{ github.event.pull_request.head.sha }}')" >> $GITHUB_ENV
+      run: make test
 
     - name: Login to Docker Hub
-      uses: docker/login-action@v1
+      uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_GEOFFREY }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_GEOFFREY }}
         aws-region: us-east-1
+
+    - name: Log in to Quay.io
+      uses: docker/login-action@v3
+      with:
+        registry: quay.io
+        username: ${{ secrets.QUAY_USERNAME }}
+        password: ${{ secrets.QUAY_PASSWORD }}
 
     - name: Login to ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
       with:
         registry-type: public
-        
-    - name: Build & Push
-      run: |
-        SHORT_SHA=$(echo ${{ env.SHA }} | head -c 8)
-        make image
-       
-        # Docker Hub Tags
-        docker tag simplyblock/spdkcsi:latest-amd64 simplyblock/spdkcsi:$TAG-amd64
-        docker tag simplyblock/spdkcsi:latest-arm64 simplyblock/spdkcsi:$TAG-arm64
 
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
 
-        # ECR Tags
-        docker tag simplyblock/spdkcsi:latest-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-amd64
-        docker tag simplyblock/spdkcsi:latest-arm64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-        # Push to Docker Hub
-        docker push simplyblock/spdkcsi:$TAG-amd64
-        docker push simplyblock/spdkcsi:$TAG-arm64
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          ${{ env.IMAGE_NAME }}
+          ${{ env.ECR_IMAGE_NAME }}
+          ${{ env.QUAY_IMAGE_NAME }}
+        tags: |
+          type=raw,value=latest,enable=${{ github.ref_name == 'master' || github.event_name == 'release' }}
+          type=ref,event=branch
+          type=ref,event=tag
+          type=sha,prefix=${{ github.ref_name }}-,format=short,enable=${{ github.event_name == 'push' }}
 
-        # Push to Amazon ECR
-        docker push public.ecr.aws/simply-block/spdkcsi:$TAG-amd64
-        docker push public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
-
-
-        # Create multi-arch manifests
-
-        if [ "${{ github.event_name }}" = "release" ]; then
-          docker buildx imagetools create -t simplyblock/spdkcsi:$TAG simplyblock/spdkcsi:$TAG-amd64 simplyblock/spdkcsi:$TAG-arm64
-          docker buildx imagetools create -t public.ecr.aws/simply-block/spdkcsi:$TAG public.ecr.aws/simply-block/spdkcsi:$TAG-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
-
-        elif [ "${{ github.ref }}" = "refs/heads/master" ]; then 
-          docker buildx imagetools create -t simplyblock/spdkcsi:latest simplyblock/spdkcsi:$TAG-amd64 simplyblock/spdkcsi:$TAG-arm64
-          docker buildx imagetools create -t public.ecr.aws/simply-block/spdkcsi:latest public.ecr.aws/simply-block/spdkcsi:$TAG-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
-
-        else
-          docker buildx imagetools create -t simplyblock/spdkcsi:$TAG simplyblock/spdkcsi:$TAG-amd64 simplyblock/spdkcsi:$TAG-arm64
-          docker buildx imagetools create -t public.ecr.aws/simply-block/spdkcsi:$TAG public.ecr.aws/simply-block/spdkcsi:$TAG-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
-          docker buildx imagetools create -t simplyblock/spdkcsi:$TAG-$SHORT_SHA simplyblock/spdkcsi:$TAG-amd64 simplyblock/spdkcsi:$TAG-arm64
-          docker buildx imagetools create -t public.ecr.aws/simply-block/spdkcsi:$TAG-$SHORT_SHA public.ecr.aws/simply-block/spdkcsi:$TAG-amd64 public.ecr.aws/simply-block/spdkcsi:$TAG-arm64
-        fi
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: deploy/image/Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

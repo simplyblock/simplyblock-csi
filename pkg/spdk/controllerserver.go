@@ -43,13 +43,24 @@ const (
 	CSIStorageBaseKey         = "csi.storage.k8s.io/pvc"
 	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
 	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
-	annotationLvolID          = "simplybk/lvol-id"
-	annotationSecretName      = "simplybk/secret-name"
-	annotationSecretNamespace = "simplybk/secret-namespace"
-	annotationQoSRWIOPS       = "simplybk/qos-rw-iops"
-	annotationQoSRWmBytes     = "simplybk/qos-rw-mbytes"
-	annotationQoSRmBytes      = "simplybk/qos-r-mbytes"
-	annotationQoSWmBytes      = "simplybk/qos-w-mbytes"
+
+	annotationNvmfModelID = "simplyblock.io/nvmf-model-id"
+	annotationLvolID      = "simplyblock.io/lvol-id"
+	annotationHostID      = "simplyblock.io/host-id"
+	annotationQoSRWIOPS   = "simplyblock.io/qos-rw-iops"
+	annotationQoSRWMBps   = "simplyblock.io/qos-rw-mbps"
+	annotationQoSRMBps    = "simplyblock.io/qos-r-mbps"
+	annotationQoSWMBps    = "simplyblock.io/qos-w-mbps"
+
+	// Deprecated annotation keys — still supported for backward compatibility.
+	deprecatedAnnotationNvmfModelID = "simplybk/nvmf-model-id"
+	deprecatedAnnotationLvolID      = "simplybk/lvol-id"
+	deprecatedAnnotationHostID      = "simplybk/host-id"
+	deprecatedAnnotationQoSRWIOPS   = "simplybk/qos-rw-iops"
+	deprecatedAnnotationQoSRWMBps   = "simplybk/qos-rw-mbytes"
+	deprecatedAnnotationQoSRMBps    = "simplybk/qos-r-mbytes"
+	deprecatedAnnotationQoSWMBps    = "simplybk/qos-w-mbytes"
+	
 	paramClusterID            = "cluster_id"
 	paramZoneClusterMap       = "zone_cluster_map"
 	paramRegionClusterMap     = "region_cluster_map"
@@ -71,6 +82,7 @@ type spdkVolume struct {
 
 type spdkSnapshot struct {
 	clusterID  string
+	poolID     string
 	snapshotID string
 }
 
@@ -284,7 +296,8 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	sbClient, err := util.NewsimplyBlockClient(selection.clusterID)
+	poolName := req.GetParameters()["pool_name"]
+	sbClient, err := util.NewsimplyBlockClient(selection.clusterID, poolName)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +412,7 @@ func (cs *controllerServer) CreateSnapshot(_ context.Context, req *csi.CreateSna
 		klog.Errorf("failed to get spdk volume, volumeID: %s err: %v", volumeID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -444,7 +457,7 @@ func (cs *controllerServer) DeleteSnapshot(_ context.Context, req *csi.DeleteSna
 		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID)
+	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID, sbSnapshot.poolID)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -509,29 +522,11 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	pvcName, pvcNameSelected := params[CSIStorageNameKey]
 	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
 
-	var cryptoKey1 string
-	var cryptoKey2 string
 	var pvcFullName string
-
 	if pvcNameSelected && pvcNamespaceSelected {
 		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
 	} else {
 		pvcFullName = pvcName
-	}
-
-	if encryption {
-		if pvcNameSelected && pvcNamespaceSelected {
-			cryptoKey1, cryptoKey2, err = GetCryptoKeys(ctx, pvcName, pvcNamespace)
-			if err != nil {
-				klog.Errorf("failed to get crypto keys: %v", err)
-				return nil, fmt.Errorf("failed to get crypto keys: %w", err)
-			}
-			if cryptoKey1 == "" || cryptoKey2 == "" {
-				return nil, errors.New("encryption is requested but crypto keys are missing")
-			}
-		} else {
-			return nil, errors.New("encryption requested but PVC name or namespace is not provided")
-		}
 	}
 
 	hostID, err := getHostIDAnnotation(ctx, pvcName, pvcNamespace)
@@ -557,14 +552,14 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		if qos.RWIOPS != "" {
 			maxRWIOPS = qos.RWIOPS
 		}
-		if qos.RWMBytes != "" {
-			maxRWmBytes = qos.RWMBytes
+		if qos.RWMBps != "" {
+			maxRWmBytes = qos.RWMBps
 		}
-		if qos.RMBytes != "" {
-			maxRmBytes = qos.RMBytes
+		if qos.RMBps != "" {
+			maxRmBytes = qos.RMBps
 		}
-		if qos.WMBytes != "" {
-			maxWmBytes = qos.WMBytes
+		if qos.WMBps != "" {
+			maxWmBytes = qos.WMBps
 		}
 	}
 
@@ -585,8 +580,6 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		Replicate:    replicate,
 		DistNdcs:     distrNdcs,
 		DistNpcs:     distrNpcs,
-		CryptoKey1:   cryptoKey1,
-		CryptoKey2:   cryptoKey2,
 		HostID:       hostID,
 		LvolID:       lvolID,
 		Namespaced:   maxNamespace > 1,
@@ -598,7 +591,7 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 func (cs *controllerServer) getExistingVolume(name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
 	volumeID, err := sbclient.GetVolume(name, poolName)
 	if err == nil {
-		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
+		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
 		klog.V(5).Info("volume already exists", vol.GetVolumeId())
 		return vol, nil
 	}
@@ -653,7 +646,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
 	klog.V(5).Info("successfully created volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return &vol, nil
@@ -678,19 +671,17 @@ func getSPDKVol(csiVolumeID string) (*spdkVolume, error) {
 }
 
 func getSnapshot(csiSnapshotID string) (*spdkSnapshot, error) {
-	// extract clusterID and snapshotID from csiSnapshotID
-	// csiVolumeID: 8ffac363-0c46-4714-a71b-f9c0b58a1269:8e2dcb9d-3a79-4362-965e-fdb0cd3f4b8d
-	// ClusterID: 8ffac363-0c46-4714-a71b-f9c0b58a1269
-	// snapshotID: 8e2dcb9d-3a79-4362-965e-fdb0cd3f4b8d
-
 	ids := strings.Split(csiSnapshotID, ":")
-	if len(ids) == 2 {
-		return &spdkSnapshot{
-			clusterID:  ids[0],
-			snapshotID: ids[1],
-		}, nil
+	switch len(ids) {
+	case 3:
+		// New 3-part format: {clusterID}:{poolID}:{snapshotID}
+		return &spdkSnapshot{clusterID: ids[0], poolID: ids[1], snapshotID: ids[2]}, nil
+	case 2:
+		// Legacy 2-part format: {clusterID}:{snapshotID} — pool resolved at delete time
+		return &spdkSnapshot{clusterID: ids[0], snapshotID: ids[1]}, nil
+	default:
+		return nil, fmt.Errorf("invalid snapshot ID format: %s", csiSnapshotID)
 	}
-	return nil, fmt.Errorf("missing clusterID in csiSnapshotID: %s", csiSnapshotID)
 }
 
 func (cs *controllerServer) publishVolume(volumeID string, sbclient *util.NodeNVMf) (map[string]string, error) {
@@ -703,10 +694,13 @@ func (cs *controllerServer) publishVolume(volumeID string, sbclient *util.NodeNV
 		return nil, err
 	}
 
-	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID)
+	// hostNQN is not available in the controller path; pass empty string.
+	// If the volume has allowed_hosts configured, this call will fail and the
+	// node will re-fetch connection info at NodeStageVolume time using its own NQN.
+	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID, "")
 	if err != nil {
-		cs.unpublishVolume(volumeID) //nolint:errcheck // we can do little
-		return nil, err
+		klog.Warningf("failed to get volume info for %s (will be fetched at stage time): %v", spdkVol.lvolID, err)
+		return map[string]string{}, nil
 	}
 	return volumeInfo, nil
 }
@@ -716,7 +710,7 @@ func (cs *controllerServer) deleteVolume(volumeID string) error {
 	if err != nil {
 		return err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return err
 	}
@@ -728,7 +722,7 @@ func (cs *controllerServer) unpublishVolume(volumeID string) error {
 	if err != nil {
 		return err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return err
 	}
@@ -747,7 +741,7 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 		return nil, err
 	}
 
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return nil, err
 	}
@@ -773,7 +767,7 @@ func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshot
 	}
 
 	for _, clusterID := range clusters {
-		sbclient, err := util.NewsimplyBlockClient(clusterID)
+		sbclient, err := util.NewsimplyBlockClient(clusterID, "")
 		if err != nil {
 			klog.Errorf("failed to create spdk client: %v", err)
 			return nil, status.Error(codes.Internal, err.Error())
@@ -788,25 +782,12 @@ func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshot
 
 	var vca []*csi.ListSnapshotsResponse_Entry
 	for _, entry := range entries {
-		dt, err := strconv.ParseInt(entry.CreatedAt, 10, 64)
-		if err != nil {
-			return nil, err
-		}
 		snapshotData := &csi.Snapshot{
-			SizeBytes:      entry.Size,
-			SnapshotId:     entry.UUID,
-			SourceVolumeId: fmt.Sprintf("%s:%s", entry.PoolName, entry.SourceVolume.UUID),
-			CreationTime: &timestamppb.Timestamp{
-				Seconds: dt,
-			},
+			SizeBytes:  entry.Size,
+			SnapshotId: fmt.Sprintf("%s:%s:%s", entry.ClusterID, entry.PoolID, entry.UUID),
 			ReadyToUse: true,
 		}
-
-		responseData := &csi.ListSnapshotsResponse_Entry{
-			Snapshot: snapshotData,
-		}
-
-		vca = append(vca, responseData)
+		vca = append(vca, &csi.ListSnapshotsResponse_Entry{Snapshot: snapshotData})
 	}
 
 	return &csi.ListSnapshotsResponse{
@@ -872,13 +853,13 @@ func (cs *controllerServer) ControllerGetVolume(_ context.Context, req *csi.Cont
 		return nil, err
 	}
 
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID)
+	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID, "")
 	if err != nil {
 		klog.Errorf("failed to get spdkVol for %s: %v", volumeID, err)
 
@@ -941,7 +922,8 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 		klog.Errorf("failed to get spdk snapshot, csiSnapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID)
+	// Use destination pool (from StorageClass params), not source snapshot pool.
+	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID, poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -958,7 +940,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
 	klog.V(5).Info("successfully Restored Snapshot from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
@@ -981,7 +963,8 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("failed to get spdk volume, srcVolumeID: %s err: %v", srcVolumeID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID)
+	// Volume clone goes to the same pool as the source volume.
+	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -994,50 +977,10 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, poolName, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
 	klog.V(5).Info("successfully created clone volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
-}
-
-func GetCryptoKeys(ctx context.Context, pvcName, pvcNamespace string) (cryptoKey1, cryptoKey2 string, err error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("failed to get in-cluster config: %v", err)
-		return "", "", fmt.Errorf("could not get in-cluster config: %w", err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorf("failed to create clientset: %v", err)
-		return "", "", fmt.Errorf("could not create clientset: %w", err)
-	}
-
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
-		return "", "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
-	}
-
-	secretName := pvc.ObjectMeta.Annotations[annotationSecretName]
-	secretNamespace := pvc.ObjectMeta.Annotations[annotationSecretNamespace]
-
-	secret, err := clientset.CoreV1().Secrets(secretNamespace).Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get secret %s in namespace %s: %v", secretName, secretNamespace, err)
-		return "", "", fmt.Errorf("could not get secret %s in namespace %s: %w", secretName, secretNamespace, err)
-	}
-
-	key1, ok := secret.Data["crypto_key1"]
-	if !ok {
-		return "", "", fmt.Errorf("crypto_key1 not found in secret %s", secretName)
-	}
-	key2, ok := secret.Data["crypto_key2"]
-	if !ok {
-		return "", "", fmt.Errorf("crypto_key2 not found in secret %s", secretName)
-	}
-
-	return strings.TrimSpace(string(key1)), strings.TrimSpace(string(key2)), nil
 }
 
 func getHostIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
@@ -1059,8 +1002,8 @@ func getHostIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (str
 		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	hostID, ok := pvc.ObjectMeta.Annotations["simplybk/host-id"]
-	if !ok {
+	hostID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationHostID, deprecatedAnnotationHostID)
+	if hostID == "" {
 		return "", nil
 	}
 
@@ -1086,20 +1029,55 @@ func getLvolIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (str
 		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	lvolID, ok := pvc.ObjectMeta.Annotations[annotationLvolID]
-	if !ok {
+	lvolID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationLvolID, deprecatedAnnotationLvolID)
+	if lvolID == "" {
 		return "", nil
 	}
 
 	return lvolID, nil
 }
 
+func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Errorf("failed to get in-cluster config: %v", err)
+		return "", fmt.Errorf("could not get in-cluster config: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Errorf("failed to create clientset: %v", err)
+		return "", fmt.Errorf("could not create clientset: %w", err)
+	}
+
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
+		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
+	}
+
+	modelID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationNvmfModelID, deprecatedAnnotationNvmfModelID)
+	if modelID == "" {
+		return "", nil
+	}
+
+	return modelID, nil
+}
+
+// pvcAnnotation returns the value for newKey, falling back to deprecatedKey for backward compat.
+func pvcAnnotation(annotations map[string]string, newKey, deprecatedKey string) string {
+	if v, ok := annotations[newKey]; ok {
+		return v
+	}
+	return annotations[deprecatedKey]
+}
+
 // qosAnnotations holds per-PVC QoS override values read from PVC annotations.
 type qosAnnotations struct {
-	RWIOPS   string
-	RWMBytes string
-	RMBytes  string
-	WMBytes  string
+	RWIOPS  string
+	RWMBps  string
+	RMBps   string
+	WMBps   string
 }
 
 // getQoSAnnotations returns per-PVC QoS overrides from PVC annotations.
@@ -1124,9 +1102,9 @@ func getQoSAnnotations(ctx context.Context, pvcName, pvcNamespace string) (qosAn
 
 	annotations := pvc.ObjectMeta.Annotations
 	return qosAnnotations{
-		RWIOPS:   annotations[annotationQoSRWIOPS],
-		RWMBytes: annotations[annotationQoSRWmBytes],
-		RMBytes:  annotations[annotationQoSRmBytes],
-		WMBytes:  annotations[annotationQoSWmBytes],
+		RWIOPS: pvcAnnotation(annotations, annotationQoSRWIOPS, deprecatedAnnotationQoSRWIOPS),
+		RWMBps: pvcAnnotation(annotations, annotationQoSRWMBps, deprecatedAnnotationQoSRWMBps),
+		RMBps:  pvcAnnotation(annotations, annotationQoSRMBps, deprecatedAnnotationQoSRMBps),
+		WMBps:  pvcAnnotation(annotations, annotationQoSWMBps, deprecatedAnnotationQoSWMBps),
 	}, nil
 }

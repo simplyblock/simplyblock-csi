@@ -44,14 +44,34 @@ spec:
                   Action triggers an imperative pool operation.
                   FIXME: Unused for now
                 type: string
+              allowedNodes:
+                description: |-
+                  AllowedNodes is the list of Kubernetes worker node names allowed to access volumes
+                  in this pool. The operator resolves each node name to a deterministic NQN derived
+                  from the node's UID: nqn.2014-08.io.simplyblock:uuid:<node-uid>.
+                  The CSI node uses the same formula so no manual NQN management is required.
+                items:
+                  type: string
+                type: array
               capacityLimit:
-                description: CapacityLimit is the maximum pool capacity.
+                description: |-
+                  CapacityLimit is the maximum aggregate capacity that can be allocated from this pool.
+                  This maps to sbctl pool add --pool-max. Use sizes like 20M, 20G, or 0 for unlimited.
                 type: string
               clusterName:
                 description: ClusterName is the target storage cluster name.
                 type: string
-              name:
-                description: Name is the backend pool name.
+              dhchap:
+                default: false
+                description: |-
+                  DHCHAP enables DH-HMAC-CHAP key generation for the pool. Authentication is only
+                  enforced when allowedNodes is non-empty
+                type: boolean
+              logicalVolumeMaxSize:
+                description: |-
+                  LogicalVolumeMaxSize is the maximum size allowed for any single logical volume
+                  created in this pool. This maps to sbctl pool add --lvol-max. Use sizes like
+                  20M, 20G, or 0 for unlimited.
                 type: string
               qos:
                 description: QosSpec defines QosSpec limits for the pool.
@@ -149,11 +169,16 @@ spec:
                 type: object
             required:
             - clusterName
-            - name
             type: object
           status:
             description: status defines the observed state of Pool
             properties:
+              allowedNodes:
+                description: AllowedNodes lists the Kubernetes node names currently
+                  registered on the backend.
+                items:
+                  type: string
+                type: array
               qos:
                 description: QoS contains observed/configured QoS values.
                 properties:

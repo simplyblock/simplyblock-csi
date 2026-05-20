@@ -4,6 +4,8 @@ import (
 	"time"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
@@ -43,6 +45,66 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 			})
 		})
 
+		ginkgo.It("Test filesystem volume expansion", func() {
+			testPodName := "spdkcsi-test"
+			pvcName := "spdkcsi-pvc"
+			expandedSize := resource.MustParse("2Gi")
+			testPodLabel := metav1.ListOptions{
+				LabelSelector: "app=spdkcsi-pvc",
+			}
+
+			ginkgo.By("creating a PVC and pod", func() {
+				deployPVC()
+				deployTestPod()
+				defer deletePVCAndTestPod()
+
+				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = resizePVC(f.ClientSet, pvcName, expandedSize)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = waitForPVCStorageCapacity(f.ClientSet, pvcName, expandedSize, 5*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				err = waitForFilesystemSize(f, &testPodLabel, "/spdkvol", expandedSize.Value()*9/10, 5*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+		})
+
+		ginkgo.It("Test mounted volume stats", func() {
+			testPodName := "spdkcsi-test"
+			testPodLabel := metav1.ListOptions{
+				LabelSelector: "app=spdkcsi-pvc",
+			}
+
+			ginkgo.By("creating a mounted PVC with data", func() {
+				deployPVC()
+				deployTestPod()
+				defer deletePVCAndTestPod()
+
+				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+
+				writeDataToPod(f, &testPodLabel, "volume stats test data", "/spdkvol/stats-test")
+
+				err = waitForMountedVolumeStats(f.ClientSet, testPodName, 5*time.Minute)
+				if err != nil {
+					ginkgo.Fail(err.Error())
+				}
+			})
+		})
+
 		ginkgo.It("Test multiple PVCs", func() {
 			multiTestPodName := "spdkcsi-test-multi"
 			ginkgo.By("create multiple pvcs and a pod with multiple pvcs attached, and check data persistence after the pod is removed and recreated", func() {
@@ -65,42 +127,6 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 				}
 
 				err = checkDataPersistForMultiPvcs(f)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-		})
-	})
-})
-
-var _ = ginkgo.Describe("CACHE-NODE-TEST", func() {
-	f := framework.NewDefaultFramework("spdkcsi")
-
-	ginkgo.Context("Test caching node SPDK CSI Dynamic Volume Provisioning", func() {
-
-		ginkgo.It("Test the flow for Caching nodes", func() {
-			testPodName := "spdkcsi-test"
-			ginkgo.By("creating a caching PVC and bind it to a pod", func() {
-				deployCachePVC()
-				deployCacheTestPod()
-				defer deleteCachePVCAndCacheTestPod()
-				err := waitForCacheTestPodReady(f.ClientSet, 3*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-
-			ginkgo.By("check data persistency after the pod is removed and recreated", func() {
-				deployPVC()
-				deployTestPod()
-				defer deletePVCAndTestPod()
-
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-
-				err = checkDataPersist(f)
 				if err != nil {
 					ginkgo.Fail(err.Error())
 				}

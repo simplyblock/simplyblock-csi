@@ -48,13 +48,6 @@ spec:
                 - resume
                 - remove
                 type: string
-              addPcieToAllowList:
-                description: |-
-                  AddPcieToAllowList appends devices to the allow-list during restart actions.
-                  FIXME: Unused for now
-                items:
-                  type: string
-                type: array
               clusterImage:
                 description: ClusterImage is the container image used for storage-node
                   workloads.
@@ -62,9 +55,6 @@ spec:
               clusterName:
                 description: ClusterName is the target storage cluster name.
                 type: string
-              coreIsolation:
-                description: CoreIsolation enables CPU core isolation mode.
-                type: boolean
               corePercentage:
                 description: CorePercentage is the percentage of cores to be used
                   for spdk (0-99).
@@ -88,9 +78,7 @@ spec:
                 description: EnableCpuTopology enables topology-aware CPU handling.
                 type: boolean
               force:
-                description: |-
-                  Force enables forced action execution where supported.
-                  FIXME: Unused for now
+                description: Force enables forced action execution where supported.
                 type: boolean
               forceFormat4K:
                 description: ForceFormat4K forces 4K blocksize formatting of the NVMe
@@ -108,11 +96,6 @@ spec:
                       percentage per device.
                     format: int32
                     type: integer
-                  useSeparateJournalDevice:
-                    description: |-
-                      UseSeparateJournalDevice enables using separate journal devices.
-                      FIXME: Unused for now
-                    type: boolean
                 type: object
               maxLogicalVolumeCount:
                 description: MaxLogicalVolumeCount is the maximum number of logical
@@ -126,11 +109,6 @@ spec:
               mgmtIfname:
                 description: MgmtIfname is the management interface name used by storage
                   nodes.
-                type: string
-              nodeAddr:
-                description: |-
-                  NodeAddr is the explicit node address used by action flows.
-                  FIXME: Unused for now
                 type: string
               nodeUUID:
                 description: NodeUUID is required when action is specified
@@ -164,6 +142,10 @@ spec:
               pcieModel:
                 description: PcieModel filters devices by PCI model.
                 type: string
+              reattachVolume:
+                description: ReattachVolume reattaches volumes during restart where
+                  supported by the backend.
+                type: boolean
               reservedSystemCPU:
                 description: ReservedSystemCPU defines CPUs reserved for system workloads.
                 type: string
@@ -377,10 +359,9 @@ spec:
         - message: nodeUUID is required when action is specified
           rule: '!(has(self.spec.action) && self.spec.action != "" && (!has(self.spec.nodeUUID)
             || self.spec.nodeUUID == ""))'
-        - message: clusterImage, maxLogicalVolumeCount, and workerNodes are required
-            when action is not specified
-          rule: (has(self.spec.action) && self.spec.action != "") || (has(self.spec.clusterImage)
-            && self.spec.clusterImage != "" && has(self.spec.maxLogicalVolumeCount)
+        - message: maxLogicalVolumeCount and workerNodes are required when action
+            is not specified
+          rule: (has(self.spec.action) && self.spec.action != "") || (has(self.spec.maxLogicalVolumeCount)
             && has(self.spec.workerNodes) && size(self.spec.workerNodes) > 0)
     served: true
     storage: true

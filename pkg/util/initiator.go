@@ -67,6 +67,7 @@ type initiatorNVMf struct {
 	model          string
 	nsId           string
 	hostIface      string
+	hostNQN        string
 }
 
 // initiatorCache is an implementation of NVMf cache initiator
@@ -104,8 +105,8 @@ type subsystemResponse struct {
 }
 
 type NodeInfo struct {
-	NodeID string   `json:"node_id"`
-	Nodes  []string `json:"nodes"`
+	NodeID string   `json:"storage_node_id"` // v2 VolumeDTO field
+	Nodes  []string `json:"nodes"`            // URL paths in v2; converted to UUIDs after parsing
 	Status string   `json:"status"`
 }
 
@@ -137,9 +138,10 @@ type ClustersInfo struct {
 	Clusters []ClusterConfig `json:"clusters"`
 }
 
-// NewsimplyBlockClient create a new Simplyblock client
-// should be called for every CSI driver operation
-func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
+// NewsimplyBlockClient creates a new Simplyblock client scoped to a cluster and optionally a pool.
+// poolIDOrName may be a pool UUID (used as-is) or a pool name (resolved via API), or empty
+// (no pool context — only cluster-level operations will work).
+func NewsimplyBlockClient(clusterID, poolIDOrName string) (*NodeNVMf, error) {
 	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
 	var clusters ClustersInfo
 	err := ParseJSONFile(secretFile, &clusters)
@@ -163,12 +165,54 @@ func NewsimplyBlockClient(clusterID string) (*NodeNVMf, error) {
 		return nil, fmt.Errorf("invalid cluster configuration for clusterID %s", clusterID)
 	}
 
-	// Log and return the newly created Simplyblock client.
 	klog.Infof("Simplyblock client created for ClusterID:%s, Endpoint:%s",
 		clusterConfig.ClusterID,
 		clusterConfig.ClusterEndpoint,
 	)
-	return NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret)
+
+	node, err := NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	if poolIDOrName != "" {
+		poolUUID, err := resolvePoolUUID(node, poolIDOrName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve pool %q: %w", poolIDOrName, err)
+		}
+		node.Client.PoolID = poolUUID
+	}
+
+	return node, nil
+}
+
+// resolvePoolUUID returns poolIDOrName as-is if it is already a UUID,
+// otherwise looks up the pool UUID by name via the API.
+func resolvePoolUUID(node *NodeNVMf, poolIDOrName string) (string, error) {
+	if isUUID(poolIDOrName) {
+		return poolIDOrName, nil
+	}
+	return node.GetPoolUUIDByName(poolIDOrName)
+}
+
+// isUUID reports whether s is a standard UUID (8-4-4-4-12 hex, with hyphens).
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // NewSpdkCsiInitiator creates a new SpdkCsiInitiator based on the target type
@@ -194,6 +238,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			model:          volumeContext["model"],
 			nsId:           volumeContext["nsId"],
 			hostIface:      volumeContext["hostIface"],
+			hostNQN:        volumeContext["hostNQN"],
 		}, nil
 
 	case "cache":
@@ -351,12 +396,12 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	var connections []*LvolConnectResp
 	if !alreadyConnected {
 		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
-		sbcClient, err := NewsimplyBlockClient(clusterID)
+		sbcClient, err := NewsimplyBlockClient(clusterID, "")
 		if err != nil {
 			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
 		}
-		connections, err = fetchLvolConnection(sbcClient, lvolID)
+		connections, err := fetchLvolConnection(sbcClient, lvolID, nvmf.hostNQN)
 		if err != nil {
 			klog.Errorf("Failed to get lvol connection: %v", err)
 			return "", err
@@ -375,6 +420,10 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 
 			if nvmf.hostIface != "" {
 				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
+			}
+
+			if nvmf.hostNQN != "" {
+				cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
 			}
 
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
@@ -736,47 +785,44 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 }
 
 func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
-	resp, err := spdkNode.Client.CallSBCLI("GET", "/lvol/"+lvolID, nil)
+	if err := spdkNode.Client.findPoolForVolume(lvolID); err != nil {
+		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
+	}
+	resp, err := spdkNode.Client.CallSBCLI("GET", spdkNode.Client.v2volume(lvolID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch node info: %v", err)
 	}
-	var info []NodeInfo
+	var info NodeInfo
 	respBytes, _ := json.Marshal(resp)
 	if err := json.Unmarshal(respBytes, &info); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal node info: %v", err)
 	}
-
-	if len(info) == 0 {
-		return nil, fmt.Errorf("empty node info response for lvolID %s", lvolID)
+	// v2 nodes field returns URL paths; extract UUIDs from last path segment
+	for i, n := range info.Nodes {
+		info.Nodes[i] = locationToUUID(n)
 	}
-
-	return &info[0], nil
+	return &info, nil
 }
 
 func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
-	resp, err := spdkNode.Client.CallSBCLI("GET", "/storagenode/"+nodeID, nil)
+	status, err := spdkNode.Client.getStorageNodeStatus(nodeID)
 	if err != nil {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
 	}
-	var status []NodeInfo
-	respBytes, _ := json.Marshal(resp)
-	if err := json.Unmarshal(respBytes, &status); err != nil {
-		klog.Errorf("failed to unmarshal node status for node %s: %v", nodeID, err)
-		return false
-	}
-	return status[0].Status == "online"
+	return status == "online"
 }
 
-func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string) ([]*LvolConnectResp, error) {
-	resp, err := spdkNode.Client.CallSBCLI("GET", "/lvol/connect/"+lvolID, nil)
+func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
+	if err := spdkNode.Client.findPoolForVolume(lvolID); err != nil {
+		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
+	}
+	connections, err := spdkNode.Client.getLvolConnections(lvolID, hostNQN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch connection: %v", err)
 	}
-	var connections []*LvolConnectResp
-	respBytes, _ := json.Marshal(resp)
-	if err := json.Unmarshal(respBytes, &connections); err != nil || len(connections) == 0 {
-		return nil, fmt.Errorf("invalid or empty connection response")
+	if len(connections) == 0 {
+		return nil, fmt.Errorf("empty connection response for volume %s", lvolID)
 	}
 	return connections, nil
 }
@@ -889,12 +935,12 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 		return cached
 	}
 
-	sbcClient, err := NewsimplyBlockClient(clusterID)
+	sbcClient, err := NewsimplyBlockClient(clusterID, "")
 	if err != nil {
 		klog.Warningf("resolveExpectedPathCount: client error for NQN %s: %v", nqn, err)
 		return cached
 	}
-	conns, err := fetchLvolConnection(sbcClient, lvolID)
+	conns, err := fetchLvolConnection(sbcClient, lvolID, "")
 	if err != nil {
 		klog.Warningf("resolveExpectedPathCount: fetch error for NQN %s: %v", nqn, err)
 		return cached
@@ -911,7 +957,7 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 }
 
 func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []path) error {
-	sbcClient, err := NewsimplyBlockClient(clusterID)
+	sbcClient, err := NewsimplyBlockClient(clusterID, "")
 	if err != nil {
 		return fmt.Errorf("failed to create SimplyBlock client: %w", err)
 	}
@@ -921,7 +967,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 		return fmt.Errorf("failed to fetch node info for lvol %s: %w", lvolID, err)
 	}
 
-	expectedConns, err := fetchLvolConnection(sbcClient, lvolID)
+	expectedConns, err := fetchLvolConnection(sbcClient, lvolID, "")
 	if err != nil {
 		return fmt.Errorf("failed to fetch connections for lvol %s: %w", lvolID, err)
 	}
