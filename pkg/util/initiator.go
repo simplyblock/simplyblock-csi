@@ -420,9 +420,9 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
 			}
 
-			if nvmf.hostNQN != "" {
-				cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
-			}
+			// if nvmf.hostNQN != "" {
+			// 	cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
+			// }
 
 			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
 			if err != nil {
@@ -528,6 +528,9 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 	}
 	if output != nil {
 		klog.Infof("command returned: %s", output)
+	}
+	if err != nil && len(output) > 0 {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return err
 }
