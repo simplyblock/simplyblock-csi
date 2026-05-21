@@ -3,7 +3,46 @@ entries:
   spdk-csi:
   - apiVersion: v2
     appVersion: latest
-    created: "2026-05-18T11:04:24.124013601Z"
+    created: "2026-05-21T17:18:26.220931597Z"
+    dependencies:
+    - alias: mongodb-kubernetes
+      condition: controlplane.observability.enabled
+      name: mongodb-kubernetes
+      repository: https://mongodb.github.io/helm-charts
+      version: 1.4.0
+    - condition: controlplane.observability.enabled
+      name: opensearch
+      repository: https://opensearch-project.github.io/helm-charts
+      version: 2.9.0
+    - condition: operator.enabled
+      name: prometheus
+      repository: https://prometheus-community.github.io/helm-charts
+      version: 25.18.0
+    - alias: reloader
+      condition: operator.enabled
+      name: reloader
+      repository: https://stakater.github.io/stakater-charts
+      version: 1.3.0
+    description: Simplyblock CSI Driver for Kubernetes
+    digest: 29171579fb6e8808bf958c15d8e5251039b7856c048d2c4bce7394167eadca8b
+    home: https://github.com/simplyblock-io/spdk-csi
+    keywords:
+    - spdk
+    - csi
+    - spdk-csi
+    - simplyblock
+    - controller
+    - mgmt
+    - sbcli
+    name: spdk-csi
+    sources:
+    - https://github.com/simplyblock-io/spdk-csi/tree/master/charts/spdk-csi
+    urls:
+    - https://install.simplyblock.io/helm/26.2.0-rc1/spdk-csi-26.2.0-rc1.tgz
+    version: 26.2.0-rc1
+  - apiVersion: v2
+    appVersion: latest
+    created: "2026-05-21T17:18:26.293163704Z"
     dependencies:
     - alias: mongodb-kubernetes
       condition: controlplane.observability.enabled
@@ -42,7 +81,7 @@ entries:
     version: v0.3.32
   - apiVersion: v2
     appVersion: latest
-    created: "2026-05-18T11:04:24.108427274Z"
+    created: "2026-05-21T17:18:26.277689802Z"
     dependencies:
     - alias: mongodb-kubernetes
       condition: controlplane.observability.enabled
@@ -81,7 +120,7 @@ entries:
     version: v0.3.31
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.093319558Z"
+    created: "2026-05-21T17:18:26.26180071Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 61e0cab26f43fef77a6e1384695fe63c2272549959f105e40c2202911cb52553
     home: https://github.com/simplyblock-io/spdk-csi
@@ -101,7 +140,7 @@ entries:
     version: v0.3.30
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.077465386Z"
+    created: "2026-05-21T17:18:26.245586245Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 8d68ea90da90c78c90594db7d8a1e1cb32d9501c8a55e2052d32321d7dca7626
     home: https://github.com/simplyblock-io/spdk-csi
@@ -119,7 +158,7 @@ entries:
     version: v0.3.29
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.076302792Z"
+    created: "2026-05-21T17:18:26.244453041Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: bb630a9b0e79c7da69d14eb1fc78260a939e825756b3f6aadad17cbcb26120f2
     home: https://github.com/simplyblock-io/spdk-csi
@@ -137,7 +176,7 @@ entries:
     version: v0.3.28
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.075142613Z"
+    created: "2026-05-21T17:18:26.243332091Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 3796223d0ef8638fbd287db6bbfc194fe2e00f5034f0612043cbc468e9e0dd51
     home: https://github.com/simplyblock-io/spdk-csi
@@ -155,7 +194,7 @@ entries:
     version: v0.3.27
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.073545909Z"
+    created: "2026-05-21T17:18:26.242223614Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: a6fa6e623f1ee4f1c092b2646e01e2888cd383aec05b170970f818687bdb2c53
     home: https://github.com/simplyblock-io/spdk-csi
@@ -173,7 +212,7 @@ entries:
     version: v0.3.26
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.072325924Z"
+    created: "2026-05-21T17:18:26.241120967Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 6996730815c68ca2045feafc1460d9f02db7b0580249e8a071552c16301b5903
     home: https://github.com/simplyblock-io/spdk-csi
@@ -191,7 +230,7 @@ entries:
     version: v0.3.25
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.071210282Z"
+    created: "2026-05-21T17:18:26.239200173Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 40d0f8dd9bf31c8167fca9d5ccda8d6e14c3cbb379a076ab899f943f83c14613
     home: https://github.com/simplyblock-io/spdk-csi
@@ -209,7 +248,7 @@ entries:
     version: v0.3.24
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.070118095Z"
+    created: "2026-05-21T17:18:26.237848302Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 63b4055b180e0a6ebf80a1ae06f9c23a37137b69449c6dd975dfed10a0902d89
     home: https://github.com/simplyblock-io/spdk-csi
@@ -227,7 +266,7 @@ entries:
     version: v0.3.23
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.069035372Z"
+    created: "2026-05-21T17:18:26.236776263Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: cbd0207cdfb4f16fd8a26a820ef558e65ed2cf80087086a6c8ecec581fb1a363
     home: https://github.com/simplyblock-io/spdk-csi
@@ -245,7 +284,7 @@ entries:
     version: v0.3.22
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.067940861Z"
+    created: "2026-05-21T17:18:26.235740992Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: b274263082859de994d611dc7890d77aa2095a84da69a73741d81a325568d6fe
     home: https://github.com/simplyblock-io/spdk-csi
@@ -263,7 +302,7 @@ entries:
     version: v0.3.21
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.066267367Z"
+    created: "2026-05-21T17:18:26.23469432Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: c3995eb4016ecb764272ee1cfc9779ced28dd8f7c53819539f41d71076478676
     home: https://github.com/simplyblock-io/spdk-csi
@@ -279,7 +318,7 @@ entries:
     version: v0.3.20
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.063580825Z"
+    created: "2026-05-21T17:18:26.231852924Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: de203b9ace5c818cda9a2766e415ff5163cb3aafcc29c4e3bb28cd614491b1fe
     home: https://github.com/simplyblock-io/spdk-csi
@@ -295,7 +334,7 @@ entries:
     version: v0.3.19
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.064444838Z"
+    created: "2026-05-21T17:18:26.232934167Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 4ada8f15e1fa50a140ef96146530da44b7aeb8904950f16d3dd75ce4f5a97ed4
     home: https://github.com/simplyblock-io/spdk-csi
@@ -311,7 +350,7 @@ entries:
     version: v0.3.19-patch.1
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.062712035Z"
+    created: "2026-05-21T17:18:26.230446291Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 7d2d946f73da4701469cf0bcb569e696fcba0a7e383f94981a6daf126132fc6c
     home: https://github.com/simplyblock-io/spdk-csi
@@ -327,7 +366,7 @@ entries:
     version: v0.3.18
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.061845828Z"
+    created: "2026-05-21T17:18:26.229594772Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: cebe110fd2c3d5f8bd663daede56a9f92fc4e3347d09c80987d3d097e46c87a8
     home: https://github.com/simplyblock-io/spdk-csi
@@ -343,7 +382,7 @@ entries:
     version: v0.3.17
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.060833702Z"
+    created: "2026-05-21T17:18:26.228750268Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 2f14b7dcbc2c1b9d340b952846182e6eb505223069997b0db42b139d2b1db388
     home: https://github.com/simplyblock-io/spdk-csi
@@ -359,7 +398,7 @@ entries:
     version: v0.3.16
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.059775907Z"
+    created: "2026-05-21T17:18:26.227650958Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 825c29d045abb878ac14d551d579abe034220d18ead8f074cd42c35851d8e9ad
     home: https://github.com/simplyblock-io/spdk-csi
@@ -375,7 +414,7 @@ entries:
     version: v0.3.15
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.058124495Z"
+    created: "2026-05-21T17:18:26.226683934Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 33ef4568e8fc1c17c5eb946bde0ce55003f0fa1ab511854efd2e402ff478ab66
     home: https://github.com/simplyblock-io/spdk-csi
@@ -391,7 +430,7 @@ entries:
     version: v0.3.14
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.057147602Z"
+    created: "2026-05-21T17:18:26.225733081Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 4118557051bc3617840c7cded6599cb7701541a2060b76a8445589f59aa1f0b6
     home: https://github.com/simplyblock-io/spdk-csi
@@ -407,7 +446,7 @@ entries:
     version: v0.3.13
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.056181295Z"
+    created: "2026-05-21T17:18:26.224770055Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: f24ec5f2d3a786966e26604fc1cd6b0b55947acfe54ca7c7654bf2556f73e4e6
     home: https://github.com/simplyblock-io/spdk-csi
@@ -423,7 +462,7 @@ entries:
     version: v0.3.12
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.055193335Z"
+    created: "2026-05-21T17:18:26.223832727Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 861fd5c8aee948979ac240909ff542ee26174eb9f2cce9ca4c60338a39c7202c
     home: https://github.com/simplyblock-io/spdk-csi
@@ -439,7 +478,7 @@ entries:
     version: v0.3.11
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.054210282Z"
+    created: "2026-05-21T17:18:26.22287998Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 673e77eebef77f869d92199a841eb1a50669e122fbbaacde9ba6709d098f77e1
     home: https://github.com/simplyblock-io/spdk-csi
@@ -455,7 +494,7 @@ entries:
     version: v0.3.10
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.129495529Z"
+    created: "2026-05-21T17:18:26.29939586Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 43d9bedad3a6bfa69968423075d67ebc273680446bb6683d4204ef62e1e36c80
     home: https://github.com/simplyblock-io/spdk-csi
@@ -471,7 +510,7 @@ entries:
     version: v0.3.9
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.128550554Z"
+    created: "2026-05-21T17:18:26.298428626Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 6bce73c847870fe9bd6556d0efef733617a579172f0f6ca48090230b50a04143
     home: https://github.com/simplyblock-io/spdk-csi
@@ -487,7 +526,7 @@ entries:
     version: v0.3.8
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.12765298Z"
+    created: "2026-05-21T17:18:26.297495827Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: e67a2810c0c0825b31ee775ff6b9dabd25ed528ad7758a05fb80d65498f90878
     home: https://github.com/simplyblock-io/spdk-csi
@@ -503,7 +542,7 @@ entries:
     version: v0.3.7
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.126732051Z"
+    created: "2026-05-21T17:18:26.295884408Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 46ddc4f5f6a982eb470bfaec3c664752a13a5d5d84dc61327aaa1922783404cf
     home: https://github.com/simplyblock-io/spdk-csi
@@ -519,7 +558,7 @@ entries:
     version: v0.3.6
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.125843281Z"
+    created: "2026-05-21T17:18:26.294996993Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 63091b6ff510f80e554df911b1aaac5847a1346a575a1390b71410490a0f763b
     home: https://github.com/simplyblock-io/spdk-csi
@@ -535,7 +574,7 @@ entries:
     version: v0.3.5
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.124936603Z"
+    created: "2026-05-21T17:18:26.29406226Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 3a66e531d2879771daeb1498441ac1310fbfb4c8d31ec9c351e9849d004f3aac
     home: https://github.com/simplyblock-io/spdk-csi
@@ -551,7 +590,7 @@ entries:
     version: v0.3.4
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.078364442Z"
+    created: "2026-05-21T17:18:26.24644719Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: b83a89ac558b464eaef296e6317473b7f26514d5a8a7f79aa2acd61da069f3d0
     home: https://github.com/simplyblock-io/spdk-csi
@@ -567,7 +606,7 @@ entries:
     version: v0.3.3
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.065351185Z"
+    created: "2026-05-21T17:18:26.233815892Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: 86b5d9c79c06e8184775c7c41c6dfe175c6f4fa5d0e92910f71e2bf1874858b6
     home: https://github.com/simplyblock-io/spdk-csi
@@ -583,7 +622,7 @@ entries:
     version: v0.3.2
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.053236543Z"
+    created: "2026-05-21T17:18:26.221967288Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: c362b8f3ba046743c11099443b1091b64cb6c27c42aef6b71a483934664a7fde
     home: https://github.com/simplyblock-io/spdk-csi
@@ -599,7 +638,7 @@ entries:
     version: v0.3.1
   - apiVersion: v1
     appVersion: latest
-    created: "2026-05-18T11:04:24.052677951Z"
+    created: "2026-05-21T17:18:26.221450404Z"
     description: Simplyblock CSI Driver for Kubernetes
     digest: c7999217b515f9ba4f2a8f5a2a025a3d40d42f21f75af1621043b5a356ab1ac9
     home: https://github.com/simplyblock-io/spdk-csi
@@ -613,4 +652,4 @@ entries:
     urls:
     - https://install.simplyblock.io/helm/v0.3.0/spdk-csi-v0.3.0.tgz
     version: v0.3.0
-generated: "2026-05-18T11:04:24.051980599Z"
+generated: "2026-05-21T17:18:26.205682456Z"
