@@ -382,10 +382,6 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 
 func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	klog.Info("connections", nvmf.connections)
-	ctrlLossTmo := 60
-	if len(nvmf.connections) == 1 {
-		ctrlLossTmo *= 15
-	}
 
 	alreadyConnected, err := isNqnConnected(nvmf.nqn)
 	if err != nil {
@@ -406,13 +402,18 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 			return "", err
 		}
 
+		ctrlLossTmo := 60
+		if len(connections) == 1 {
+			ctrlLossTmo *= 15
+		}
+
 		connected := 0
 		var lastErr error
 
-		for i, _ := range nvmf.connections {
+		for _, conn := range connections {
 			cmdLine := []string{
 				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-				"-a", connections[i].IP, "-s", strconv.Itoa(connections[i].Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
+				"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
 				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
 			}
 
@@ -424,7 +425,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 			// 	cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
 			// }
 
-			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
+			err := execWithTimeoutRetry(cmdLine, 40, len(connections))
 			if err != nil {
 				// go on checking device status in case caused by duplicated request
 				klog.Errorf("command %v failed: %s", cmdLine, err)
