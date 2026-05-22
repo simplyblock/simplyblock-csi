@@ -41,9 +41,15 @@ type GuardianConfig struct {
 // NewDefaultGuardianConfig returns sane defaults.
 func NewDefaultGuardianConfig(nodeName string) GuardianConfig {
 	return GuardianConfig{
-		NodeName:         nodeName,
-		PollInterval:     5 * time.Minute,
-		RestartBackoff:   10 * time.Minute,
+		NodeName: nodeName,
+		PollInterval: parseDurationFromEnv(
+			"GUARDIAN_POLL_INTERVAL",
+			30*time.Second,
+		),
+		RestartBackoff: parseDurationFromEnv(
+			"GUARDIAN_RESTART_BACKOFF",
+			10*time.Minute,
+		),
 		GraceSeconds:     0,
 		OptInLabelKey:    "simplyblock.io/auto-restart-on-pathloss",
 		OptInLabelValue:  "true",
@@ -162,7 +168,7 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 		return nil, fmt.Errorf("guardian requires NodeName")
 	}
 	if cfg.PollInterval <= 0 {
-		cfg.PollInterval = 5 * time.Minute
+		cfg.PollInterval = 30 * time.Second
 	}
 	if cfg.RestartBackoff <= 0 {
 		cfg.RestartBackoff = 10 * time.Minute
