@@ -5,15 +5,15 @@ on:
     branches:
       - master
   schedule:
-    - cron: '0 6 * * 1'  # Weekly on Monday at 06:00 UTC
+    - cron: '0 6 * * *'  # Daily at 06:00 UTC
   workflow_dispatch:
 
 env:
   IMAGE_NAME: simplyblock/spdkcsi
 
 jobs:
-  trivy:
-    name: Trivy
+  scan:
+    name: Security Scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,24 +35,36 @@ jobs:
           load: true
           tags: ${{ env.IMAGE_NAME }}:scan
 
-      - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.35.0
+      # Grype uses Red Hat's Security Data API — much more current than Trivy's OVAL source.
+      - name: Run Grype vulnerability scan (Red Hat advisories)
+        id: grype
+        uses: anchore/scan-action@v6
+        with:
+          image: ${{ env.IMAGE_NAME }}:scan
+          severity-cutoff: medium
+          fail-build: true
+          only-fixed: true
+          output-format: table
+
+      - name: Run Trivy vulnerability scan (Go binary + secrets)
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: sarif
           output: trivy-results.sarif
-          severity: CRITICAL,HIGH
+          severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
           exit-code: '1'
+          scanners: vuln,secret
 
-      - name: Upload vulnerability scan results to GitHub Security
+      - name: Upload Trivy scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-results.sarif
 
       - name: Generate SBOM (CycloneDX)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: cyclonedx
@@ -64,3 +76,24 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom.cdx.json
           retention-days: 90
+
+      - name: Notify Slack on scan failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":rotating_light: *Security scan failed* — vulnerabilities found in `${{ github.repository }}`",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    { "title": "Branch",   "value": "${{ github.ref_name }}", "short": true },
+                    { "title": "Commit",   "value": "${{ github.sha }}", "short": true },
+                    { "title": "Workflow", "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>", "short": false }
+                  ]
+                }
+              ]
+            }
