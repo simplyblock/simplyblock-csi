@@ -294,7 +294,7 @@ func (node *NodeNVMf) DeleteSnapshot(snapshotID string) error {
 
 // PublishVolume exports a volume through NVMf target
 func (node *NodeNVMf) PublishVolume(lvolID string) error {
-	_, err := node.Client.CallSBCLI("GET", "/lvol/"+lvolID, nil)
+	_, err := node.Client.CallSBCLI("GET", node.Client.v2volume(lvolID), nil)
 	if err != nil {
 		return err
 	}
@@ -304,7 +304,7 @@ func (node *NodeNVMf) PublishVolume(lvolID string) error {
 
 // UnpublishVolume unexports a volume through NVMf target
 func (node *NodeNVMf) UnpublishVolume(lvolID string) error {
-	_, err := node.Client.CallSBCLI("GET", "/lvol/"+lvolID, nil)
+	_, err := node.Client.CallSBCLI("GET", node.Client.v2volume(lvolID), nil)
 	if err != nil {
 		return err
 	}
