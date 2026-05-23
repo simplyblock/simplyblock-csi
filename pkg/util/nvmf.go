@@ -192,13 +192,9 @@ func (node *NodeNVMf) CreateVolume(params *CreateLVolData) (string, error) {
 	return lvolID, nil
 }
 
-// GetVolume returns the volume id of the given volume name and lvstore name. return error if not found.
-func (node *NodeNVMf) GetVolume(lvolName, poolName string) (string, error) {
-	lvol, err := node.Client.getVolume(fmt.Sprintf("%s/%s", poolName, lvolName))
-	if err != nil {
-		return "", err
-	}
-	return lvol.UUID, err
+// GetVolume returns the LvolResp for the given volume name and pool name. Returns error if not found.
+func (node *NodeNVMf) GetVolume(lvolName, poolName string) (*LvolResp, error) {
+	return node.Client.getVolume(fmt.Sprintf("%s/%s", poolName, lvolName))
 }
 
 // GetVolumeSize returns the size of the volume
@@ -213,7 +209,7 @@ func (node *NodeNVMf) GetVolumeSize(lvolID string) (string, error) {
 }
 
 // ListVolumes returns a list of volumes
-func (node *NodeNVMf) ListVolumes() ([]*BDev, error) {
+func (node *NodeNVMf) ListVolumes() ([]*LvolResp, error) {
 	return node.Client.listVolumes()
 }
 
