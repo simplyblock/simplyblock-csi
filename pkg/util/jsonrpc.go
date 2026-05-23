@@ -126,11 +126,12 @@ type connectionInfo struct {
 	Port int    `json:"port"`
 }
 
-// BDev SPDK block device — field tags match v2 VolumeDTO
-type BDev struct {
+// LvolResp is the v2 VolumeDTO returned by the SimplyBlock API
+type LvolResp struct {
 	Name     string `json:"name"`
 	UUID     string `json:"id"`
 	LvolSize int64  `json:"size"`
+	Status   string `json:"status"`
 }
 
 // RPCClient holds the connection information to the SimplyBlock Cluster
@@ -267,7 +268,7 @@ func (client *RPCClient) createVolume(params *CreateLVolData) (string, error) {
 }
 
 // getVolumeByUUID fetches a single volume by its UUID
-func (client *RPCClient) getVolumeByUUID(lvolID string) (*BDev, error) {
+func (client *RPCClient) getVolumeByUUID(lvolID string) (*LvolResp, error) {
 	out, err := client.CallSBCLI("GET", client.v2volume(lvolID), nil)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSuchDevice) {
@@ -279,7 +280,7 @@ func (client *RPCClient) getVolumeByUUID(lvolID string) (*BDev, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal volume response: %w", err)
 	}
-	var result BDev
+	var result LvolResp
 	if err := json.Unmarshal(b, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal volume response: %w", err)
 	}
@@ -287,7 +288,7 @@ func (client *RPCClient) getVolumeByUUID(lvolID string) (*BDev, error) {
 }
 
 // getVolumeByName lists all volumes in the pool and returns the one with matching name
-func (client *RPCClient) getVolumeByName(name string) (*BDev, error) {
+func (client *RPCClient) getVolumeByName(name string) (*LvolResp, error) {
 	volumes, err := client.listVolumes()
 	if err != nil {
 		return nil, err
@@ -301,7 +302,7 @@ func (client *RPCClient) getVolumeByName(name string) (*BDev, error) {
 }
 
 // getVolume accepts either a UUID or a "poolName/volName" path (legacy callers)
-func (client *RPCClient) getVolume(lvolIDOrPath string) (*BDev, error) {
+func (client *RPCClient) getVolume(lvolIDOrPath string) (*LvolResp, error) {
 	if strings.Contains(lvolIDOrPath, "/") {
 		// "poolName/volName" — extract the volume name and search by name
 		parts := strings.SplitN(lvolIDOrPath, "/", 2)
@@ -311,7 +312,7 @@ func (client *RPCClient) getVolume(lvolIDOrPath string) (*BDev, error) {
 }
 
 // listVolumes returns all volumes in the pool
-func (client *RPCClient) listVolumes() ([]*BDev, error) {
+func (client *RPCClient) listVolumes() ([]*LvolResp, error) {
 	out, err := client.CallSBCLI("GET", client.v2volumes()+"/", nil)
 	if err != nil {
 		return nil, err
@@ -320,7 +321,7 @@ func (client *RPCClient) listVolumes() ([]*BDev, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal volumes response: %w", err)
 	}
-	var results []*BDev
+	var results []*LvolResp
 	if err := json.Unmarshal(b, &results); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal volumes response: %w", err)
 	}

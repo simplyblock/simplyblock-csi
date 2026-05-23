@@ -589,9 +589,9 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 }
 
 func (cs *controllerServer) getExistingVolume(name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
-	volumeID, err := sbclient.GetVolume(name, poolName)
+	volume, err := sbclient.GetVolume(name, poolName)
 	if err == nil {
-		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
+		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volume.UUID)
 		klog.V(5).Info("volume already exists", vol.GetVolumeId())
 		return vol, nil
 	}
