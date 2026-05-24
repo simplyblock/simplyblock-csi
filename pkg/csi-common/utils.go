@@ -20,12 +20,21 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"google.golang.org/grpc"
 	"k8s.io/klog"
 )
+
+const rpcTimeout = 120 * time.Second
+
+func timeoutInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
+	defer cancel()
+	return handler(ctx, req)
+}
 
 func parseEndpoint(ep string) (proto, addr string, _ error) {
 	if strings.HasPrefix(strings.ToLower(ep), "unix://") || strings.HasPrefix(strings.ToLower(ep), "tcp://") {

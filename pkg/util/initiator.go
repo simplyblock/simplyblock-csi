@@ -52,8 +52,8 @@ const (
 //   - Caller(node service) should serialize calls to same initiator
 //   - Implementation should be idempotent to duplicated requests
 type SpdkCsiInitiator interface {
-	Connect() (string, error)
-	Disconnect() error
+	Connect(ctx context.Context) (string, error)
+	Disconnect(ctx context.Context) error
 }
 
 // initiatorNVMf is an implementation of NVMf tcp initiator
@@ -192,7 +192,7 @@ func resolvePoolUUID(node *NodeNVMf, poolIDOrName string) (string, error) {
 	if isUUID(poolIDOrName) {
 		return poolIDOrName, nil
 	}
-	return node.GetPoolUUIDByName(poolIDOrName)
+	return node.GetPoolUUIDByName(context.Background(), poolIDOrName)
 }
 
 // isUUID reports whether s is a standard UUID (8-4-4-4-12 hex, with hyphens).
@@ -252,7 +252,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 	}
 }
 
-func (cache *initiatorCache) Connect() (string, error) {
+func (cache *initiatorCache) Connect(ctx context.Context) (string, error) {
 	// get the hostname
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -261,7 +261,7 @@ func (cache *initiatorCache) Connect() (string, error) {
 	hostname = strings.Split(hostname, ".")[0]
 	klog.Info("hostname: ", hostname)
 
-	out, err := cache.client.CallSBCLI("GET", "/cachingnode", nil)
+	out, err := cache.client.CallSBCLI(ctx, "GET", "/cachingnode", nil)
 	if err != nil {
 		klog.Error(err)
 		return "", err
@@ -290,7 +290,7 @@ func (cache *initiatorCache) Connect() (string, error) {
 			LvolID: cache.lvol,
 		}
 		klog.Info("connecting caching node: ", cnode.Hostname, " with lvol: ", cache.lvol)
-		resp, err = cache.client.CallSBCLI("PUT", "/cachingnode/connect/"+cnode.UUID, req)
+		resp, err = cache.client.CallSBCLI(ctx, "PUT", "/cachingnode/connect/"+cnode.UUID, req)
 		if err != nil {
 			klog.Error("caching node connect error:", err)
 			return "", err
@@ -314,7 +314,7 @@ func (cache *initiatorCache) Connect() (string, error) {
 	return devicePath, nil
 }
 
-func (cache *initiatorCache) Disconnect() error {
+func (cache *initiatorCache) Disconnect(ctx context.Context) error {
 	// get the hostname
 	// get the caching node ID associated with the hostname
 	// connect lvol and caching node
@@ -326,7 +326,7 @@ func (cache *initiatorCache) Disconnect() error {
 	hostname = strings.Split(hostname, ".")[0]
 	klog.Info("hostname: ", hostname)
 
-	out, err := cache.client.CallSBCLI("GET", "/cachingnode", nil)
+	out, err := cache.client.CallSBCLI(ctx, "GET", "/cachingnode", nil)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -352,7 +352,7 @@ func (cache *initiatorCache) Disconnect() error {
 		req := lVolCachingNodeConnect{
 			LvolID: cache.lvol,
 		}
-		resp, err := cache.client.CallSBCLI("PUT", "/cachingnode/disconnect/"+cnode.UUID, req)
+		resp, err := cache.client.CallSBCLI(ctx, "PUT", "/cachingnode/disconnect/"+cnode.UUID, req)
 		if err != nil {
 			klog.Error("caching node disconnect error:", err)
 			return err
@@ -380,7 +380,7 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 	return err
 }
 
-func (nvmf *initiatorNVMf) Connect() (string, error) {
+func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	klog.Info("connections", nvmf.connections)
 	ctrlLossTmo := 60
 	if len(nvmf.connections) == 1 {
@@ -400,7 +400,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
 		}
-		connections, err := fetchLvolConnection(sbcClient, lvolID, nvmf.hostNQN)
+		connections, err := fetchLvolConnection(ctx, sbcClient, lvolID, nvmf.hostNQN)
 		if err != nil {
 			klog.Errorf("Failed to get lvol connection: %v", err)
 			return "", err
@@ -459,7 +459,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	return devicePath, nil
 }
 
-func (nvmf *initiatorNVMf) Disconnect() error {
+func (nvmf *initiatorNVMf) Disconnect(_ context.Context) error {
 	//deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
 	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
 	devicePath, err := filepath.Glob(deviceGlob)
@@ -781,11 +781,11 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 	return nil
 }
 
-func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
-	if err := spdkNode.Client.findPoolForVolume(lvolID); err != nil {
+func fetchNodeInfo(ctx context.Context, spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
+	if err := spdkNode.Client.findPoolForVolume(ctx, lvolID); err != nil {
 		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
 	}
-	resp, err := spdkNode.Client.CallSBCLI("GET", spdkNode.Client.v2volume(lvolID), nil)
+	resp, err := spdkNode.Client.CallSBCLI(ctx, "GET", spdkNode.Client.v2volume(lvolID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch node info: %v", err)
 	}
@@ -801,8 +801,8 @@ func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
 	return &info, nil
 }
 
-func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
-	status, err := spdkNode.Client.getStorageNodeStatus(nodeID)
+func isNodeOnline(ctx context.Context, spdkNode *NodeNVMf, nodeID string) bool {
+	status, err := spdkNode.Client.getStorageNodeStatus(ctx, nodeID)
 	if err != nil {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
@@ -810,11 +810,11 @@ func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
 	return status == "online"
 }
 
-func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
-	if err := spdkNode.Client.findPoolForVolume(lvolID); err != nil {
+func fetchLvolConnection(ctx context.Context, spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
+	if err := spdkNode.Client.findPoolForVolume(ctx, lvolID); err != nil {
 		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
 	}
-	connections, err := spdkNode.Client.getLvolConnections(lvolID, hostNQN)
+	connections, err := spdkNode.Client.getLvolConnections(ctx, lvolID, hostNQN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch connection: %v", err)
 	}
@@ -937,7 +937,7 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 		klog.Warningf("resolveExpectedPathCount: client error for NQN %s: %v", nqn, err)
 		return cached
 	}
-	conns, err := fetchLvolConnection(sbcClient, lvolID, "")
+	conns, err := fetchLvolConnection(context.Background(), sbcClient, lvolID, "")
 	if err != nil {
 		klog.Warningf("resolveExpectedPathCount: fetch error for NQN %s: %v", nqn, err)
 		return cached
@@ -959,12 +959,12 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 		return fmt.Errorf("failed to create SimplyBlock client: %w", err)
 	}
 
-	nodeInfo, err := fetchNodeInfo(sbcClient, lvolID)
+	nodeInfo, err := fetchNodeInfo(context.Background(), sbcClient, lvolID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch node info for lvol %s: %w", lvolID, err)
 	}
 
-	expectedConns, err := fetchLvolConnection(sbcClient, lvolID, "")
+	expectedConns, err := fetchLvolConnection(context.Background(), sbcClient, lvolID, "")
 	if err != nil {
 		return fmt.Errorf("failed to fetch connections for lvol %s: %w", lvolID, err)
 	}
@@ -1008,7 +1008,7 @@ func reconcileOptimizedPath(
 	ctrlLossTmo int,
 ) {
 	if len(active) == 0 {
-		if !isNodeOnline(sbcClient, nodeInfo.NodeID) {
+		if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID) {
 			klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping", nodeInfo.NodeID)
 			return
 		}
@@ -1024,7 +1024,7 @@ func reconcileOptimizedPath(
 		return
 	}
 
-	if !isNodeOnline(sbcClient, nodeInfo.NodeID) {
+	if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID) {
 		klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping IP change reconnect", nodeInfo.NodeID)
 		return
 	}
@@ -1083,7 +1083,7 @@ func reconcileNonOptimizedPaths(
 			continue // skip primary
 		}
 		totalSecondaries++
-		if isNodeOnline(sbcClient, nodeID) {
+		if isNodeOnline(context.Background(), sbcClient, nodeID) {
 			onlineSecondaries++
 		}
 	}
