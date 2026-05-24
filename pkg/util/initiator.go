@@ -405,11 +405,18 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			klog.Errorf("Failed to get lvol connection: %v", err)
 			return "", err
 		}
+		if len(connections) == 0 {
+			return "", fmt.Errorf("no NVMe paths returned by API for NQN %s", nvmf.nqn)
+		}
+		if len(connections) != len(nvmf.connections) {
+			klog.Warningf("NVMe path count mismatch for NQN %s: VolumeContext has %d path(s), API returned %d path(s); using live API result",
+				nvmf.nqn, len(nvmf.connections), len(connections))
+		}
 
 		connected := 0
 		var lastErr error
 
-		for i, _ := range nvmf.connections {
+		for i := range connections {
 			cmdLine := []string{
 				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
 				"-a", connections[i].IP, "-s", strconv.Itoa(connections[i].Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
@@ -424,7 +431,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			// 	cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
 			// }
 
-			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
+			err := execWithTimeoutRetry(cmdLine, 40, len(connections))
 			if err != nil {
 				// go on checking device status in case caused by duplicated request
 				klog.Errorf("command %v failed: %s", cmdLine, err)
