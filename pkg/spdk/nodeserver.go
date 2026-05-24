@@ -218,7 +218,7 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	}, nil
 }
 
-func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
@@ -259,7 +259,7 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 		if parseErr == nil {
 			sbcClient, clientErr := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
 			if clientErr == nil {
-				connInfo, infoErr := sbcClient.VolumeInfo(spdkVol.lvolID, vc["hostNQN"])
+				connInfo, infoErr := sbcClient.VolumeInfo(ctx, spdkVol.lvolID, vc["hostNQN"])
 				if infoErr != nil {
 					klog.Errorf("failed to fetch volume connection info for %s: %v", volumeID, infoErr)
 				} else {
@@ -279,14 +279,14 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	devicePath, err := initiator.Connect() // idempotent
+	devicePath, err := initiator.Connect(ctx) // idempotent
 	if err != nil {
 		klog.Errorf("failed to connect initiator, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	defer func() {
 		if err != nil {
-			initiator.Disconnect() //nolint:errcheck // ignore error
+			initiator.Disconnect(ctx) //nolint:errcheck // ignore error
 		}
 	}()
 	if err = ns.stageVolume(devicePath, stagingTargetPath, req, vc); err != nil { // idempotent
@@ -305,7 +305,7 @@ func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
@@ -329,7 +329,7 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 		klog.Errorf("failed to create spdk initiator, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	err = initiator.Disconnect() // idempotent
+	err = initiator.Disconnect(ctx) // idempotent
 	if err != nil {
 		klog.Errorf("failed to disconnect initiator, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -341,7 +341,7 @@ func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageV
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) NodePublishVolume(_ context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
@@ -359,7 +359,7 @@ func (ns *nodeServer) NodePublishVolume(_ context.Context, req *csi.NodePublishV
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
@@ -412,7 +412,7 @@ func (ns *nodeServer) NodeGetCapabilities(_ context.Context, _ *csi.NodeGetCapab
 	}, nil
 }
 
-func (ns *nodeServer) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	klog.Infof("NodeExpandVolume: called with args %+v", *req)
 
 	volumeID := req.GetVolumeId()
