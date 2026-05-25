@@ -20,9 +20,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	osexec "os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"path/filepath"
@@ -362,8 +362,14 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	defer func() {
 		if err != nil {
+			// Unmount before disconnecting
+			if umountErr := ns.deleteMountPoint(stagingTargetPath); umountErr != nil {
+				klog.Warningf("failed to unmount staging path during NodeStageVolume cleanup, volumeID: %s err: %v", volumeID, umountErr)
+			}
 			// use a non cancellable context for nvme disconnect because the current ctx is already cancelled
-			initiator.Disconnect(context.WithoutCancel(ctx)) //nolint:errcheck // ignore error
+			if discErr := initiator.Disconnect(context.WithoutCancel(ctx)); discErr != nil {
+				klog.Warningf("failed to disconnect initiator during NodeStageVolume cleanup, volumeID: %s err: %v", volumeID, discErr)
+			}
 		}
 	}()
 	if err = ns.stageVolume(devicePath, stagingTargetPath, req, vc); err != nil { // idempotent
@@ -371,14 +377,6 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	vc["devicePath"] = devicePath
-	// stash VolumeContext to stagingParentPath (useful during Unstage as it has no
-	// VolumeContext passed to the RPC as per the CSI spec)
-	err = util.StashVolumeContext(req.GetVolumeContext(), stagingParentPath)
-	if err != nil {
-		klog.Errorf("failed to stash volume context, volumeID: %s err: %v", volumeID, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -387,7 +385,6 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	stagingParentPath := req.GetStagingTargetPath()
 	stagingTargetPath := getStagingTargetPath(req)
 
 	err := ns.deleteMountPoint(stagingTargetPath) // idempotent
@@ -396,24 +393,16 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
 	}
 
-	volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
-		klog.Errorf("failed to lookup volume context, volumeID: %s err: %v", volumeID, err)
+		klog.Errorf("failed to parse volumeID %s: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	initiator, err := util.NewSpdkCsiInitiator(volumeContext)
-	if err != nil {
-		klog.Errorf("failed to create spdk initiator, volumeID: %s err: %v", volumeID, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	// use a non cancellable context for nvme disconnect because the current ctx is already cancelled
-	err = initiator.Disconnect(context.WithoutCancel(ctx)) // idempotent
-	if err != nil {
-		klog.Errorf("failed to disconnect initiator, volumeID: %s err: %v", volumeID, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if err := util.CleanUpVolumeContext(stagingParentPath); err != nil {
-		klog.Errorf("failed to clean up volume context, volumeID: %s err: %v", volumeID, err)
+	// Disconnect by discovering the NVMe device directly from the OS
+	// (/dev/disk/by-id/*<lvolID>*). This is idempotent: returns nil when
+	// the device is already gone (never connected or already disconnected).
+	if err := util.DisconnectByLvolID(spdkVol.lvolID); err != nil {
+		klog.Errorf("failed to disconnect NVMe device for volumeID %s: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -496,15 +485,16 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	volumeID := req.GetVolumeId()
 	volumeMountPath := req.GetVolumePath()
 
-	stagingParentPath := req.GetStagingTargetPath()
-	volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "failed to parse volumeID %s: %v", volumeID, err)
 	}
-
-	devicePath, ok := volumeContext["devicePath"]
-	if !ok || devicePath == "" {
-		return nil, status.Errorf(codes.Internal, "could not find device path for volume %s", volumeID)
+	devicePath, err := util.FindDeviceByLvolID(spdkVol.lvolID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to find NVMe device for volume %s: %v", volumeID, err)
+	}
+	if devicePath == "" {
+		return nil, status.Errorf(codes.Internal, "NVMe device not found for volume %s (not connected?)", volumeID)
 	}
 
 	// For raw block volumes, the block device has already been resized at the
@@ -636,15 +626,16 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 
 	if req.GetVolumeCapability().GetBlock() != nil {
-		stagingParentPath := req.GetStagingTargetPath()
-		volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+		spdkVol, err := getSPDKVol(req.GetVolumeId())
 		if err != nil {
-			return status.Errorf(codes.Internal, "failed to retrieve volume context for volume %s: %v", req.GetVolumeId(), err)
+			return status.Errorf(codes.Internal, "failed to parse volumeID %s: %v", req.GetVolumeId(), err)
 		}
-
-		devicePath, ok := volumeContext["devicePath"]
-		if !ok || devicePath == "" {
-			return status.Errorf(codes.Internal, "could not find device path for volume %s", req.GetVolumeId())
+		devicePath, err := util.FindDeviceByLvolID(spdkVol.lvolID)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to find NVMe device for volume %s: %v", req.GetVolumeId(), err)
+		}
+		if devicePath == "" {
+			return status.Errorf(codes.Internal, "NVMe device not found for volume %s (not connected?)", req.GetVolumeId())
 		}
 		stagingPath = devicePath
 

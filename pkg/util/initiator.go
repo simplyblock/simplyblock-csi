@@ -106,7 +106,7 @@ type subsystemResponse struct {
 
 type NodeInfo struct {
 	NodeID string   `json:"storage_node_id"` // v2 VolumeDTO field
-	Nodes  []string `json:"nodes"`            // URL paths in v2; converted to UUIDs after parsing
+	Nodes  []string `json:"nodes"`           // URL paths in v2; converted to UUIDs after parsing
 	Status string   `json:"status"`
 }
 
@@ -676,6 +676,40 @@ func getSubsystemsForDevice(devicePath string) ([]subsystemResponse, error) {
 	}
 
 	return subsystems, nil
+}
+
+// FindDeviceByLvolID returns the /dev/disk/by-id symlink path for the NVMe
+// block device associated with lvolID, or ("", nil) if not connected.
+// The lvolID is used as the device model name by the simplyblock storage layer.
+func FindDeviceByLvolID(lvolID string) (string, error) {
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", lvolID))
+	matches, err := filepath.Glob(deviceGlob)
+	if err != nil {
+		return "", fmt.Errorf("glob %s: %w", deviceGlob, err)
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	return matches[0], nil
+}
+
+// DisconnectByLvolID disconnects the NVMe device associated with lvolID via
+// OS-level discovery (/dev/disk/by-id).  It is idempotent: returns nil when
+// no matching device is found (already disconnected or never connected).
+func DisconnectByLvolID(lvolID string) error {
+	devicePath, err := FindDeviceByLvolID(lvolID)
+	if err != nil {
+		return err
+	}
+	if devicePath == "" {
+		klog.Infof("no NVMe device found for lvolID %s — already disconnected", lvolID)
+		return nil
+	}
+	if err := disconnectDevicePath(devicePath); err != nil {
+		return err
+	}
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", lvolID))
+	return waitForDeviceGone(deviceGlob)
 }
 
 func getLvolIDFromNQN(nqn string) (clusterID, lvolID string) {

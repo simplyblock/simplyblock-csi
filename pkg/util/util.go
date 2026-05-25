@@ -37,6 +37,10 @@ const volumeContextFileName = "volume-context.json"
 // file name in which XPU context is stashed.
 const xpuContextFileName = "xpu-context.json"
 
+// ErrVolumeContextNotFound is returned by LookupVolumeContext when the stash
+// file does not exist.
+var ErrVolumeContextNotFound = errors.New("volume context JSON file not found")
+
 const (
 	MIB = int64(1024 * 1024)
 	GIB = MIB * 1024
@@ -295,7 +299,7 @@ func lookupContext(folder, fileName string) (interface{}, error) {
 			return data,
 				fmt.Errorf("failed to read stashed context JSON from path (%s): %w", fPath, err)
 		}
-		return data, errors.New("volume context JSON file not found")
+		return data, ErrVolumeContextNotFound
 	}
 	err = json.Unmarshal(encodedBytes, &data)
 	if err != nil {
