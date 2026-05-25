@@ -17,7 +17,7 @@ limitations under the License.
 package util
 
 const (
-	cfgRPCTimeoutSeconds = 90
+	cfgRPCTimeoutSeconds = 120
 )
 
 // Config stores parsed command line parameters
