@@ -40,9 +40,9 @@ import (
 
 // var errVolumeInCreation = status.Error(codes.Internal, "volume in creation")
 const (
-	CSIStorageBaseKey         = "csi.storage.k8s.io/pvc"
-	CSIStorageNameKey         = CSIStorageBaseKey + "/name"
-	CSIStorageNamespaceKey    = CSIStorageBaseKey + "/namespace"
+	CSIStorageBaseKey      = "csi.storage.k8s.io/pvc"
+	CSIStorageNameKey      = CSIStorageBaseKey + "/name"
+	CSIStorageNamespaceKey = CSIStorageBaseKey + "/namespace"
 
 	annotationNvmfModelID = "simplyblock.io/nvmf-model-id"
 	annotationLvolID      = "simplyblock.io/lvol-id"
@@ -60,13 +60,13 @@ const (
 	deprecatedAnnotationQoSRWMBps   = "simplybk/qos-rw-mbytes"
 	deprecatedAnnotationQoSRMBps    = "simplybk/qos-r-mbytes"
 	deprecatedAnnotationQoSWMBps    = "simplybk/qos-w-mbytes"
-	
-	paramClusterID            = "cluster_id"
-	paramZoneClusterMap       = "zone_cluster_map"
-	paramRegionClusterMap     = "region_cluster_map"
-	topologyKeyZoneStable     = "topology.kubernetes.io/zone"
-	topologyKeyZoneBeta       = "failure-domain.beta.kubernetes.io/zone"
-	topologyKeyRegionStable   = "topology.kubernetes.io/region"
+
+	paramClusterID          = "cluster_id"
+	paramZoneClusterMap     = "zone_cluster_map"
+	paramRegionClusterMap   = "region_cluster_map"
+	topologyKeyZoneStable   = "topology.kubernetes.io/zone"
+	topologyKeyZoneBeta     = "failure-domain.beta.kubernetes.io/zone"
+	topologyKeyRegionStable = "topology.kubernetes.io/region"
 )
 
 type controllerServer struct {
@@ -311,7 +311,6 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	volumeInfo, err := cs.publishVolume(csiVolume.GetVolumeId(), sbClient)
 	if err != nil {
 		klog.Errorf("failed to publish volume, volumeID: %s err: %v", volumeID, err)
-		cs.deleteVolume(csiVolume.GetVolumeId()) //nolint:errcheck // we can do little
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -1074,10 +1073,10 @@ func pvcAnnotation(annotations map[string]string, newKey, deprecatedKey string) 
 
 // qosAnnotations holds per-PVC QoS override values read from PVC annotations.
 type qosAnnotations struct {
-	RWIOPS  string
-	RWMBps  string
-	RMBps   string
-	WMBps   string
+	RWIOPS string
+	RWMBps string
+	RMBps  string
+	WMBps  string
 }
 
 // getQoSAnnotations returns per-PVC QoS overrides from PVC annotations.
