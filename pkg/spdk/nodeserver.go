@@ -48,6 +48,11 @@ import (
 	"github.com/spdk/spdk-csi/pkg/util"
 )
 
+// xfsStripeUnitSectors is the default XFS stripe unit in 512-byte sectors (8 × 512 = 4 KB).
+// This matches the default distr_chunk_bs cluster parameter in sbcli.
+// TODO: fetch the real value from distr_chunk_bs in GET /clusters/{id} once ClusterDTO exposes it.
+const xfsStripeUnitSectors = 8
+
 type nodeServer struct {
 	*csicommon.DefaultNodeServer
 	mounter       mount.Interface
@@ -554,16 +559,25 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	formatOptions := []string{}
 
 	if fsType == "xfs" {
-		distrNdcs, errNdcs := strconv.Atoi(volumeContext["distr_ndcs"])
-		if errNdcs != nil {
-			return errNdcs
-		}
-
-		formatOptions = append(formatOptions, "-d", fmt.Sprintf("sunit=%d,swidth=%d", 8*distrNdcs, 8*distrNdcs), "-l", fmt.Sprintf("sunit=%d", 8*distrNdcs))
-
 		// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
 		// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
 		mntFlags = append(mntFlags, "nouuid")
+
+		// distr_ndcs is optional. When absent, mkfs.xfs uses its own defaults — the volume
+		// still works, just without XFS stripe-alignment hints for the distribution layer.
+		if rawNdcs := volumeContext["distr_ndcs"]; rawNdcs != "" {
+			distrNdcs, err := strconv.Atoi(rawNdcs)
+			if err != nil {
+				return fmt.Errorf("invalid distr_ndcs %q: %w", rawNdcs, err)
+			}
+			if distrNdcs <= 0 {
+				return fmt.Errorf("invalid distr_ndcs %d: must be greater than 0", distrNdcs)
+			}
+			formatOptions = append(formatOptions,
+				"-d", fmt.Sprintf("sunit=%d,swidth=%d", xfsStripeUnitSectors, xfsStripeUnitSectors*distrNdcs),
+				"-l", fmt.Sprintf("sunit=%d", xfsStripeUnitSectors),
+			)
+		}
 	}
 
 	switch req.GetVolumeCapability().GetAccessMode().GetMode() {
