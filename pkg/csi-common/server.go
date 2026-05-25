@@ -87,7 +87,7 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     5 * time.Minute,
 			MaxConnectionAge:      30 * time.Minute,
-			MaxConnectionAgeGrace: 5 * time.Second,
+			MaxConnectionAgeGrace: 2 * time.Minute,
 			Time:                  30 * time.Second,
 			Timeout:               10 * time.Second,
 		}),
