@@ -34,9 +34,6 @@ import (
 // file name in which volume context is stashed.
 const volumeContextFileName = "volume-context.json"
 
-// file name in which XPU context is stashed.
-const xpuContextFileName = "xpu-context.json"
-
 const (
 	MIB = int64(1024 * 1024)
 	GIB = MIB * 1024
@@ -331,26 +328,6 @@ func LookupVolumeContext(path string) (map[string]string, error) {
 // CleanUpVolumeContext cleans up any stashed volume context at passed in path.
 func CleanUpVolumeContext(path string) error {
 	return cleanUpContext(path, volumeContextFileName)
-}
-
-// StashXPUContext stashes XPU context into the volumeContextFileName at the passed in path, in
-// JSON format.
-func StashXPUContext(xpuContext map[string]string, path string) error {
-	return stashContext(xpuContext, path, xpuContextFileName)
-}
-
-// LookupXPUContext read and returns stashed XPU context at passed in path
-func LookupXPUContext(path string) (map[string]string, error) {
-	data, err := lookupContext(path, xpuContextFileName)
-	if err != nil {
-		return nil, err
-	}
-	return ConvertInterfaceToMap(data)
-}
-
-// CleanUpXPUContext cleans up any stashed XPU context at passed in path.
-func CleanUpXPUContext(path string) error {
-	return cleanUpContext(path, xpuContextFileName)
 }
 
 func parseDurationFromEnv(key string, def time.Duration) time.Duration {
