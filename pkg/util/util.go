@@ -32,9 +32,6 @@ import (
 	"k8s.io/klog"
 )
 
-// file name in which volume context is stashed.
-const volumeContextFileName = "volume-context.json"
-
 const (
 	MIB = int64(1024 * 1024)
 	GIB = MIB * 1024
@@ -263,72 +260,6 @@ func ConvertInterfaceToMap(data interface{}) (map[string]string, error) {
 	}
 
 	return strMap, nil
-}
-
-func stashContext(data interface{}, folder, fileName string) error {
-	encodedBytes, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to marshall context JSON: %w", err)
-	}
-	if _, err = os.Stat(folder); os.IsNotExist(err) {
-		err = os.MkdirAll(folder, 0o755)
-		if err != nil {
-			return err
-		}
-	}
-	fPath := filepath.Join(folder, fileName)
-	err = os.WriteFile(fPath, encodedBytes, 0o600)
-	if err != nil {
-		return fmt.Errorf("failed to marshall context JSON at path (%s): %w", fPath, err)
-	}
-	return nil
-}
-
-func lookupContext(folder, fileName string) (interface{}, error) {
-	var data interface{}
-	fPath := filepath.Join(folder, fileName)
-	encodedBytes, err := os.ReadFile(fPath) // #nosec - intended reading from fPath
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return data,
-				fmt.Errorf("failed to read stashed context JSON from path (%s): %w", fPath, err)
-		}
-		return data, errors.New("volume context JSON file not found")
-	}
-	err = json.Unmarshal(encodedBytes, &data)
-	if err != nil {
-		return data,
-			fmt.Errorf("failed to unmarshall stashed context JSON from path (%s): %w", fPath, err)
-	}
-	return data, nil
-}
-
-func cleanUpContext(folder, fileName string) error {
-	fPath := filepath.Join(folder, fileName)
-	if err := os.Remove(fPath); err != nil {
-		return fmt.Errorf("failed to cleanup volume context stash (%s): %w", fPath, err)
-	}
-	return nil
-}
-
-// StashVolumeContext stashes volume context into the volumeContextFileName at the passed in path, in
-// JSON format.
-func StashVolumeContext(volumeContext map[string]string, path string) error {
-	return stashContext(volumeContext, path, volumeContextFileName)
-}
-
-// LookupVolumeContext read and returns stashed volume context at passed in path
-func LookupVolumeContext(path string) (map[string]string, error) {
-	data, err := lookupContext(path, volumeContextFileName)
-	if err != nil {
-		return nil, err
-	}
-	return ConvertInterfaceToMap(data)
-}
-
-// CleanUpVolumeContext cleans up any stashed volume context at passed in path.
-func CleanUpVolumeContext(path string) error {
-	return cleanUpContext(path, volumeContextFileName)
 }
 
 func parseDurationFromEnv(key string, def time.Duration) time.Duration {
