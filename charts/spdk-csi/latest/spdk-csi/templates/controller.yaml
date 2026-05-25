@@ -56,7 +56,10 @@ spec:
         args:
         - "--v=5"
         - "--csi-address=unix:///csi/csi-provisioner.sock"
-        - "--timeout=30s"
+        - "--timeout=180s"
+        - "--kube-api-qps=50"
+        - "--kube-api-burst=100"
+        - "--worker-threads=5"
         - "--retry-interval-start=500ms"
         - "--leader-election=false"
         - "--extra-create-metadata=true"
