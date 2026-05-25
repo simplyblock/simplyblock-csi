@@ -333,7 +333,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if vc["nqn"] == "" || vc["targetType"] == "" {
 		spdkVol, parseErr := getSPDKVol(volumeID)
 		if parseErr == nil {
-			sbcClient, clientErr := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+			sbcClient, clientErr := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 			if clientErr == nil {
 				connInfo, infoErr := sbcClient.VolumeInfo(ctx, spdkVol.lvolID, vc["hostNQN"])
 				if infoErr != nil {
@@ -362,7 +362,8 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	defer func() {
 		if err != nil {
-			initiator.Disconnect(ctx) //nolint:errcheck // ignore error
+			// use a non cancellable context for nvme disconnect because the current ctx is already cancelled
+			initiator.Disconnect(context.WithoutCancel(ctx)) //nolint:errcheck // ignore error
 		}
 	}()
 	if err = ns.stageVolume(devicePath, stagingTargetPath, req, vc); err != nil { // idempotent
@@ -405,7 +406,8 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		klog.Errorf("failed to create spdk initiator, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	err = initiator.Disconnect(ctx) // idempotent
+	// use a non cancellable context for nvme disconnect because the current ctx is already cancelled
+	err = initiator.Disconnect(context.WithoutCancel(ctx)) // idempotent
 	if err != nil {
 		klog.Errorf("failed to disconnect initiator, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())

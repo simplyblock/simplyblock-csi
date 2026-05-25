@@ -292,7 +292,7 @@ func (node *NodeNVMf) DeleteSnapshot(ctx context.Context, snapshotID string) err
 
 // PublishVolume exports a volume through NVMf target
 func (node *NodeNVMf) PublishVolume(ctx context.Context, lvolID string) error {
-	_, err := node.Client.CallSBCLI("GET", node.Client.v2volume(lvolID), nil)
+	_, err := node.Client.CallSBCLI(ctx, "GET", node.Client.v2volume(lvolID), nil)
 	if err != nil {
 		return err
 	}
