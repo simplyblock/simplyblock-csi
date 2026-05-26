@@ -73,7 +73,7 @@ type initiatorNVMf struct {
 type initiatorCache struct {
 	lvol   string
 	model  string
-	client RPCClient // TODO: support multi cluster for cache
+	client APIClient
 }
 
 type cachingNodeList struct {
@@ -124,7 +124,30 @@ var (
 	// without querying the API on every cycle.
 	maxSeenPathsMap = make(map[string]int)
 	maxSeenMu       sync.Mutex
+
+	// connCache holds one shared Connection per webappapi endpoint.
+	// Since one webappapi service fronts multiple clusters, reusing the same
+	// http.Transport across all of them avoids per-call TCP+TLS handshakes.
+	connCache   = make(map[string]*Connection)
+	connCacheMu sync.Mutex
 )
+
+// cachedConnection returns the shared Connection for the given endpoint,
+// building it on first use. All clusters on the same endpoint share one
+// http.Transport and therefore one TCP connection pool.
+func cachedConnection(endpoint string) (*Connection, error) {
+	connCacheMu.Lock()
+	defer connCacheMu.Unlock()
+	if conn, ok := connCache[endpoint]; ok {
+		return conn, nil
+	}
+	conn, err := NewConnection(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	connCache[endpoint] = conn
+	return conn, nil
+}
 
 // clusterConfig represents the Kubernetes secret structure
 type ClusterConfig struct {
@@ -142,7 +165,7 @@ type ClustersInfo struct {
 // (no pool context — only cluster-level operations will work).
 // ctx is threaded through any API calls made during construction so that caller
 // deadlines and cancellations are respected.
-func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (*NodeNVMf, error) {
+func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (*ClusterClient, error) {
 	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
 	var clusters ClustersInfo
 	err := ParseJSONFile(secretFile, &clusters)
@@ -171,29 +194,36 @@ func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (
 		clusterConfig.ClusterEndpoint,
 	)
 
-	node, err := NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret)
+	conn, err := cachedConnection(clusterConfig.ClusterEndpoint)
 	if err != nil {
 		return nil, err
 	}
+	c := &ClusterClient{
+		API: &APIClient{
+			ClusterID:     clusterID,
+			ClusterSecret: clusterConfig.ClusterSecret,
+			conn:          conn,
+		},
+	}
 
 	if poolIDOrName != "" {
-		poolUUID, err := resolvePoolUUID(ctx, node, poolIDOrName)
+		poolUUID, err := resolvePoolUUID(ctx, c, poolIDOrName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve pool %q: %w", poolIDOrName, err)
 		}
-		node.Client.PoolID = poolUUID
+		c.poolID = poolUUID
 	}
 
-	return node, nil
+	return c, nil
 }
 
 // resolvePoolUUID returns poolIDOrName as-is if it is already a UUID,
 // otherwise resolves it to a UUID via an API call that honours ctx.
-func resolvePoolUUID(ctx context.Context, node *NodeNVMf, poolIDOrName string) (string, error) {
+func resolvePoolUUID(ctx context.Context, c *ClusterClient, poolIDOrName string) (string, error) {
 	if isUUID(poolIDOrName) {
 		return poolIDOrName, nil
 	}
-	return node.GetPoolUUIDByName(ctx, poolIDOrName)
+	return c.GetPoolUUIDByName(ctx, poolIDOrName)
 }
 
 // isUUID reports whether s is a standard UUID (8-4-4-4-12 hex, with hyphens).
@@ -254,19 +284,14 @@ func (cache *initiatorCache) Connect(ctx context.Context) (string, error) {
 	hostname = strings.Split(hostname, ".")[0]
 	klog.Info("hostname: ", hostname)
 
-	out, err := cache.client.CallSBCLI(ctx, "GET", "/cachingnode", nil)
+	raw, err := cache.client.do(ctx, "GET", "/cachingnode", nil)
 	if err != nil {
 		klog.Error(err)
 		return "", err
 	}
 
-	data, err := json.Marshal(out)
-	if err != nil {
-		return "", err
-	}
 	var cnodes []*cachingNodeList
-	err = json.Unmarshal(data, &cnodes)
-	if err != nil {
+	if err = json.Unmarshal(raw, &cnodes); err != nil {
 		return "", err
 	}
 
@@ -278,17 +303,16 @@ func (cache *initiatorCache) Connect(ctx context.Context) (string, error) {
 			continue
 		}
 
-		var resp interface{}
 		req := lVolCachingNodeConnect{
 			LvolID: cache.lvol,
 		}
 		klog.Info("connecting caching node: ", cnode.Hostname, " with lvol: ", cache.lvol)
-		resp, err = cache.client.CallSBCLI(ctx, "PUT", "/cachingnode/connect/"+cnode.UUID, req)
+		resp, err := cache.client.do(ctx, "PUT", "/cachingnode/connect/"+cnode.UUID, req)
 		if err != nil {
 			klog.Error("caching node connect error:", err)
 			return "", err
 		}
-		klog.Info("caching node connect resp: ", resp)
+		klog.Info("caching node connect resp: ", string(resp))
 		isCachingNodeConnected = true
 	}
 
@@ -300,7 +324,7 @@ func (cache *initiatorCache) Connect(ctx context.Context) (string, error) {
 	// connect lvol and caching node
 
 	deviceGlob := fmt.Sprintf(DevDiskByID, cache.model)
-	devicePath, err := waitForDeviceReady(deviceGlob, 20)
+	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 20)
 	if err != nil {
 		return "", err
 	}
@@ -319,19 +343,14 @@ func (cache *initiatorCache) Disconnect(ctx context.Context) error {
 	hostname = strings.Split(hostname, ".")[0]
 	klog.Info("hostname: ", hostname)
 
-	out, err := cache.client.CallSBCLI(ctx, "GET", "/cachingnode", nil)
+	raw, err := cache.client.do(ctx, "GET", "/cachingnode", nil)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	data, err := json.Marshal(out)
-	if err != nil {
-		return err
-	}
 	var cnodes []*cachingNodeList
-	err = json.Unmarshal(data, &cnodes)
-	if err != nil {
+	if err = json.Unmarshal(raw, &cnodes); err != nil {
 		return err
 	}
 	klog.Info("found caching nodes: ", cnodes)
@@ -345,12 +364,12 @@ func (cache *initiatorCache) Disconnect(ctx context.Context) error {
 		req := lVolCachingNodeConnect{
 			LvolID: cache.lvol,
 		}
-		resp, err := cache.client.CallSBCLI(ctx, "PUT", "/cachingnode/disconnect/"+cnode.UUID, req)
+		resp, err := cache.client.do(ctx, "PUT", "/cachingnode/disconnect/"+cnode.UUID, req)
 		if err != nil {
 			klog.Error("caching node disconnect error:", err)
 			return err
 		}
-		klog.Info("caching node disconnect resp: ", resp)
+		klog.Info("caching node disconnect resp: ", string(resp))
 		isCachingNodeConnected = true
 	}
 
@@ -438,11 +457,11 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 
 	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
 
-	devicePath, err := waitForDeviceReady(deviceGlob, 20)
+	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 20)
 	if err != nil {
 		klog.Warningf("New device symlink not found (%s). Retrying legacy format: %s", deviceGlob, deviceGlobOld)
 
-		devicePath, err = waitForDeviceReady(deviceGlobOld, 10)
+		devicePath, err = waitForDeviceReady(ctx, deviceGlobOld, 10)
 		if err != nil {
 			return "", fmt.Errorf("device not found in both new (%s) and old (%s) formats: %w",
 				deviceGlob, deviceGlobOld, err)
@@ -474,8 +493,9 @@ func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 }
 
 // when timeout is set as 0, try to find the device file immediately
-// otherwise, wait for device file comes up or timeout
-func waitForDeviceReady(deviceGlob string, seconds int) (string, error) {
+// otherwise, wait for device file comes up or timeout.
+// Returns ctx.Err() immediately if the context is cancelled while waiting.
+func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (string, error) {
 	for i := 0; i <= seconds; i++ {
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
@@ -485,7 +505,11 @@ func waitForDeviceReady(deviceGlob string, seconds int) (string, error) {
 		if len(matches) >= 1 {
 			return matches[0], nil
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
 	return "", fmt.Errorf("timed out waiting device ready: %s", deviceGlob)
 }
@@ -810,17 +834,17 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 	return nil
 }
 
-func fetchNodeInfo(ctx context.Context, spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
-	if err := spdkNode.Client.findPoolForVolume(ctx, lvolID); err != nil {
+func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*NodeInfo, error) {
+	poolID, err := client.API.findPoolForVolume(ctx, lvolID)
+	if err != nil {
 		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
 	}
-	resp, err := spdkNode.Client.CallSBCLI(ctx, "GET", spdkNode.Client.v2volume(lvolID), nil)
+	raw, err := client.API.do(ctx, "GET", client.API.v2volume(poolID, lvolID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch node info: %v", err)
 	}
 	var info NodeInfo
-	respBytes, _ := json.Marshal(resp)
-	if err := json.Unmarshal(respBytes, &info); err != nil {
+	if err := json.Unmarshal(raw, &info); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal node info: %v", err)
 	}
 	// v2 nodes field returns URL paths; extract UUIDs from last path segment
@@ -830,8 +854,8 @@ func fetchNodeInfo(ctx context.Context, spdkNode *NodeNVMf, lvolID string) (*Nod
 	return &info, nil
 }
 
-func isNodeOnline(ctx context.Context, spdkNode *NodeNVMf, nodeID string) bool {
-	status, err := spdkNode.Client.getStorageNodeStatus(ctx, nodeID)
+func isNodeOnline(ctx context.Context, client *ClusterClient, nodeID string) bool {
+	status, err := client.API.getStorageNodeStatus(ctx, nodeID)
 	if err != nil {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
@@ -839,11 +863,12 @@ func isNodeOnline(ctx context.Context, spdkNode *NodeNVMf, nodeID string) bool {
 	return status == "online"
 }
 
-func fetchLvolConnection(ctx context.Context, spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
-	if err := spdkNode.Client.findPoolForVolume(ctx, lvolID); err != nil {
+func fetchLvolConnection(ctx context.Context, client *ClusterClient, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
+	poolID, err := client.API.findPoolForVolume(ctx, lvolID)
+	if err != nil {
 		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
 	}
-	connections, err := spdkNode.Client.getLvolConnections(ctx, lvolID, hostNQN)
+	connections, err := client.API.getLvolConnections(ctx, poolID, lvolID, hostNQN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch connection: %v", err)
 	}
@@ -1029,7 +1054,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 }
 
 func reconcileOptimizedPath(
-	sbcClient *NodeNVMf,
+	sbcClient *ClusterClient,
 	nodeInfo *NodeInfo,
 	devicePath string,
 	conn *LvolConnectResp,
@@ -1070,7 +1095,7 @@ func reconcileOptimizedPath(
 // reconcileNonOptimizedPaths handles connections[1..N] (secondary nodes).
 // Works for both 2-path (1 secondary) and 3-path (2 secondaries).
 func reconcileNonOptimizedPaths(
-	sbcClient *NodeNVMf,
+	sbcClient *ClusterClient,
 	nodeInfo *NodeInfo,
 	devicePath string,
 	conns []*LvolConnectResp,

@@ -31,53 +31,6 @@ import (
 	"k8s.io/klog"
 )
 
-// SpdkNode defines interface for SPDK storage node
-//
-//   - Info returns node info(rpc url) for debugging purpose
-//   - LvStores returns available volume stores(name, size, etc) on that node.
-//   - VolumeInfo returns a string map to be passed to client node. Client node
-//     needs these info to mount the target. E.g, target IP, service port, nqn.
-//   - Create/Delete/Publish/UnpublishVolume per CSI controller service spec.
-//
-// NOTE: concurrency, idempotency, message ordering
-//
-// In below text, "implementation" refers to the code implements this interface,
-// and "caller" is the code uses the implementation.
-//
-// Concurrency requirements for implementation and caller:
-//   - Implementation should make sure CreateVolume is thread
-//     safe. Caller is free to request creating multiple volumes in
-//     same volume store concurrently, no data race should happen.
-//   - Implementation should make sure
-//     PublishVolume/UnpublishVolume/DeleteVolume for *different
-//     volumes* thread safe. Caller may issue these requests to
-//     *different volumes", in same volume store or not, concurrently.
-//   - PublishVolume/UnpublishVolume/DeleteVolume for *same volume* is
-//     not thread safe, concurrent access may lead to data
-//     race. Caller must serialize these calls to *same volume*,
-//     possibly by mutex or message queue per volume.
-//   - Implementation should make sure LvStores and VolumeInfo are
-//     thread safe, but it doesn't lock the returned resources. It
-//     means caller should adopt optimistic concurrency control and
-//     retry on specific failures.  E.g, caller calls LvStores and
-//     finds a volume store with enough free space, it calls
-//     CreateVolume but fails with "not enough space" because another
-//     caller may issue similar request at same time. The failed
-//     caller may redo above steps(call LvStores, pick volume store,
-//     CreateVolume) under this condition, or it can simply fail.
-//
-// Idempotent requirements for implementation:
-// Per CSI spec, it's possible that same request been sent multiple times due to
-// issues such as a temporary network failure. Implementation should have basic
-// logic to deal with idempotency.
-// E.g, ignore publishing an already published volume.
-//
-// Out of order messages handling for implementation:
-// Out of order message may happen in kubernetes CSI framework. E.g, unpublish
-// an already deleted volume. The baseline is there should be no code crash or
-// data corruption under these conditions. Implementation may try to detect and
-// report errors if possible.
-
 // errors deserve special care
 var (
 	ErrJSONNoSpaceLeft  = errors.New("json: No space left")
@@ -88,25 +41,49 @@ var (
 	ErrVolumeUnpublished = errors.New("volume not published")
 )
 
-type SpdkNode interface {
+// ClusterAPI is the interface through which the CSI driver manages volumes,
+// snapshots, and storage pools on a SimplyBlock cluster.
+//
+// Concurrency: CreateVolume is safe for concurrent calls. Publish/Unpublish/Delete
+// for different volumes are safe concurrently; for the same volume they must be
+// serialised by the caller.
+//
+// Idempotency: implementations must tolerate duplicate CSI requests (e.g. double
+// publish) as required by the CSI spec.
+type ClusterAPI interface {
+	// Identity
 	Info() string
-	LvStores() ([]LvStore, error)
-	VolumeInfo(lvolID string, hostNQN string) (map[string]string, error)
-	CreateVolume(lvolName, lvsName string, sizeMiB int64) (string, error)
-	GetVolume(lvolName, lvsName string) (string, error)
-	DeleteVolume(lvolID string) error
-	PublishVolume(lvolID string) error
-	UnpublishVolume(lvolID string) error
-	CreateSnapshot(lvolName, snapshotName string) (string, error)
-	DeleteSnapshot(snapshotID string) error
+	ClusterID() string
+	PoolID() string
+
+	// Storage pools
+	ListStoragePools(ctx context.Context) ([]StoragePool, error)
+	GetPoolUUIDByName(ctx context.Context, poolName string) (string, error)
+	GetMasterLvols(ctx context.Context, poolUUID string) ([]MasterLvol, error)
+
+	// Volumes
+	CreateVolume(ctx context.Context, params *CreateLVolData) (string, error)
+	GetVolume(ctx context.Context, lvolName, poolName string) (*LvolResp, error)
+	GetVolumeSize(ctx context.Context, lvolID string) (string, error)
+	ListVolumes(ctx context.Context) ([]*LvolResp, error)
+	ResizeVolume(ctx context.Context, lvolID string, newSize int64) (bool, error)
+	DeleteVolume(ctx context.Context, lvolID string) error
+	PublishVolume(ctx context.Context, lvolID string) error
+	UnpublishVolume(ctx context.Context, lvolID string) error
+	VolumeInfo(ctx context.Context, lvolID string, hostNQN string) (map[string]string, error)
+	CloneVolume(ctx context.Context, lvolID, cloneName, newSize, pvcName string) (string, error)
+
+	// Snapshots
+	CreateSnapshot(ctx context.Context, lvolID, snapshotName string) (string, error)
+	ListSnapshots(ctx context.Context) ([]*SnapshotResp, error)
+	DeleteSnapshot(ctx context.Context, snapshotID string) error
+	CloneSnapshot(ctx context.Context, snapshotID, cloneName, newSize, pvcName string) (string, error)
 }
 
-// logical volume store
-type LvStore struct {
-	Name         string
-	UUID         string
-	TotalSizeMiB int64
-	FreeSizeMiB  int64
+// StoragePool represents a SimplyBlock storage pool returned by the cluster API.
+type StoragePool struct {
+	Name string `json:"name"`
+	UUID string `json:"id"`
 }
 
 type LvolConnectResp struct {
@@ -135,24 +112,25 @@ type LvolResp struct {
 	Status   string `json:"status"`
 }
 
-// RPCClient holds the connection information to the SimplyBlock Cluster
-type RPCClient struct {
+// Connection holds the shared HTTP transport to a webappapi service.
+// One Connection serves multiple clusters that share the same endpoint.
+type Connection struct {
+	Endpoint string
+	HTTP     *http.Client
+}
+
+// APIClient is cluster-scoped: it carries the credentials for one cluster
+// and borrows a Connection to reach the webappapi service.
+// It is immutable after construction; pool scoping is handled by the caller.
+type APIClient struct {
 	ClusterID     string
-	PoolID        string
-	ClusterIP     string
 	ClusterSecret string
-	HTTPClient    *http.Client
+	conn          *Connection
 }
 
 // ClusterStatus is a partial view of the GET /clusters/{id}/ response in v2.
 type ClusterStatus struct {
 	Status string `json:"status"`
-}
-
-// CSIPoolsResp is the response of GET /storage-pools/ — field tags match v2 StoragePoolDTO
-type CSIPoolsResp struct {
-	Name string `json:"name"`
-	UUID string `json:"id"`
 }
 
 // SnapshotResp is the response of GET /snapshots/ — field tags match v2 SnapshotDTO
@@ -192,105 +170,90 @@ type MasterLvol struct {
 	MaxNamespaces int    `json:"MaxNamespaces"`
 }
 
-func (client *RPCClient) info() string {
+func (client APIClient) info() string {
 	return client.ClusterID
 }
 
 // --- v2 URL path helpers ---
 
-func (client *RPCClient) v2pools() string {
-	return fmt.Sprintf("api/v2/clusters/%s/storage-pools", client.ClusterID)
+func (client APIClient) v2pools() string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/", client.ClusterID)
 }
 
-func (client *RPCClient) v2pool(poolID string) string {
+func (client APIClient) v2pool(poolID string) string {
 	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s", client.ClusterID, poolID)
 }
 
-func (client *RPCClient) v2volumes() string {
-	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes", client.ClusterID, client.PoolID)
+func (client APIClient) v2volumes(poolID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes/", client.ClusterID, poolID)
 }
 
-func (client *RPCClient) v2volume(volumeID string) string {
-	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes/%s/", client.ClusterID, client.PoolID, volumeID)
+func (client APIClient) v2volume(poolID, volumeID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes/%s/", client.ClusterID, poolID, volumeID)
 }
 
-func (client *RPCClient) v2snapshots() string {
-	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/snapshots", client.ClusterID, client.PoolID)
+func (client APIClient) v2snapshots(poolID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/snapshots/", client.ClusterID, poolID)
 }
 
-func (client *RPCClient) v2snapshot(snapshotID string) string {
-	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/snapshots/%s/", client.ClusterID, client.PoolID, snapshotID)
+func (client APIClient) v2snapshot(poolID, snapshotID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/snapshots/%s/", client.ClusterID, poolID, snapshotID)
 }
 
-func (client *RPCClient) v2storageNode(nodeID string) string {
+func (client APIClient) v2storageNode(nodeID string) string {
 	return fmt.Sprintf("api/v2/clusters/%s/storage-nodes/%s/", client.ClusterID, nodeID)
 }
 
 // --- API methods ---
 
-// lvStores returns all available storage pools
-func (client *RPCClient) lvStores(ctx context.Context) ([]LvStore, error) {
-	out, err := client.CallSBCLI(ctx, "GET", client.v2pools()+"/", nil)
+// listStoragePools returns all available storage pools
+func (client APIClient) listStoragePools(ctx context.Context) ([]StoragePool, error) {
+	raw, err := client.do(ctx, "GET", client.v2pools(), nil)
 	if err != nil {
 		return nil, err
 	}
-
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal pools response: %w", err)
-	}
-	var result []CSIPoolsResp
-	if err := json.Unmarshal(b, &result); err != nil {
+	var result []StoragePool
+	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal pools response: %w", err)
 	}
-
-	lvs := make([]LvStore, len(result))
-	for i := range result {
-		lvs[i].Name = result[i].Name
-		lvs[i].UUID = result[i].UUID
-	}
-	return lvs, nil
+	return result, nil
 }
 
 // createVolume creates a logical volume and returns its UUID
-func (client *RPCClient) createVolume(ctx context.Context, params *CreateLVolData) (string, error) {
-	out, err := client.CallSBCLI(ctx, "POST", client.v2volumes()+"/", params)
+func (client APIClient) createVolume(ctx context.Context, poolID string, params *CreateLVolData) (string, error) {
+	raw, err := client.do(ctx, "POST", client.v2volumes(poolID), params)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
 		}
 		return "", err
 	}
-	lvolID, ok := out.(string)
-	if !ok {
-		return "", fmt.Errorf("unexpected response for createVolume: %T %v", out, out)
+	var lvolID string
+	if err := json.Unmarshal(raw, &lvolID); err != nil {
+		return "", fmt.Errorf("unexpected response for createVolume: %w", err)
 	}
 	return lvolID, nil
 }
 
 // getVolumeByUUID fetches a single volume by its UUID
-func (client *RPCClient) getVolumeByUUID(ctx context.Context, lvolID string) (*LvolResp, error) {
-	out, err := client.CallSBCLI(ctx, "GET", client.v2volume(lvolID), nil)
+func (client APIClient) getVolumeByUUID(ctx context.Context, poolID, lvolID string) (*LvolResp, error) {
+	raw, err := client.do(ctx, "GET", client.v2volume(poolID, lvolID), nil)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSuchDevice) {
 			err = ErrJSONNoSuchDevice
 		}
 		return nil, err
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal volume response: %w", err)
-	}
 	var result LvolResp
-	if err := json.Unmarshal(b, &result); err != nil {
+	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal volume response: %w", err)
 	}
 	return &result, nil
 }
 
 // getVolumeByName lists all volumes in the pool and returns the one with matching name
-func (client *RPCClient) getVolumeByName(ctx context.Context, name string) (*LvolResp, error) {
-	volumes, err := client.listVolumes(ctx)
+func (client APIClient) getVolumeByName(ctx context.Context, poolID, name string) (*LvolResp, error) {
+	volumes, err := client.listVolumes(ctx, poolID)
 	if err != nil {
 		return nil, err
 	}
@@ -303,35 +266,31 @@ func (client *RPCClient) getVolumeByName(ctx context.Context, name string) (*Lvo
 }
 
 // getVolume accepts either a UUID or a "poolName/volName" path (legacy callers)
-func (client *RPCClient) getVolume(ctx context.Context, lvolIDOrPath string) (*LvolResp, error) {
+func (client APIClient) getVolume(ctx context.Context, poolID, lvolIDOrPath string) (*LvolResp, error) {
 	if strings.Contains(lvolIDOrPath, "/") {
 		// "poolName/volName" — extract the volume name and search by name
 		parts := strings.SplitN(lvolIDOrPath, "/", 2)
-		return client.getVolumeByName(ctx, parts[1])
+		return client.getVolumeByName(ctx, poolID, parts[1])
 	}
-	return client.getVolumeByUUID(ctx, lvolIDOrPath)
+	return client.getVolumeByUUID(ctx, poolID, lvolIDOrPath)
 }
 
 // listVolumes returns all volumes in the pool
-func (client *RPCClient) listVolumes(ctx context.Context) ([]*LvolResp, error) {
-	out, err := client.CallSBCLI(ctx, "GET", client.v2volumes()+"/", nil)
+func (client APIClient) listVolumes(ctx context.Context, poolID string) ([]*LvolResp, error) {
+	raw, err := client.do(ctx, "GET", client.v2volumes(poolID), nil)
 	if err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal volumes response: %w", err)
-	}
 	var results []*LvolResp
-	if err := json.Unmarshal(b, &results); err != nil {
+	if err := json.Unmarshal(raw, &results); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal volumes response: %w", err)
 	}
 	return results, nil
 }
 
 // getVolumeInfo returns the NVMe connection info for a volume
-func (client *RPCClient) getVolumeInfo(ctx context.Context, lvolID string, hostNQN string) (map[string]string, error) {
-	result, err := client.getLvolConnections(ctx, lvolID, hostNQN)
+func (client APIClient) getVolumeInfo(ctx context.Context, poolID, lvolID, hostNQN string) (map[string]string, error) {
+	result, err := client.getLvolConnections(ctx, poolID, lvolID, hostNQN)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSuchDevice) {
 			err = ErrJSONNoSuchDevice
@@ -368,8 +327,8 @@ func (client *RPCClient) getVolumeInfo(ctx context.Context, lvolID string, hostN
 }
 
 // deleteVolume deletes a volume by UUID
-func (client *RPCClient) deleteVolume(ctx context.Context, lvolID string) error {
-	_, err := client.CallSBCLI(ctx, "DELETE", client.v2volume(lvolID), nil)
+func (client APIClient) deleteVolume(ctx context.Context, poolID, lvolID string) error {
+	_, err := client.do(ctx, "DELETE", client.v2volume(poolID, lvolID), nil)
 	if errorMatches(err, ErrJSONNoSuchDevice) {
 		err = ErrJSONNoSuchDevice
 	}
@@ -377,8 +336,8 @@ func (client *RPCClient) deleteVolume(ctx context.Context, lvolID string) error 
 }
 
 // getPoolUUIDByName resolves a pool name to its UUID
-func (client *RPCClient) getPoolUUIDByName(ctx context.Context, poolName string) (string, error) {
-	pools, err := client.lvStores(ctx)
+func (client APIClient) getPoolUUIDByName(ctx context.Context, poolName string) (string, error) {
+	pools, err := client.listStoragePools(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -391,21 +350,17 @@ func (client *RPCClient) getPoolUUIDByName(ctx context.Context, poolName string)
 }
 
 // getMasterLvols returns master lvols for a pool
-func (client *RPCClient) getMasterLvols(ctx context.Context, poolUUID string) ([]MasterLvol, error) {
+func (client APIClient) getMasterLvols(ctx context.Context, poolUUID string) ([]MasterLvol, error) {
 	path := client.v2pool(poolUUID) + "/master-lvols"
-	out, err := client.CallSBCLI(ctx, "GET", path, nil)
+	raw, err := client.do(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
-	if out == nil {
+	if raw == nil {
 		return []MasterLvol{}, nil
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal master lvols response: %w", err)
-	}
 	var result []MasterLvol
-	if err := json.Unmarshal(b, &result); err != nil {
+	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal master lvols response: %w", err)
 	}
 	if result == nil {
@@ -415,8 +370,8 @@ func (client *RPCClient) getMasterLvols(ctx context.Context, poolUUID string) ([
 }
 
 // resizeVolume resizes a volume
-func (client *RPCClient) resizeVolume(ctx context.Context, lvolID string, size int64) (bool, error) {
-	_, err := client.CallSBCLI(ctx, "PUT", client.v2volume(lvolID), &ResizeVolReq{Size: size})
+func (client APIClient) resizeVolume(ctx context.Context, poolID, lvolID string, size int64) (bool, error) {
+	_, err := client.do(ctx, "PUT", client.v2volume(poolID, lvolID), &ResizeVolReq{Size: size})
 	if err != nil {
 		return false, err
 	}
@@ -424,8 +379,8 @@ func (client *RPCClient) resizeVolume(ctx context.Context, lvolID string, size i
 }
 
 // cloneVolume clones a volume by UUID, returning the new volume's UUID
-func (client *RPCClient) cloneVolume(ctx context.Context, lvolID, cloneName, newSize, pvcName string) (string, error) {
-	path := client.v2volume(lvolID) + "clone?clone_name=" + url.QueryEscape(cloneName)
+func (client APIClient) cloneVolume(ctx context.Context, poolID, lvolID, cloneName, newSize, pvcName string) (string, error) {
+	path := client.v2volume(poolID, lvolID) + "clone?clone_name=" + url.QueryEscape(cloneName)
 	if newSize != "" {
 		path += "&new_size=" + url.QueryEscape(newSize)
 	}
@@ -435,22 +390,22 @@ func (client *RPCClient) cloneVolume(ctx context.Context, lvolID, cloneName, new
 
 	klog.V(5).Infof("cloneVolume size: %s", newSize)
 
-	out, err := client.CallSBCLI(ctx, "POST", path, nil)
+	raw, err := client.do(ctx, "POST", path, nil)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
 		}
 		return "", err
 	}
-	lvID, ok := out.(string)
-	if !ok {
-		return "", fmt.Errorf("unexpected response for cloneVolume: %T %v", out, out)
+	var lvID string
+	if err := json.Unmarshal(raw, &lvID); err != nil {
+		return "", fmt.Errorf("unexpected response for cloneVolume: %w", err)
 	}
 	return lvID, nil
 }
 
 // cloneSnapshot creates a new volume from a snapshot, returning the new volume's UUID
-func (client *RPCClient) cloneSnapshot(ctx context.Context, snapshotID, cloneName, newSize, pvcName string) (string, error) {
+func (client APIClient) cloneSnapshot(ctx context.Context, poolID, snapshotID, cloneName, newSize, pvcName string) (string, error) {
 	params := struct {
 		Name       string `json:"name"`
 		SnapshotID string `json:"snapshot_id"`
@@ -465,51 +420,43 @@ func (client *RPCClient) cloneSnapshot(ctx context.Context, snapshotID, cloneNam
 
 	klog.V(5).Infof("cloneSnapshot size: %s", newSize)
 
-	out, err := client.CallSBCLI(ctx, "POST", client.v2volumes()+"/", &params)
+	raw, err := client.do(ctx, "POST", client.v2volumes(poolID), &params)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
 		}
 		return "", err
 	}
-	lvolID, ok := out.(string)
-	if !ok {
-		return "", fmt.Errorf("unexpected response for cloneSnapshot: %T %v", out, out)
+	var lvolID string
+	if err := json.Unmarshal(raw, &lvolID); err != nil {
+		return "", fmt.Errorf("unexpected response for cloneSnapshot: %w", err)
 	}
 	return lvolID, nil
 }
 
 // listSnapshots returns all snapshots in the pool
-func (client *RPCClient) listSnapshots(ctx context.Context) ([]*SnapshotResp, error) {
-	out, err := client.CallSBCLI(ctx, "GET", client.v2snapshots()+"/", nil)
+func (client APIClient) listSnapshots(ctx context.Context, poolID string) ([]*SnapshotResp, error) {
+	raw, err := client.do(ctx, "GET", client.v2snapshots(poolID), nil)
 	if err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal snapshots response: %w", err)
-	}
 	var results []*SnapshotResp
-	if err := json.Unmarshal(b, &results); err != nil {
+	if err := json.Unmarshal(raw, &results); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal snapshots response: %w", err)
 	}
 	return results, nil
 }
 
 // listAllSnapshots iterates every pool in the cluster and collects all snapshots.
-// Used when PoolID is not set (e.g. ListSnapshots CSI RPC).
-func (client *RPCClient) listAllSnapshots(ctx context.Context) ([]*SnapshotResp, error) {
-	pools, err := client.lvStores(ctx)
+// Used when no pool is set (e.g. ListSnapshots CSI RPC).
+func (client APIClient) listAllSnapshots(ctx context.Context) ([]*SnapshotResp, error) {
+	pools, err := client.listStoragePools(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var all []*SnapshotResp
-	savedPool := client.PoolID
-	defer func() { client.PoolID = savedPool }()
-
 	for _, pool := range pools {
-		client.PoolID = pool.UUID
-		snaps, err := client.listSnapshots(ctx)
+		snaps, err := client.listSnapshots(ctx, pool.UUID)
 		if err != nil {
 			return nil, err
 		}
@@ -523,33 +470,33 @@ func (client *RPCClient) listAllSnapshots(ctx context.Context) ([]*SnapshotResp,
 }
 
 // snapshot creates a snapshot of a volume and returns the snapshot UUID
-func (client *RPCClient) snapshot(ctx context.Context, lvolID, snapShotName string) (string, error) {
+func (client APIClient) snapshot(ctx context.Context, poolID, lvolID, snapShotName string) (string, error) {
 	params := struct {
 		Name string `json:"name"`
 	}{Name: snapShotName}
 
-	path := client.v2volume(lvolID) + "snapshots"
-	out, err := client.CallSBCLI(ctx, "POST", path, &params)
+	path := client.v2volume(poolID, lvolID) + "snapshots"
+	raw, err := client.do(ctx, "POST", path, &params)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
 		}
 		return "", err
 	}
-	snapshotID, ok := out.(string)
-	if !ok {
-		return "", fmt.Errorf("unexpected response for snapshot: %T %v", out, out)
+	var snapshotID string
+	if err := json.Unmarshal(raw, &snapshotID); err != nil {
+		return "", fmt.Errorf("unexpected response for snapshot: %w", err)
 	}
 	return snapshotID, nil
 }
 
 // deleteSnapshot deletes a snapshot.
-// If PoolID is not set (legacy 2-part snapshot IDs), it scans all pools.
-func (client *RPCClient) deleteSnapshot(ctx context.Context, snapshotID string) error {
-	if client.PoolID == "" {
+// If poolID is empty (legacy 2-part snapshot IDs), it scans all pools.
+func (client APIClient) deleteSnapshot(ctx context.Context, poolID, snapshotID string) error {
+	if poolID == "" {
 		return client.deleteSnapshotScanPools(ctx, snapshotID)
 	}
-	_, err := client.CallSBCLI(ctx, "DELETE", client.v2snapshot(snapshotID), nil)
+	_, err := client.do(ctx, "DELETE", client.v2snapshot(poolID, snapshotID), nil)
 	if errorMatches(err, ErrJSONNoSuchDevice) {
 		err = ErrJSONNoSuchDevice
 	}
@@ -558,17 +505,13 @@ func (client *RPCClient) deleteSnapshot(ctx context.Context, snapshotID string) 
 
 // deleteSnapshotScanPools finds a snapshot across all pools and deletes it.
 // Used for backward compat with legacy 2-part CSI snapshot IDs that have no pool info.
-func (client *RPCClient) deleteSnapshotScanPools(ctx context.Context, snapshotID string) error {
-	pools, err := client.lvStores(ctx)
+func (client APIClient) deleteSnapshotScanPools(ctx context.Context, snapshotID string) error {
+	pools, err := client.listStoragePools(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list pools while deleting snapshot %s: %w", snapshotID, err)
 	}
-	savedPool := client.PoolID
-	defer func() { client.PoolID = savedPool }()
-
 	for _, pool := range pools {
-		client.PoolID = pool.UUID
-		_, err := client.CallSBCLI(ctx, "DELETE", client.v2snapshot(snapshotID), nil)
+		_, err := client.do(ctx, "DELETE", client.v2snapshot(pool.UUID, snapshotID), nil)
 		if err == nil {
 			return nil
 		}
@@ -579,85 +522,78 @@ func (client *RPCClient) deleteSnapshotScanPools(ctx context.Context, snapshotID
 	return fmt.Errorf("snapshot %s not found in any pool", snapshotID)
 }
 
-// findPoolForVolume scans all pools to find the one containing the given volume UUID,
-// then sets client.PoolID. No-op if PoolID is already set.
-func (client *RPCClient) findPoolForVolume(ctx context.Context, lvolID string) error {
-	if client.PoolID != "" {
-		return nil
-	}
-	pools, err := client.lvStores(ctx)
+// findPoolForVolume scans all storage pools to find which one contains the given
+// volume UUID, and returns that pool's UUID. Returns an error if not found.
+func (client APIClient) findPoolForVolume(ctx context.Context, lvolID string) (string, error) {
+	pools, err := client.listStoragePools(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list pools while resolving pool for volume %s: %w", lvolID, err)
+		return "", fmt.Errorf("failed to list pools for volume %s: %w", lvolID, err)
 	}
 	for _, pool := range pools {
-		client.PoolID = pool.UUID
-		_, err := client.getVolumeByUUID(ctx, lvolID)
+		_, err := client.getVolumeByUUID(ctx, pool.UUID, lvolID)
 		if err == nil {
-			return nil
+			return pool.UUID, nil
 		}
 		if !errorMatches(err, ErrJSONNoSuchDevice) && !strings.Contains(err.Error(), "404") {
-			client.PoolID = ""
-			return fmt.Errorf("unexpected error searching for volume %s in pool %s: %w", lvolID, pool.UUID, err)
+			return "", fmt.Errorf("unexpected error searching for volume %s in pool %s: %w", lvolID, pool.UUID, err)
 		}
 	}
-	client.PoolID = ""
-	return fmt.Errorf("volume %s not found in any pool", lvolID)
+	return "", fmt.Errorf("volume %s not found in any pool", lvolID)
 }
 
 // getLvolConnections returns the raw NVMe-oF connection list for a volume.
-func (client *RPCClient) getLvolConnections(ctx context.Context, lvolID, hostNQN string) ([]*LvolConnectResp, error) {
-	path := client.v2volume(lvolID) + "connect"
+func (client APIClient) getLvolConnections(ctx context.Context, poolID, lvolID, hostNQN string) ([]*LvolConnectResp, error) {
+	path := client.v2volume(poolID, lvolID) + "connect"
 	if hostNQN != "" {
 		path += "?host_nqn=" + url.QueryEscape(hostNQN)
 	}
-	out, err := client.CallSBCLI(ctx, "GET", path, nil)
+	raw, err := client.do(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal connections response: %w", err)
-	}
 	var result []*LvolConnectResp
-	if err := json.Unmarshal(b, &result); err != nil {
+	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal connections response: %w", err)
 	}
 	return result, nil
 }
 
 // getStorageNodeStatus returns the status string for a storage node by UUID.
-func (client *RPCClient) getStorageNodeStatus(ctx context.Context, nodeID string) (string, error) {
-	out, err := client.CallSBCLI(ctx, "GET", client.v2storageNode(nodeID), nil)
+func (client APIClient) getStorageNodeStatus(ctx context.Context, nodeID string) (string, error) {
+	raw, err := client.do(ctx, "GET", client.v2storageNode(nodeID), nil)
 	if err != nil {
 		return "", err
-	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal node status response: %w", err)
 	}
 	var resp struct {
 		Status string `json:"status"`
 	}
-	if err := json.Unmarshal(b, &resp); err != nil {
+	if err := json.Unmarshal(raw, &resp); err != nil {
 		return "", fmt.Errorf("failed to unmarshal node status response: %w", err)
 	}
 	return resp.Status, nil
 }
 
-// CallSBCLI is a generic function to call the SimplyBlock API v2
-func (client *RPCClient) CallSBCLI(ctx context.Context, method, path string, args interface{}) (interface{}, error) {
+// do executes an HTTP request against the SimplyBlock API and returns the raw
+// JSON response body. Callers unmarshal directly into their typed structs.
+//
+// Response handling:
+//   - 204 No Content → (nil, nil)
+//   - 201 Created    → UUID extracted from Location header, encoded as a JSON string
+//   - 2xx            → raw JSON body
+//   - 4xx/5xx        → error with extracted message
+func (client APIClient) do(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
 	path = strings.TrimLeft(path, "/")
 
 	var bodyReader io.Reader
-	if args != nil {
-		data, err := json.Marshal(args)
+	if body != nil {
+		data, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", method, err)
 		}
 		bodyReader = bytes.NewReader(data)
 	}
 
-	requestURL := fmt.Sprintf("%s/%s", client.ClusterIP, path)
+	requestURL := fmt.Sprintf("%s/%s", client.conn.Endpoint, path)
 	klog.Infof("Calling Simplyblock API v2: %s %s", method, requestURL)
 
 	req, err := http.NewRequestWithContext(ctx, method, requestURL, bodyReader)
@@ -666,11 +602,11 @@ func (client *RPCClient) CallSBCLI(ctx context.Context, method, path string, arg
 	}
 
 	req.Header.Set("Authorization", client.authorizationHeader(path))
-	if args != nil {
+	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.conn.HTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
@@ -681,36 +617,33 @@ func (client *RPCClient) CallSBCLI(ctx context.Context, method, path string, arg
 		return nil, nil
 	}
 
-	// 201 Created — return the UUID extracted from the Location header
+	// 201 Created — return the UUID extracted from the Location header, encoded as a JSON string
 	if resp.StatusCode == http.StatusCreated {
 		location := resp.Header.Get("Location")
 		if location == "" {
 			return nil, fmt.Errorf("%s: 201 response missing Location header", method)
 		}
-		return locationToUUID(location), nil
+		encoded, _ := json.Marshal(locationToUUID(location))
+		return json.RawMessage(encoded), nil
 	}
 
-	body, readErr := io.ReadAll(resp.Body)
+	raw, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		return nil, fmt.Errorf("%s: failed to read response body: %w", method, readErr)
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		msg := extractErrorMessage(body)
+		msg := extractErrorMessage(raw)
 		if msg == "" {
 			msg = http.StatusText(resp.StatusCode)
 		}
 		return nil, fmt.Errorf("%s: %s", method, msg)
 	}
 
-	var result interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("%s: failed to decode response: %w", method, err)
-	}
-	return result, nil
+	return json.RawMessage(raw), nil
 }
 
-func (client *RPCClient) authorizationHeader(path string) string {
+func (client APIClient) authorizationHeader(path string) string {
 	if strings.HasPrefix(path, "api/v2/") {
 		return "Bearer " + client.ClusterSecret
 	}
@@ -731,8 +664,8 @@ func locationToUUID(location string) string {
 // extractErrorMessage pulls a human-readable message from a FastAPI error response body.
 func extractErrorMessage(body []byte) string {
 	var resp struct {
-		Detail interface{} `json:"detail"`
-		Error  string      `json:"error"`
+		Detail any    `json:"detail"`
+		Error  string `json:"error"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return string(body)

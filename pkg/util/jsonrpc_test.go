@@ -8,40 +8,44 @@ import (
 	"testing"
 )
 
-func TestCallSBCLIUsesBearerAuthForAPIV2(t *testing.T) {
+func TestDoUsesBearerAuthForAPIV2(t *testing.T) {
 	var gotAuth string
-	client := &RPCClient{
+	client := &APIClient{
 		ClusterID:     "cluster-id",
-		ClusterIP:     "http://api.example.com",
 		ClusterSecret: "cluster-secret",
-		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			gotAuth = r.Header.Get("Authorization")
-			return jsonResponse(), nil
-		})},
+		conn: &Connection{
+			Endpoint: "http://api.example.com",
+			HTTP: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				gotAuth = r.Header.Get("Authorization")
+				return jsonResponse(), nil
+			})},
+		},
 	}
 
-	if _, err := client.CallSBCLI(context.Background(), http.MethodGet, "/api/v2/clusters/cluster-id/storage-pools/", nil); err != nil {
-		t.Fatalf("CallSBCLI: %v", err)
+	if _, err := client.do(context.Background(), http.MethodGet, "/api/v2/clusters/cluster-id/storage-pools/", nil); err != nil {
+		t.Fatalf("do: %v", err)
 	}
 	if gotAuth != "Bearer cluster-secret" {
 		t.Fatalf("Authorization = %q, want Bearer cluster-secret", gotAuth)
 	}
 }
 
-func TestCallSBCLIUsesLegacyAuthOutsideAPIV2(t *testing.T) {
+func TestDoUsesLegacyAuthOutsideAPIV2(t *testing.T) {
 	var gotAuth string
-	client := &RPCClient{
+	client := &APIClient{
 		ClusterID:     "cluster-id",
-		ClusterIP:     "http://api.example.com",
 		ClusterSecret: "cluster-secret",
-		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			gotAuth = r.Header.Get("Authorization")
-			return jsonResponse(), nil
-		})},
+		conn: &Connection{
+			Endpoint: "http://api.example.com",
+			HTTP: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				gotAuth = r.Header.Get("Authorization")
+				return jsonResponse(), nil
+			})},
+		},
 	}
 
-	if _, err := client.CallSBCLI(context.Background(), http.MethodGet, "/lvol/lvol-id", nil); err != nil {
-		t.Fatalf("CallSBCLI: %v", err)
+	if _, err := client.do(context.Background(), http.MethodGet, "/lvol/lvol-id", nil); err != nil {
+		t.Fatalf("do: %v", err)
 	}
 	if gotAuth != "cluster-id cluster-secret" {
 		t.Fatalf("Authorization = %q, want cluster-id cluster-secret", gotAuth)
@@ -52,26 +56,27 @@ func TestCloneVolumeUsesPostAndLocationHeader(t *testing.T) {
 	var gotMethod string
 	var gotPath string
 	var gotQuery string
-	client := &RPCClient{
+	client := &APIClient{
 		ClusterID:     "cluster-id",
-		PoolID:        "pool-id",
-		ClusterIP:     "http://api.example.com",
 		ClusterSecret: "cluster-secret",
-		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			gotMethod = r.Method
-			gotPath = r.URL.Path
-			gotQuery = r.URL.RawQuery
-			return &http.Response{
-				StatusCode: http.StatusCreated,
-				Body:       io.NopCloser(strings.NewReader("")),
-				Header: http.Header{
-					"Location": []string{"/api/v2/clusters/cluster-id/storage-pools/pool-id/volumes/clone-id/"},
-				},
-			}, nil
-		})},
+		conn: &Connection{
+			Endpoint: "http://api.example.com",
+			HTTP: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				gotQuery = r.URL.RawQuery
+				return &http.Response{
+					StatusCode: http.StatusCreated,
+					Body:       io.NopCloser(strings.NewReader("")),
+					Header: http.Header{
+						"Location": []string{"/api/v2/clusters/cluster-id/storage-pools/pool-id/volumes/clone-id/"},
+					},
+				}, nil
+			})},
+		},
 	}
 
-	cloneID, err := client.cloneVolume(context.Background(), "source-id", "clone name", "1073741824", "default/my-pvc")
+	cloneID, err := client.cloneVolume(context.Background(), "pool-id", "source-id", "clone name", "1073741824", "default/my-pvc")
 	if err != nil {
 		t.Fatalf("cloneVolume: %v", err)
 	}
