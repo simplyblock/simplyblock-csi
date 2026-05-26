@@ -59,7 +59,6 @@ type SpdkCsiInitiator interface {
 // initiatorNVMf is an implementation of NVMf tcp initiator
 type initiatorNVMf struct {
 	targetType     string
-	connections    []connectionInfo
 	nqn            string
 	reconnectDelay string
 	nrIoQueues     string
@@ -221,16 +220,8 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 	klog.Infof("Simplyblock targetType created :%s", targetType)
 	switch targetType {
 	case TargetTypeTCP, TargetTypeRDMA:
-		var connections []connectionInfo
-
-		err := json.Unmarshal([]byte(volumeContext["connections"]), &connections)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshall connections. Error: %v", err.Error())
-		}
-
 		return &initiatorNVMf{
 			targetType:     volumeContext["targetType"],
-			connections:    connections,
 			nqn:            volumeContext["nqn"],
 			reconnectDelay: volumeContext["reconnectDelay"],
 			nrIoQueues:     volumeContext["nrIoQueues"],
@@ -380,13 +371,7 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 	return err
 }
 
-func (nvmf *initiatorNVMf) Connect() (string, error) {
-	klog.Info("connections", nvmf.connections)
-	ctrlLossTmo := 60
-	if len(nvmf.connections) == 1 {
-		ctrlLossTmo *= 15
-	}
-
+func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	alreadyConnected, err := isNqnConnected(nvmf.nqn)
 	if err != nil {
 		klog.Errorf("Failed to check existing connections: %v", err)
