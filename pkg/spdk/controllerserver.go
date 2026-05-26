@@ -492,7 +492,7 @@ func getBoolParameter(params map[string]string, key string) bool {
 	return exists && (valueStr == "true" || valueStr == "True")
 }
 
-func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, capacityBytes int64) (*util.CreateLVolData, error) {
+func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, capacityBytes int64, lvolID string) (*util.CreateLVolData, error) {
 	params := req.GetParameters()
 
 	distrNdcs, err := getIntParameter(params, "distr_ndcs", 1)
@@ -529,11 +529,6 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	}
 
 	hostID, err := getHostIDAnnotation(ctx, pvcName, pvcNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	lvolID, err := getLvolIDAnnotation(ctx, pvcName, pvcNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -587,11 +582,25 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	return &createVolReq, nil
 }
 
-func (cs *controllerServer) getExistingVolume(name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
+// getExistingVolumeByUUID checks whether a volume with the given UUID
+func (cs *controllerServer) getExistingVolumeByUUID(lvolID string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
+	volume, err := sbclient.GetVolumeByUUID(lvolID)
+	if err == nil {
+		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volume.UUID)
+		klog.V(5).Infof("volume already exists: %s", vol.GetVolumeId())
+		return vol, nil
+	}
+	return nil, err
+}
+
+// getExistingVolumeByName looks up a volume by name using a list scan.  This is
+// the backward-compatibility fallback for volumes that were created before the
+// deterministic-UUID change and therefore carry a random sbcli-assigned UUID.
+func (cs *controllerServer) getExistingVolumeByName(name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
 	volume, err := sbclient.GetVolume(name, poolName)
 	if err == nil {
 		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volume.UUID)
-		klog.V(5).Info("volume already exists", vol.GetVolumeId())
+		klog.V(5).Infof("volume already exists: %s", vol.GetVolumeId())
 		return vol, nil
 	}
 	return nil, err
@@ -613,8 +622,24 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 
 	klog.V(5).Info("provisioning volume from SDK node..")
 	poolName := req.GetParameters()["pool_name"]
-	existingVolume, err := cs.getExistingVolume(req.GetName(), poolName, sbclient, &vol)
-	if err == nil {
+
+	// Determine the lvol UUID upfront.  A per-PVC annotation overrides the
+	// default; otherwise strip the "pvc-" prefix from the CSI volume name to
+	// obtain the PVC UID, which we use as the lvol UUID.  The external-provisioner
+	// sets req.GetName() = "pvc-<pvc_uid>", so the UID is already a stable,
+	// unique identifier — no derivation needed.
+	params := req.GetParameters()
+	pvcName := params[CSIStorageNameKey]
+	pvcNamespace := params[CSIStorageNamespaceKey]
+	lvolID, err := getLvolIDAnnotation(ctx, pvcName, pvcNamespace)
+	if err != nil {
+		return nil, err
+	}
+	if lvolID == "" {
+		lvolID = strings.TrimPrefix(req.GetName(), "pvc-")
+	}
+
+	if existingVolume, err := cs.getExistingVolumeByUUID(lvolID, sbclient, &vol); err == nil {
 		return existingVolume, nil
 	}
 
@@ -628,7 +653,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	createVolReq, err := prepareCreateVolumeReq(ctx, req, capacityBytes)
+	createVolReq, err := prepareCreateVolumeReq(ctx, req, capacityBytes, lvolID)
 	if err != nil {
 		return nil, err
 	}
@@ -642,6 +667,14 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 
 	volumeID, err := sbclient.CreateVolume(createVolReq)
 	if err != nil {
+		// 409 Conflict: a volume with this name already exists but with a
+		// different UUID
+		if errors.Is(err, util.ErrJSONConflict) {
+			if existingVolume, nameErr := cs.getExistingVolumeByName(req.GetName(), poolName, sbclient, &vol); nameErr == nil {
+				klog.V(4).Infof("found pre-existing volume %q by name after 409 (pre-PVC-UID era)", req.GetName())
+				return existingVolume, nil
+			}
+		}
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}

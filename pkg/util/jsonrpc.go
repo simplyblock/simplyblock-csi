@@ -81,6 +81,7 @@ import (
 var (
 	ErrJSONNoSpaceLeft  = errors.New("json: No space left")
 	ErrJSONNoSuchDevice = errors.New("json: No such device")
+	ErrJSONConflict     = errors.New("json: Conflict")
 
 	// internal errors
 	ErrVolumeDeleted     = errors.New("volume deleted")
@@ -708,6 +709,10 @@ func (client *RPCClient) CallSBCLI(method, path string, args interface{}) (inter
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		return nil, fmt.Errorf("%s: failed to read response body: %w", method, readErr)
+	}
+
+	if resp.StatusCode == http.StatusConflict {
+		return nil, ErrJSONConflict
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {

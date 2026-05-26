@@ -197,6 +197,11 @@ func (node *NodeNVMf) GetVolume(lvolName, poolName string) (*LvolResp, error) {
 	return node.Client.getVolume(fmt.Sprintf("%s/%s", poolName, lvolName))
 }
 
+// GetVolumeByUUID returns the LvolResp for the given volume UUID
+func (node *NodeNVMf) GetVolumeByUUID(lvolID string) (*LvolResp, error) {
+	return node.Client.getVolumeByUUID(lvolID)
+}
+
 // GetVolumeSize returns the size of the volume
 func (node *NodeNVMf) GetVolumeSize(lvolID string) (string, error) {
 	lvol, err := node.Client.getVolume(lvolID)
