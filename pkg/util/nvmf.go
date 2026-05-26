@@ -193,7 +193,7 @@ func (node *NodeNVMf) CreateVolume(ctx context.Context, params *CreateLVolData) 
 	return lvolID, nil
 }
 
-// GetVolume returns the volume id of the given volume name and lvstore name. return error if not found.
+// GetVolume returns the LvolResp for the given volume name and pool name. Returns error if not found.
 func (node *NodeNVMf) GetVolume(ctx context.Context, lvolName, poolName string) (*LvolResp, error) {
 	return node.Client.getVolume(ctx, fmt.Sprintf("%s/%s", poolName, lvolName))
 }
@@ -292,7 +292,7 @@ func (node *NodeNVMf) DeleteSnapshot(ctx context.Context, snapshotID string) err
 
 // PublishVolume exports a volume through NVMf target
 func (node *NodeNVMf) PublishVolume(ctx context.Context, lvolID string) error {
-	_, err := node.Client.CallSBCLI("GET", node.Client.v2volume(lvolID), nil)
+	_, err := node.Client.CallSBCLI(ctx, "GET", node.Client.v2volume(lvolID), nil)
 	if err != nil {
 		return err
 	}
@@ -301,7 +301,6 @@ func (node *NodeNVMf) PublishVolume(ctx context.Context, lvolID string) error {
 }
 
 // UnpublishVolume unexports a volume through NVMf target
-
 func (node *NodeNVMf) UnpublishVolume(ctx context.Context, lvolID string) error {
 	_, err := node.Client.CallSBCLI(ctx, "GET", node.Client.v2volume(lvolID), nil)
 	if err != nil {

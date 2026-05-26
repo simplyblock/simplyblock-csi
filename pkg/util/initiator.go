@@ -217,9 +217,9 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 	}
 }
 
-func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
+func execWithTimeoutRetry(ctx context.Context, cmdLine []string, timeout, retry int) (err error) {
 	for retry > 0 {
-		err = execWithTimeout(cmdLine, timeout)
+		err = execWithTimeout(ctx, cmdLine, timeout)
 		if err == nil {
 			return nil
 		}
@@ -254,7 +254,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 		var lastErr error
 
 		for _, conn := range connections {
-			err := connectViaNVMe(conn, ctrlLossTmo, len(connections))
+			err := connectViaNVMe(ctx, conn, ctrlLossTmo, len(connections))
 			if err != nil {
 				klog.Errorf("nvme connect failed for %s:%d: %v", conn.IP, conn.Port, err)
 				lastErr = err
@@ -287,7 +287,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	return devicePath, nil
 }
 
-func (nvmf *initiatorNVMf) Disconnect(_ context.Context) error {
+func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 	//deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
 	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
 	devicePath, err := filepath.Glob(deviceGlob)
@@ -299,7 +299,7 @@ func (nvmf *initiatorNVMf) Disconnect(_ context.Context) error {
 		return nil
 
 	} else if len(devicePath) == 1 {
-		err = disconnectDevicePath(devicePath[0])
+		err = disconnectDevicePath(ctx, devicePath[0])
 
 		if err != nil {
 			return err
@@ -342,16 +342,16 @@ func waitForDeviceGone(deviceGlob string) error {
 }
 
 // exec shell command with timeout(in seconds)
-func execWithTimeout(cmdLine []string, timeout int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+func execWithTimeout(ctx context.Context, cmdLine []string, timeout int) error {
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	klog.Infof("running command: %v", cmdLine)
 	//nolint:gosec // execWithTimeout assumes valid cmd arguments
-	cmd := exec.CommandContext(ctx, cmdLine[0], cmdLine[1:]...)
+	cmd := exec.CommandContext(execCtx, cmdLine[0], cmdLine[1:]...)
 	output, err := cmd.CombinedOutput()
 
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		return errors.New("timed out")
 	}
 	if output != nil {
@@ -363,7 +363,7 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 	return err
 }
 
-func disconnectDevicePath(devicePath string) error {
+func disconnectDevicePath(ctx context.Context, devicePath string) error {
 	var paths []path
 
 	realPath, err := filepath.EvalSymlinks(devicePath)
@@ -397,7 +397,7 @@ func disconnectDevicePath(devicePath string) error {
 	for _, p := range paths {
 		klog.Infof("Disconnecting device %s", p.Name)
 		disconnectCmd := []string{"nvme", "disconnect", "-d", p.Name}
-		err := execWithTimeoutRetry(disconnectCmd, 40, 1)
+		err := execWithTimeoutRetry(ctx, disconnectCmd, 40, 1)
 		if err != nil {
 			klog.Errorf("Failed to disconnect device %s: %v", p.Name, err)
 		}
@@ -652,7 +652,7 @@ func fetchLvolConnection(ctx context.Context, spdkNode *NodeNVMf, lvolID string,
 	return connections, nil
 }
 
-func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo, retries int) error {
+func connectViaNVMe(ctx context.Context, conn *LvolConnectResp, ctrlLossTmo int, retries int) error {
 	cmd := []string{
 		"nvme", "connect", "-t", strings.ToLower(conn.TargetType),
 		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
@@ -664,19 +664,19 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo, retries int) error {
 	if conn.HostIface != "" {
 		cmd = append(cmd, "-f", conn.HostIface)
 	}
-	if err := execWithTimeoutRetry(cmd, 40, retries); err != nil {
+	if err := execWithTimeoutRetry(ctx, cmd, 40, retries); err != nil {
 		klog.Errorf("nvme connect failed: %v", err)
 		return err
 	}
 	return nil
 }
 
-func disconnectViaNVMe(devicePath string, path path) error {
+func disconnectViaNVMe(ctx context.Context, devicePath string, path path) error {
 	cmd := []string{
 		"nvme", "disconnect", "-d", path.Name,
 	}
 
-	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
+	if err := execWithTimeoutRetry(ctx, cmd, 40, 1); err != nil {
 		klog.Errorf("nvme disconnect failed: %v", err)
 		return err
 	}
@@ -844,7 +844,7 @@ func reconcileOptimizedPath(
 			return
 		}
 		klog.Infof("reconcileOptimizedPath: connecting missing optimized path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
+		if err := connectViaNVMe(context.Background(), conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileOptimizedPath: connect to %s failed: %v", conn.IP, err)
 		}
 		return
@@ -860,11 +860,11 @@ func reconcileOptimizedPath(
 		return
 	}
 	klog.Infof("reconcileOptimizedPath: IP changed old=%s new=%s, reconnecting", activeIP, conn.IP)
-	if err := disconnectViaNVMe(devicePath, active[0]); err != nil {
+	if err := disconnectViaNVMe(context.Background(), devicePath, active[0]); err != nil {
 		klog.Errorf("reconcileOptimizedPath: disconnect stale %s failed: %v", activeIP, err)
 		return
 	}
-	if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
+	if err := connectViaNVMe(context.Background(), conn, ctrlLossTmo, 1); err != nil {
 		klog.Errorf("reconcileOptimizedPath: connect to new IP %s failed: %v", conn.IP, err)
 	}
 }
@@ -900,7 +900,7 @@ func reconcileNonOptimizedPaths(
 	for ip, p := range activeIPMap {
 		if !expectedIPSet[ip] {
 			klog.Infof("reconcileNonOptimizedPaths: stale IP %s disconnecting", ip)
-			if err := disconnectViaNVMe(devicePath, p); err != nil {
+			if err := disconnectViaNVMe(context.Background(), devicePath, p); err != nil {
 				klog.Errorf("reconcileNonOptimizedPaths: disconnect stale %s failed: %v", ip, err)
 			}
 			delete(activeIPMap, ip)
@@ -928,7 +928,7 @@ func reconcileNonOptimizedPaths(
 			continue
 		}
 		klog.Infof("reconcileNonOptimizedPaths: connecting missing path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
+		if err := connectViaNVMe(context.Background(), conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileNonOptimizedPaths: connect to %s failed: %v", conn.IP, err)
 		}
 	}

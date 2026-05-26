@@ -587,7 +587,6 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	return &createVolReq, nil
 }
 
-
 func (cs *controllerServer) getExistingVolume(ctx context.Context, name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
 	volume, err := sbclient.GetVolume(ctx, name, poolName)
 	if err == nil {
