@@ -110,6 +110,7 @@ type LvStore struct {
 
 type LvolConnectResp struct {
 	Nqn            string `json:"nqn"`
+	Model          string `json:"model,omitempty"`
 	ReconnectDelay int    `json:"reconnect-delay"`
 	NrIoQueues     int    `json:"nr-io-queues"`
 	CtrlLossTmo    int    `json:"ctrl-loss-tmo"`
