@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"context"
 	"flag"
 	"os"
 	"path/filepath"
@@ -11,7 +10,6 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-	"k8s.io/kubernetes/test/e2e/storage/podlogs"
 )
 
 func init() {
@@ -33,15 +31,6 @@ func init() {
 }
 
 var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
-	ginkgo.By("Watching for pod logs in 'default' namespace")
-	cs, err := framework.LoadClientset()
-	framework.ExpectNoError(err, "create client set")
-	err = podlogs.CopyAllLogs(context.Background(), cs, nameSpace, podlogs.LogOutput{
-		LogWriter:    ginkgo.GinkgoWriter,
-		StatusWriter: ginkgo.GinkgoWriter,
-	})
-	framework.ExpectNoError(err, "set watch on namespace :%s", nameSpace)
-
 	return []byte{}
 }, func(_ []byte) {})
 

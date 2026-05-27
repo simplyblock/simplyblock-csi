@@ -12,9 +12,11 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
@@ -24,28 +26,37 @@ import (
 )
 
 var (
-	nameSpace       string
-	storageClassName string
-	operatorMode    bool
-	systemNamespace string
+	// nameSpace is the value from CSI_NAMESPACE env — used only for
+	// system-level checks (controller/node readiness) and the global log
+	// watcher in e2e.go.  Test helpers accept an explicit ns parameter so
+	// each It block is isolated in its own framework-managed namespace.
+	nameSpace         string
+	storageClassName  string
+	snapshotClassName string
+	operatorMode      bool
+	systemNamespace   string
 )
 
 const (
 	// Template YAML paths (relative to the e2e/ directory).
 	pvcPath                  = "templates/pvc.yaml"
 	cachepvcPath             = "templates/pvc-cache.yaml"
+	pvcBlockPath             = "templates/pvc-block.yaml"
 	testPodPath              = "templates/testpod.yaml"
 	cachetestPodPath         = "templates/testpod-cache.yaml"
+	testPodBlockPath         = "templates/testpod-block.yaml"
 	multiPvcsPath            = "templates/multi-pvc.yaml"
 	testPodWithMultiPvcsPath = "templates/testpod-multi-pvc.yaml"
 	testPodWithSnapshotPath  = "templates/testpod-snapshot.yaml"
 	testPodWithSnapshotPath2 = "templates/testpod-snapshot2.yaml"
 	testPodWithClonePath     = "templates/testpod-clone.yaml"
+	snapshotOnlyPath         = "templates/snapshot-only.yaml"
 
 	// Kubernetes resource names.
 	controllerStsName = "simplyblock-csi-controller"
 	nodeDsName        = "simplyblock-csi-node"
 	testPodName       = "spdkcsi-test"
+	blockTestPodName  = "spdkcsi-test-block"
 	multiTestPodName  = "spdkcsi-test-multi"
 	cachetestPodName  = "spdkcsi-cache-test"
 )
@@ -59,11 +70,40 @@ func init() {
 	if storageClassName == "" {
 		storageClassName = "simplyblock-csi-sc"
 	}
+	snapshotClassName = os.Getenv("SNAPSHOT_CLASS_NAME")
+	if snapshotClassName == "" {
+		snapshotClassName = "simplyblock-csi-snapshotclass"
+	}
 	operatorMode = os.Getenv("OPERATOR_MODE") == "true"
 	systemNamespace = os.Getenv("CSI_SYSTEM_NAMESPACE")
 	if systemNamespace == "" {
 		systemNamespace = "simplyblock"
 	}
+}
+
+// newTestFramework creates a Ginkgo e2e framework and registers a BeforeEach
+// that labels the framework-managed namespace as pod-security "privileged".
+// This is required because framework.NewDefaultFramework creates namespaces
+// with the "restricted" PodSecurity profile enforced, which blocks our test
+// pods (alpine, running as root, no securityContext).
+func newTestFramework(baseName string) *framework.Framework {
+	f := framework.NewDefaultFramework(baseName)
+	ginkgo.BeforeEach(func() {
+		patch := []byte(`{"metadata":{"labels":{` +
+			`"pod-security.kubernetes.io/enforce":"privileged",` +
+			`"pod-security.kubernetes.io/warn":"privileged",` +
+			`"pod-security.kubernetes.io/audit":"privileged"` +
+			`}}}`)
+		_, err := f.ClientSet.CoreV1().Namespaces().Patch(
+			context.Background(),
+			f.Namespace.Name,
+			types.MergePatchType,
+			patch,
+			metav1.PatchOptions{},
+		)
+		framework.ExpectNoError(err, "label namespace %s as pod-security privileged", f.Namespace.Name)
+	})
+	return f
 }
 
 // applyTemplateWithStorageClass applies a YAML template after substituting
@@ -88,37 +128,38 @@ func applyTemplateWithStorageClass(ns, path string) error {
 }
 
 // ---------------------------------------------------------------------------
-// Deploy helpers — fail the test immediately on error.
+// Deploy helpers — each takes the target namespace as first argument so that
+// parallel It blocks are isolated from one another.
 // ---------------------------------------------------------------------------
 
-func deployTestPod() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodPath)
+func deployTestPod(ns string) {
+	_, err := e2ekubectl.RunKubectl(ns, "apply", "-f", testPodPath)
 	framework.ExpectNoError(err, "deploy test pod")
 }
 
-func deployPVC() {
-	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, pvcPath), "deploy PVC")
+func deployPVC(ns string) {
+	framework.ExpectNoError(applyTemplateWithStorageClass(ns, pvcPath), "deploy PVC")
 }
 
-func deploySnapshot() {
-	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath), "deploy snapshot resources")
+func deploySnapshot(ns string) {
+	framework.ExpectNoError(applyTemplateWithStorageClass(ns, testPodWithSnapshotPath), "deploy snapshot resources")
 }
 
-func deploySnapshot2() {
-	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath2), "deploy snapshot2 resources")
+func deploySnapshot2(ns string) {
+	framework.ExpectNoError(applyTemplateWithStorageClass(ns, testPodWithSnapshotPath2), "deploy snapshot2 resources")
 }
 
-func deployClone() {
-	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, testPodWithClonePath), "deploy clone resources")
+func deployClone(ns string) {
+	framework.ExpectNoError(applyTemplateWithStorageClass(ns, testPodWithClonePath), "deploy clone resources")
 }
 
-func deployTestPodWithMultiPvcs() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithMultiPvcsPath)
+func deployTestPodWithMultiPvcs(ns string) {
+	_, err := e2ekubectl.RunKubectl(ns, "apply", "-f", testPodWithMultiPvcsPath)
 	framework.ExpectNoError(err, "deploy test pod with multi-PVCs")
 }
 
-func deployMultiPvcs() {
-	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, multiPvcsPath), "deploy multi-PVCs")
+func deployMultiPvcs(ns string) {
+	framework.ExpectNoError(applyTemplateWithStorageClass(ns, multiPvcsPath), "deploy multi-PVCs")
 }
 
 // ---------------------------------------------------------------------------
@@ -126,63 +167,65 @@ func deployMultiPvcs() {
 // cleanup hiccup does not shadow a legitimate test failure.
 // ---------------------------------------------------------------------------
 
-func deleteTestPod() {
-	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodPath); err != nil {
+func deleteTestPod(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", testPodPath); err != nil {
 		framework.Logf("failed to delete test pod: %v", err)
 	}
 }
 
-func deletePVC() {
-	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", pvcPath); err != nil {
+func deletePVC(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", pvcPath); err != nil {
 		framework.Logf("failed to delete PVC: %v", err)
 	}
 }
 
-func deleteSnapshot() {
-	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath); err != nil {
+func deleteSnapshot(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", testPodWithSnapshotPath); err != nil {
 		framework.Logf("failed to delete snapshot resources: %v", err)
 	}
 }
 
-func deleteSnapshot2() {
-	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath2); err != nil {
+func deleteSnapshot2(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", testPodWithSnapshotPath2); err != nil {
 		framework.Logf("failed to delete snapshot2 resources: %v", err)
 	}
 }
 
-func deleteClone() {
-	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithClonePath); err != nil {
+func deleteClone(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", testPodWithClonePath); err != nil {
 		framework.Logf("failed to delete clone resources: %v", err)
 	}
 }
 
-func deletePVCAndTestPod() {
-	deleteTestPod()
-	deletePVC()
+func deletePVCAndTestPod(ns string) {
+	deleteTestPod(ns)
+	deletePVC(ns)
 }
 
-func deleteTestPodWithMultiPvcs() {
-	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithMultiPvcsPath); err != nil {
+func deleteTestPodWithMultiPvcs(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", testPodWithMultiPvcsPath); err != nil {
 		framework.Logf("failed to delete multi-PVC test pod: %v", err)
 	}
 }
 
-func deleteMultiPvcs() {
-	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", multiPvcsPath); err != nil {
+func deleteMultiPvcs(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", multiPvcsPath); err != nil {
 		framework.Logf("failed to delete multi-PVCs: %v", err)
 	}
 }
 
-func deleteMultiPvcsAndTestPodWithMultiPvcs() {
-	deleteTestPodWithMultiPvcs()
-	deleteMultiPvcs()
+func deleteMultiPvcsAndTestPodWithMultiPvcs(ns string) {
+	deleteTestPodWithMultiPvcs(ns)
+	deleteMultiPvcs(ns)
 }
 
 // ---------------------------------------------------------------------------
-// Wait helpers — all use wait.PollUntilContextTimeout (replaces deprecated
-// wait.PollImmediate).
+// Wait helpers
 // ---------------------------------------------------------------------------
 
+// waitForControllerReady and waitForNodeServerReady check system-level
+// components, not test resources, so they use the global nameSpace /
+// systemNamespace rather than a per-It namespace.
 func waitForControllerReady(c kubernetes.Interface, timeout time.Duration) error {
 	ns := nameSpace
 	if operatorMode {
@@ -221,13 +264,13 @@ func waitForNodeServerReady(c kubernetes.Interface, timeout time.Duration) error
 	return nil
 }
 
-// waitForTestPodReady polls until podName is Running with every container
-// reporting Ready, or until timeout.  It returns immediately with an error if
-// the pod enters a terminal phase (Failed/Succeeded).
-func waitForTestPodReady(c kubernetes.Interface, timeout time.Duration, podName string) error {
+// waitForTestPodReady polls until podName in ns is Running with every
+// container reporting Ready, or until timeout.  It returns immediately with
+// an error if the pod enters a terminal phase (Failed/Succeeded).
+func waitForTestPodReady(c kubernetes.Interface, timeout time.Duration, ns, podName string) error {
 	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
 		func(ctx context.Context) (bool, error) {
-			pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
+			pod, err := c.CoreV1().Pods(ns).Get(ctx, podName, metav1.GetOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -254,10 +297,10 @@ func waitForTestPodReady(c kubernetes.Interface, timeout time.Duration, podName 
 	return nil
 }
 
-func waitForTestPodGone(c kubernetes.Interface, podName string) error {
+func waitForTestPodGone(c kubernetes.Interface, ns, podName string) error {
 	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, 5*time.Minute, true,
 		func(ctx context.Context) (bool, error) {
-			_, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
+			_, err := c.CoreV1().Pods(ns).Get(ctx, podName, metav1.GetOptions{})
 			if k8serrors.IsNotFound(err) {
 				return true, nil
 			}
@@ -269,10 +312,10 @@ func waitForTestPodGone(c kubernetes.Interface, podName string) error {
 	return nil
 }
 
-func waitForPvcGone(c kubernetes.Interface, pvcName string) error {
+func waitForPvcGone(c kubernetes.Interface, ns, pvcName string) error {
 	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, 5*time.Minute, true,
 		func(ctx context.Context) (bool, error) {
-			_, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
+			_, err := c.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvcName, metav1.GetOptions{})
 			if k8serrors.IsNotFound(err) {
 				return true, nil
 			}
@@ -284,10 +327,10 @@ func waitForPvcGone(c kubernetes.Interface, pvcName string) error {
 	return nil
 }
 
-func waitForPVCStorageCapacity(c kubernetes.Interface, pvcName string, minSize resource.Quantity, timeout time.Duration) error {
+func waitForPVCStorageCapacity(c kubernetes.Interface, ns, pvcName string, minSize resource.Quantity, timeout time.Duration) error {
 	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
 		func(ctx context.Context) (bool, error) {
-			pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
+			pvc, err := c.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvcName, metav1.GetOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -303,10 +346,10 @@ func waitForPVCStorageCapacity(c kubernetes.Interface, pvcName string, minSize r
 	return nil
 }
 
-func waitForFilesystemSize(f *framework.Framework, opt *metav1.ListOptions, mountPath string, minBytes int64, timeout time.Duration) error {
+func waitForFilesystemSize(f *framework.Framework, ns string, opt *metav1.ListOptions, mountPath string, minBytes int64, timeout time.Duration) error {
 	err := wait.PollUntilContextTimeout(context.Background(), 5*time.Second, timeout, true,
 		func(_ context.Context) (bool, error) {
-			sizeBytes, err := filesystemSizeBytes(f, opt, mountPath)
+			sizeBytes, err := filesystemSizeBytes(f, ns, opt, mountPath)
 			if err != nil {
 				framework.Logf("filesystem size check failed: %v", err)
 				return false, err
@@ -319,10 +362,10 @@ func waitForFilesystemSize(f *framework.Framework, opt *metav1.ListOptions, moun
 	return nil
 }
 
-func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout time.Duration) error {
+func waitForMountedVolumeStats(c kubernetes.Interface, ns, podName string, timeout time.Duration) error {
 	err := wait.PollUntilContextTimeout(context.Background(), 10*time.Second, timeout, true,
 		func(ctx context.Context) (bool, error) {
-			pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
+			pod, err := c.CoreV1().Pods(ns).Get(ctx, podName, metav1.GetOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -337,7 +380,6 @@ func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout t
 				Suffix("stats", "summary").
 				DoRaw(ctx)
 			if err != nil {
-				// Kubelet stats may not be immediately available; keep polling.
 				framework.Logf("kubelet stats not yet available on node %s: %v", pod.Spec.NodeName, err)
 				return false, nil
 			}
@@ -348,7 +390,7 @@ func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout t
 			}
 
 			for _, podStats := range summary.Pods {
-				if podStats.PodRef.Namespace != nameSpace || podStats.PodRef.Name != podName {
+				if podStats.PodRef.Namespace != ns || podStats.PodRef.Name != podName {
 					continue
 				}
 				for _, vol := range podStats.VolumeStats {
@@ -371,9 +413,9 @@ func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout t
 // PVC helpers
 // ---------------------------------------------------------------------------
 
-func resizePVC(c kubernetes.Interface, pvcName string, newSize resource.Quantity) error {
+func resizePVC(c kubernetes.Interface, ns, pvcName string, newSize resource.Quantity) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(context.Background(), pvcName, metav1.GetOptions{})
+		pvc, err := c.CoreV1().PersistentVolumeClaims(ns).Get(context.Background(), pvcName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -381,7 +423,7 @@ func resizePVC(c kubernetes.Interface, pvcName string, newSize resource.Quantity
 			pvc.Spec.Resources.Requests = corev1.ResourceList{}
 		}
 		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
-		_, err = c.CoreV1().PersistentVolumeClaims(nameSpace).Update(context.Background(), pvc, metav1.UpdateOptions{})
+		_, err = c.CoreV1().PersistentVolumeClaims(ns).Update(context.Background(), pvc, metav1.UpdateOptions{})
 		return err
 	})
 }
@@ -406,9 +448,8 @@ func createPVC(c kubernetes.Interface, ns, pvcName, scName string, size int64) e
 // Pod exec helpers
 // ---------------------------------------------------------------------------
 
-// execCommandInPod runs cmd inside the first pod matching opt and returns
-// stdout/stderr.  It asserts (via Gomega) that the exec call itself succeeds;
-// callers only need to inspect the returned strings.
+// execCommandInPod runs cmd inside the first pod matching opt in namespace ns
+// and returns stdout/stderr.
 func execCommandInPod(f *framework.Framework, cmd, ns string, opt *metav1.ListOptions) (stdOut, stdErr string) {
 	opts := getCommandInPodOpts(f, cmd, ns, opt)
 	stdOut, stdErr, err := e2epod.ExecWithOptions(f, opts)
@@ -437,24 +478,22 @@ func getCommandInPodOpts(f *framework.Framework, cmd, ns string, opt *metav1.Lis
 }
 
 // writeDataToPod writes data to dataPath inside the first pod matching opt.
-func writeDataToPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPath string) {
-	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, opt)
+func writeDataToPod(f *framework.Framework, ns string, opt *metav1.ListOptions, data, dataPath string) {
+	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), ns, opt)
 }
 
-// compareDataInPod asserts that each data[i] string appears in dataPaths[i]
-// inside the first pod matching opt.
-func compareDataInPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPaths []string) {
+// compareDataInPod asserts that each data[i] string appears in dataPaths[i].
+func compareDataInPod(f *framework.Framework, ns string, opt *metav1.ListOptions, data, dataPaths []string) {
 	for i := range data {
-		out, _ := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, opt)
+		out, _ := execCommandInPod(f, "cat "+dataPaths[i], ns, opt)
 		gomega.Expect(out).To(gomega.ContainSubstring(data[i]),
 			"data not persisted at path %s", dataPaths[i])
 	}
 }
 
 // checkDataPersistForMultiPvcs writes distinct content to each of three
-// volumes, deletes and recreates the pod, then asserts all data survived the
-// restart.
-func checkDataPersistForMultiPvcs(f *framework.Framework) {
+// volumes, deletes and recreates the pod, then asserts all data survived.
+func checkDataPersistForMultiPvcs(f *framework.Framework, ns string) {
 	dataContents := []string{
 		"Data that needs to be stored to vol1",
 		"Data that needs to be stored to vol2",
@@ -465,28 +504,27 @@ func checkDataPersistForMultiPvcs(f *framework.Framework) {
 
 	ginkgo.By("writing data to each volume")
 	for i := range dataPaths {
-		execCommandInPod(f, fmt.Sprintf("echo %s > %s", dataContents[i], dataPaths[i]), nameSpace, &opt)
+		execCommandInPod(f, fmt.Sprintf("echo %s > %s", dataContents[i], dataPaths[i]), ns, &opt)
 	}
 
 	ginkgo.By("deleting and recreating the pod to test persistence")
-	deleteTestPodWithMultiPvcs()
-	framework.ExpectNoError(waitForTestPodGone(f.ClientSet, multiTestPodName), "wait for multi-PVC pod to terminate")
+	deleteTestPodWithMultiPvcs(ns)
+	framework.ExpectNoError(waitForTestPodGone(f.ClientSet, ns, multiTestPodName), "wait for multi-PVC pod to terminate")
 
-	deployTestPodWithMultiPvcs()
-	framework.ExpectNoError(waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName), "wait for multi-PVC pod after restart")
+	deployTestPodWithMultiPvcs(ns)
+	framework.ExpectNoError(waitForTestPodReady(f.ClientSet, 3*time.Minute, ns, multiTestPodName), "wait for multi-PVC pod after restart")
 
 	ginkgo.By("verifying data survived the pod restart")
 	for i := range dataPaths {
-		out, _ := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, &opt)
+		out, _ := execCommandInPod(f, "cat "+dataPaths[i], ns, &opt)
 		gomega.Expect(out).To(gomega.ContainSubstring(dataContents[i]),
 			"data not persisted at %s after pod restart", dataPaths[i])
 	}
 }
 
-// filesystemSizeBytes returns the total capacity (bytes) of the filesystem
-// at mountPath as reported by df inside the pod.
-func filesystemSizeBytes(f *framework.Framework, opt *metav1.ListOptions, mountPath string) (int64, error) {
-	stdOut, stdErr := execCommandInPod(f, fmt.Sprintf("df -P -k %s | awk 'NR==2 {print $2}'", mountPath), nameSpace, opt)
+// filesystemSizeBytes returns the total capacity (bytes) of mountPath via df.
+func filesystemSizeBytes(f *framework.Framework, ns string, opt *metav1.ListOptions, mountPath string) (int64, error) {
+	stdOut, stdErr := execCommandInPod(f, fmt.Sprintf("df -P -k %s | awk 'NR==2 {print $2}'", mountPath), ns, opt)
 	if stdErr != "" {
 		return 0, fmt.Errorf("df stderr: %s", stdErr)
 	}
@@ -511,4 +549,210 @@ type kubeletStatsSummary struct {
 			UsedBytes      *uint64 `json:"usedBytes"`
 		} `json:"volume"`
 	} `json:"pods"`
+}
+
+// ---------------------------------------------------------------------------
+// Block-volume helpers
+// ---------------------------------------------------------------------------
+
+func deployBlockPVC(ns string) {
+	framework.ExpectNoError(applyTemplateWithStorageClass(ns, pvcBlockPath), "deploy block PVC")
+}
+
+func deleteBlockPVC(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", pvcBlockPath); err != nil {
+		framework.Logf("failed to delete block PVC: %v", err)
+	}
+}
+
+func deployBlockTestPod(ns string) {
+	_, err := e2ekubectl.RunKubectl(ns, "apply", "-f", testPodBlockPath)
+	framework.ExpectNoError(err, "deploy block test pod")
+}
+
+func deleteBlockTestPod(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", testPodBlockPath); err != nil {
+		framework.Logf("failed to delete block test pod: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot lifecycle helpers (kubectl-based)
+// ---------------------------------------------------------------------------
+
+func waitForSnapshotReady(ns, snapshotName string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 5*time.Second, timeout, true,
+		func(_ context.Context) (bool, error) {
+			out, err := e2ekubectl.RunKubectl(ns, "get", "volumesnapshot", snapshotName,
+				"-o", "jsonpath={.status.readyToUse}")
+			if err != nil {
+				framework.Logf("waiting for snapshot %s to be ready: %v", snapshotName, err)
+				return false, nil
+			}
+			return strings.TrimSpace(out) == "true", nil
+		})
+	if err != nil {
+		return fmt.Errorf("snapshot %q not ready within %s: %w", snapshotName, timeout, err)
+	}
+	return nil
+}
+
+func waitForSnapshotGone(ns, snapshotName string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
+		func(_ context.Context) (bool, error) {
+			out, err := e2ekubectl.RunKubectl(ns, "get", "volumesnapshot", snapshotName,
+				"--ignore-not-found=true", "-o", "name")
+			if err != nil {
+				framework.Logf("checking snapshot %s deletion: %v", snapshotName, err)
+				return false, nil
+			}
+			return strings.TrimSpace(out) == "", nil
+		})
+	if err != nil {
+		return fmt.Errorf("snapshot %q still present after %s: %w", snapshotName, timeout, err)
+	}
+	return nil
+}
+
+func deploySnapshotOnly(ns string) {
+	framework.ExpectNoError(applyTemplateWithStorageClass(ns, snapshotOnlyPath), "deploy snapshot-only resource")
+}
+
+func deleteSnapshotOnly(ns string) {
+	if _, err := e2ekubectl.RunKubectl(ns, "delete", "-f", snapshotOnlyPath); err != nil {
+		framework.Logf("failed to delete snapshot-only resource: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PV helpers
+// ---------------------------------------------------------------------------
+
+// waitForPVDeleted polls until the named PersistentVolume is gone.
+func waitForPVDeleted(c kubernetes.Interface, pvName string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			_, err := c.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+			if k8serrors.IsNotFound(err) {
+				return true, nil
+			}
+			return false, err
+		})
+	if err != nil {
+		return fmt.Errorf("PV %q not deleted within %s: %w", pvName, timeout, err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// StorageClass helpers
+// ---------------------------------------------------------------------------
+
+func createStorageClassWithParams(c kubernetes.Interface, scName string, extraParams map[string]string) {
+	base, err := c.StorageV1().StorageClasses().Get(context.Background(), storageClassName, metav1.GetOptions{})
+	if err != nil {
+		ginkgo.Skip(fmt.Sprintf("base StorageClass %q unavailable (%v) — skipping", storageClassName, err))
+		return
+	}
+
+	params := make(map[string]string, len(base.Parameters)+len(extraParams))
+	for k, v := range base.Parameters {
+		params[k] = v
+	}
+	for k, v := range extraParams {
+		params[k] = v
+	}
+
+	sc := &storagev1.StorageClass{
+		ObjectMeta:           metav1.ObjectMeta{Name: scName},
+		Provisioner:          base.Provisioner,
+		Parameters:           params,
+		ReclaimPolicy:        base.ReclaimPolicy,
+		VolumeBindingMode:    base.VolumeBindingMode,
+		AllowVolumeExpansion: base.AllowVolumeExpansion,
+		AllowedTopologies:    base.AllowedTopologies,
+	}
+	_, err = c.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
+	framework.ExpectNoError(err, "create StorageClass %s", scName)
+}
+
+func deleteStorageClass(c kubernetes.Interface, scName string) {
+	if err := c.StorageV1().StorageClasses().Delete(context.Background(), scName, metav1.DeleteOptions{}); err != nil {
+		framework.Logf("failed to delete StorageClass %s: %v", scName, err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PVC annotation helper
+// ---------------------------------------------------------------------------
+
+func createAnnotatedPVC(c kubernetes.Interface, ns, pvcName, scName string, size resource.Quantity, annotations map[string]string) error {
+	_, err := c.CoreV1().PersistentVolumeClaims(ns).Create(context.Background(), &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        pvcName,
+			Annotations: annotations,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			StorageClassName: &scName,
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: size},
+			},
+		},
+	}, metav1.CreateOptions{})
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Negative-test helpers
+// ---------------------------------------------------------------------------
+
+// assertPVCStaysPending polls the named PVC for duration and fails if it
+// ever leaves the Pending phase.
+func assertPVCStaysPending(c kubernetes.Interface, ns, pvcName string, duration time.Duration) {
+	deadline := time.Now().Add(duration)
+	for time.Now().Before(deadline) {
+		pvc, err := c.CoreV1().PersistentVolumeClaims(ns).Get(context.Background(), pvcName, metav1.GetOptions{})
+		framework.ExpectNoError(err, "get PVC %s while asserting Pending", pvcName)
+		gomega.Expect(pvc.Status.Phase).To(gomega.Equal(corev1.ClaimPending),
+			"PVC %s should stay Pending (current phase: %s)", pvcName, pvc.Status.Phase)
+		time.Sleep(3 * time.Second)
+	}
+}
+
+// createPodForPVC creates a minimal alpine pod that mounts pvcName at /spdkvol.
+func createPodForPVC(c kubernetes.Interface, ns, podName, pvcName string) error {
+	_, err := c.CoreV1().Pods(ns).Create(context.Background(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   podName,
+			Labels: map[string]string{"app": podName},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name:    "alpine",
+				Image:   "alpine:3",
+				Command: []string{"sleep", "365d"},
+				VolumeMounts: []corev1.VolumeMount{{
+					Name:      "vol",
+					MountPath: "/spdkvol",
+				}},
+			}},
+			Volumes: []corev1.Volume{{
+				Name: "vol",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: pvcName,
+					},
+				},
+			}},
+		},
+	}, metav1.CreateOptions{})
+	return err
+}
+
+// deletePodByName deletes a pod by name; logs but does not fail on error.
+func deletePodByName(c kubernetes.Interface, ns, podName string) {
+	if err := c.CoreV1().Pods(ns).Delete(context.Background(), podName, metav1.DeleteOptions{}); err != nil {
+		framework.Logf("failed to delete pod %s: %v", podName, err)
+	}
 }
