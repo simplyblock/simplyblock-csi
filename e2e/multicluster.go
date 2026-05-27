@@ -1,13 +1,14 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega" //nolint
+	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +32,7 @@ var _ = ginkgo.Describe("SPDKCSI-MULTICLUSTER", func() {
 		zones := envList("MULTI_CLUSTER_ZONES", []string{"multi-cluster-a", "multi-cluster-b"})
 		poolName := envOrDefault("MULTI_CLUSTER_POOL_NAME", "pool1")
 		storageClassNames := envList("MULTI_CLUSTER_STORAGE_CLASS_NAMES", nil)
+
 		if len(clusterRefs) != 2 || len(zones) != 2 {
 			ginkgo.Fail("MULTI_CLUSTER_REFS and MULTI_CLUSTER_ZONES must each contain exactly two comma-separated values")
 		}
@@ -45,52 +47,52 @@ var _ = ginkgo.Describe("SPDKCSI-MULTICLUSTER", func() {
 		for i, clusterRef := range clusterRefs {
 			clusterNamespace, clusterName := splitNamespacedRef(clusterRef, nameSpace)
 			clusterID, err := waitForStorageClusterUUID(clusterNamespace, clusterName, 10*time.Minute)
-			if err != nil {
-				ginkgo.Fail(err.Error())
-			}
+			framework.ExpectNoError(err, "resolve cluster UUID for %s", clusterRef)
 			clusterIDs[i] = clusterID
 		}
 
 		for i, zone := range zones {
 			pvcName := fmt.Sprintf("spdkcsi-multicluster-pvc-%d", i+1)
 			podName := fmt.Sprintf("spdkcsi-multicluster-pod-%d", i+1)
-			storageClassName := storageClassNames[i]
+			scName := storageClassNames[i]
 
-			ginkgo.By(fmt.Sprintf("provisioning a PVC with StorageClass %s for topology zone %s", storageClassName, zone), func() {
-				err := createPVC(f.ClientSet, nameSpace, pvcName, storageClassName, 1*1024*1024*1024)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				ginkgo.DeferCleanup(func() {
-					Expect(deletePodIfExists(f.ClientSet, podName)).To(Succeed())
-					Expect(deletePVCIfExists(f.ClientSet, pvcName)).To(Succeed())
-				})
-
-				err = createTopologyPinnedPod(f.ClientSet, nameSpace, podName, pvcName, zone)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-
-				err = waitForTestPodReady(f.ClientSet, 5*time.Minute, podName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-
-				pv, err := waitForPVCBound(f.ClientSet, pvcName, 5*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-
-				if err := verifyPVClusterAndTopology(pv, clusterIDs[i], zone); err != nil {
-					ginkgo.Fail(err.Error())
-				}
-
-				opt := metav1.ListOptions{FieldSelector: "metadata.name=" + podName}
-				writeDataToPod(f, &opt, fmt.Sprintf("multi cluster data %d", i+1), "/spdkvol/test")
+			ginkgo.By(fmt.Sprintf("provision PVC %s with StorageClass %s for zone %s", pvcName, scName, zone))
+			framework.ExpectNoError(
+				createPVC(f.ClientSet, nameSpace, pvcName, scName, 1*1024*1024*1024),
+				"create PVC %s", pvcName,
+			)
+			ginkgo.DeferCleanup(func() {
+				gomega.Expect(deletePodIfExists(f.ClientSet, podName)).To(gomega.Succeed())
+				gomega.Expect(deletePVCIfExists(f.ClientSet, pvcName)).To(gomega.Succeed())
 			})
+
+			framework.ExpectNoError(
+				createTopologyPinnedPod(f.ClientSet, nameSpace, podName, pvcName, zone),
+				"create topology-pinned pod %s", podName,
+			)
+
+			framework.ExpectNoError(
+				waitForTestPodReady(f.ClientSet, 5*time.Minute, podName),
+				"wait for pod %s", podName,
+			)
+
+			pv, err := waitForPVCBound(f.ClientSet, pvcName, 5*time.Minute)
+			framework.ExpectNoError(err, "wait for PVC %s to bind", pvcName)
+
+			framework.ExpectNoError(
+				verifyPVClusterAndTopology(pv, clusterIDs[i], zone),
+				"verify PV cluster and topology for zone %s", zone,
+			)
+
+			opt := metav1.ListOptions{FieldSelector: "metadata.name=" + podName}
+			writeDataToPod(f, &opt, fmt.Sprintf("multi cluster data %d", i+1), "/spdkvol/test")
 		}
 	})
 })
+
+// ---------------------------------------------------------------------------
+// Multi-cluster utility functions
+// ---------------------------------------------------------------------------
 
 func envOrDefault(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
@@ -104,7 +106,6 @@ func envList(key string, fallback []string) []string {
 	if raw == "" {
 		return fallback
 	}
-
 	parts := strings.Split(raw, ",")
 	values := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -118,8 +119,8 @@ func envList(key string, fallback []string) []string {
 func deriveMultiClusterStorageClassNames(clusterRefs []string, poolName string) []string {
 	names := make([]string, 0, len(clusterRefs))
 	for _, clusterRef := range clusterRefs {
-		namespace, clusterName := splitNamespacedRef(clusterRef, nameSpace)
-		names = append(names, fmt.Sprintf("simplyblock-%s-%s-%s", namespace, clusterName, poolName))
+		ns, clusterName := splitNamespacedRef(clusterRef, nameSpace)
+		names = append(names, fmt.Sprintf("simplyblock-%s-%s-%s", ns, clusterName, poolName))
 	}
 	return names
 }
@@ -134,23 +135,26 @@ func splitNamespacedRef(ref, fallbackNamespace string) (string, string) {
 
 func waitForStorageClusterUUID(namespace, clusterName string, timeout time.Duration) (string, error) {
 	var uuid string
-	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
-		out, err := e2ekubectl.RunKubectl(namespace, "get", "storageclusters.storage.simplyblock.io", clusterName, "-o", "jsonpath={.status.uuid}")
-		if err != nil {
-			framework.Logf("waiting for StorageCluster %s/%s uuid: %v", namespace, clusterName, err)
-			return false, nil
-		}
-		uuid = strings.TrimSpace(out)
-		return uuid != "", nil
-	})
+	err := wait.PollUntilContextTimeout(context.Background(), 10*time.Second, timeout, true,
+		func(_ context.Context) (bool, error) {
+			out, err := e2ekubectl.RunKubectl(namespace, "get",
+				"storageclusters.storage.simplyblock.io", clusterName,
+				"-o", "jsonpath={.status.uuid}")
+			if err != nil {
+				framework.Logf("waiting for StorageCluster %s/%s uuid: %v", namespace, clusterName, err)
+				return false, nil
+			}
+			uuid = strings.TrimSpace(out)
+			return uuid != "", nil
+		})
 	if err != nil {
-		return "", fmt.Errorf("failed to wait for StorageCluster %s/%s uuid: %w", namespace, clusterName, err)
+		return "", fmt.Errorf("StorageCluster %s/%s uuid not available within %s: %w", namespace, clusterName, timeout, err)
 	}
 	return uuid, nil
 }
 
 func createTopologyPinnedPod(c kubernetes.Interface, namespace, podName, pvcClaimName, zone string) error {
-	_, err := c.CoreV1().Pods(namespace).Create(ctx, &corev1.Pod{
+	_, err := c.CoreV1().Pods(namespace).Create(context.Background(), &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: podName},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -184,7 +188,9 @@ func createTopologyPinnedPod(c kubernetes.Interface, namespace, podName, pvcClai
 				{
 					Name: "spdk-csi-vol",
 					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcClaimName},
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: pvcClaimName,
+						},
 					},
 				},
 			},
@@ -195,22 +201,23 @@ func createTopologyPinnedPod(c kubernetes.Interface, namespace, podName, pvcClai
 
 func waitForPVCBound(c kubernetes.Interface, pvcName string, timeout time.Duration) (*corev1.PersistentVolume, error) {
 	var pv *corev1.PersistentVolume
-	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		if pvc.Status.Phase != corev1.ClaimBound || pvc.Spec.VolumeName == "" {
-			return false, nil
-		}
-		pv, err = c.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	})
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if pvc.Status.Phase != corev1.ClaimBound || pvc.Spec.VolumeName == "" {
+				return false, nil
+			}
+			pv, err = c.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			return true, nil
+		})
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for PVC %s to bind: %w", pvcName, err)
+		return nil, fmt.Errorf("PVC %s did not bind within %s: %w", pvcName, timeout, err)
 	}
 	return pv, nil
 }
@@ -220,16 +227,16 @@ func verifyPVClusterAndTopology(pv *corev1.PersistentVolume, expectedClusterID, 
 		return fmt.Errorf("PV %s does not have a CSI source", pv.Name)
 	}
 	if clusterID := pv.Spec.CSI.VolumeAttributes["cluster_id"]; clusterID != expectedClusterID {
-		return fmt.Errorf("PV %s cluster_id = %q, want %q", pv.Name, clusterID, expectedClusterID)
+		return fmt.Errorf("PV %s: cluster_id = %q, want %q", pv.Name, clusterID, expectedClusterID)
 	}
 	if zone := pv.Spec.CSI.VolumeAttributes["topology.kubernetes.io/zone"]; zone != "" && zone != expectedZone {
-		return fmt.Errorf("PV %s topology zone = %q, want %q", pv.Name, zone, expectedZone)
+		return fmt.Errorf("PV %s: topology zone = %q, want %q", pv.Name, zone, expectedZone)
 	}
 	return nil
 }
 
 func deletePodIfExists(c kubernetes.Interface, podName string) error {
-	err := c.CoreV1().Pods(nameSpace).Delete(ctx, podName, metav1.DeleteOptions{})
+	err := c.CoreV1().Pods(nameSpace).Delete(context.Background(), podName, metav1.DeleteOptions{})
 	if k8serrors.IsNotFound(err) {
 		return nil
 	}
@@ -237,7 +244,7 @@ func deletePodIfExists(c kubernetes.Interface, podName string) error {
 }
 
 func deletePVCIfExists(c kubernetes.Interface, pvcName string) error {
-	err := c.CoreV1().PersistentVolumeClaims(nameSpace).Delete(ctx, pvcName, metav1.DeleteOptions{})
+	err := c.CoreV1().PersistentVolumeClaims(nameSpace).Delete(context.Background(), pvcName, metav1.DeleteOptions{})
 	if k8serrors.IsNotFound(err) {
 		return nil
 	}

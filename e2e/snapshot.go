@@ -8,76 +8,106 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-var _ = ginkgo.Describe("SPDKCSI-SNAPSHOT", func() {
+// The snapshot suite is Ordered: each It is a sequential step that builds on
+// the previous one.  BeforeAll/AfterAll manage the shared source PVC lifetime.
+// DeferCleanup in each It scopes that step's resources to the step itself.
+var _ = ginkgo.Describe("SPDKCSI-SNAPSHOT", ginkgo.Ordered, func() {
 	f := framework.NewDefaultFramework("spdkcsi")
 
-	ginkgo.Context("Test SPDK CSI Snapshot", func() {
-		ginkgo.It("Test SPDK CSI Snapshot", func() {
-			testPodLabel := metav1.ListOptions{
-				LabelSelector: "app=spdkcsi-pvc",
+	// Label shared by all test pods deployed in this suite.
+	testPodLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
+
+	// The source PVC is created before the first step and lives until AfterAll.
+	ginkgo.BeforeAll(func() {
+		ginkgo.By("create source PVC")
+		deployPVC()
+	})
+
+	ginkgo.AfterAll(func() {
+		ginkgo.By("delete source PVC")
+		deletePVC()
+	})
+
+	ginkgo.It("writes initial data to the source PVC", func() {
+		ginkgo.By("deploy test pod")
+		deployTestPod()
+		ginkgo.DeferCleanup(func() {
+			deleteTestPod()
+			// Wait for full termination so the snapshot1 step sees only its own pod.
+			if err := waitForTestPodGone(f.ClientSet, testPodName); err != nil {
+				framework.Logf("timed out waiting for test pod to terminate: %v", err)
 			}
-			testPodName := "spdkcsi-test"
-			snap1TestPodName := "spdkcsi-test-snapshot1"
-			snap2TestPodName := "spdkcsi-test-snapshot2"
-			persistData := []string{"Data that needs to be stored"}
-			persistDataPath := []string{"/spdkvol/test"}
-			persistData2 := []string{"Data that needs to be stored", "Second data that needs to be stored"}
-			persistDataPath2 := []string{"/spdkvol/test", "/spdkvol/test2"}
-
-			ginkgo.By("create source pvc and write data", func() {
-				deployPVC()
-				deployTestPod()
-				defer deleteTestPod()
-				// do not delete pvc here, since we need it for snapshot
-
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				// write data to source pvc
-				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
-			})
-
-			ginkgo.By("create snapshot1 and check data persistency", func() {
-				deploySnapshot()
-				defer deleteSnapshot()
-
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, snap1TestPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-
-			ginkgo.By("write second data to the same PVC", func() {
-				deployTestPod()
-				defer deleteTestPod()
-
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				// write second data to source pvc
-				writeDataToPod(f, &testPodLabel, persistData2[1], persistDataPath2[1])
-			})
-
-			ginkgo.By("create snapshot2 and check second data persistency", func() {
-				deploySnapshot2()
-				defer deleteSnapshot2()
-				defer deletePVC()
-
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, snap2TestPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				err = compareDataInPod(f, &testPodLabel, persistData2, persistDataPath2)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
 		})
+
+		ginkgo.By("wait for test pod to be ready")
+		framework.ExpectNoError(
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName),
+			"wait for test pod",
+		)
+
+		ginkgo.By("write first data set to source PVC")
+		writeDataToPod(f, &testPodLabel, "Data that needs to be stored", "/spdkvol/test")
+	})
+
+	ginkgo.It("snapshot1 contains data written before it was taken", func() {
+		ginkgo.By("create VolumeSnapshot and restore PVC")
+		deploySnapshot()
+		ginkgo.DeferCleanup(func() {
+			deleteSnapshot()
+			if err := waitForTestPodGone(f.ClientSet, "spdkcsi-test-snapshot1"); err != nil {
+				framework.Logf("timed out waiting for snapshot1 pod to terminate: %v", err)
+			}
+		})
+
+		ginkgo.By("wait for snapshot1 restore pod to be ready")
+		framework.ExpectNoError(
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-snapshot1"),
+			"wait for snapshot1 pod",
+		)
+
+		ginkgo.By("verify snapshot1 contains the first data set")
+		compareDataInPod(f, &testPodLabel,
+			[]string{"Data that needs to be stored"},
+			[]string{"/spdkvol/test"},
+		)
+	})
+
+	ginkgo.It("writes second data to the source PVC after snapshot1", func() {
+		ginkgo.By("deploy test pod")
+		deployTestPod()
+		ginkgo.DeferCleanup(func() {
+			deleteTestPod()
+			// Wait for full termination so the snapshot2 step sees only its own pod.
+			if err := waitForTestPodGone(f.ClientSet, testPodName); err != nil {
+				framework.Logf("timed out waiting for test pod to terminate: %v", err)
+			}
+		})
+
+		ginkgo.By("wait for test pod to be ready")
+		framework.ExpectNoError(
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName),
+			"wait for test pod",
+		)
+
+		ginkgo.By("write second data set to source PVC")
+		writeDataToPod(f, &testPodLabel, "Second data that needs to be stored", "/spdkvol/test2")
+	})
+
+	ginkgo.It("snapshot2 contains both data sets written before it was taken", func() {
+		ginkgo.By("create second VolumeSnapshot and restore PVC")
+		deploySnapshot2()
+		ginkgo.DeferCleanup(deleteSnapshot2)
+
+		ginkgo.By("wait for snapshot2 restore pod to be ready")
+		framework.ExpectNoError(
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-snapshot2"),
+			"wait for snapshot2 pod",
+		)
+
+		ginkgo.By("verify snapshot2 contains both data sets")
+		compareDataInPod(f, &testPodLabel,
+			[]string{"Data that needs to be stored", "Second data that needs to be stored"},
+			[]string{"/spdkvol/test", "/spdkvol/test2"},
+		)
 	})
 })
