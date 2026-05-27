@@ -13,124 +13,116 @@ var _ = ginkgo.Describe("SPDKCSI-NVMEOF", func() {
 	f := framework.NewDefaultFramework("spdkcsi")
 
 	ginkgo.Context("Test SPDK CSI Dynamic Volume Provisioning", func() {
-		ginkgo.It("CSI driver components should function properly", func() {
-			ginkgo.By("checking controller statefulset is running", func() {
-				err := waitForControllerReady(f.ClientSet, 4*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
 
-			ginkgo.By("checking node daemonset is running", func() {
-				err := waitForNodeServerReady(f.ClientSet, 3*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
+		ginkgo.It("CSI driver components should be running", func() {
+			ginkgo.By("check controller StatefulSet is ready")
+			framework.ExpectNoError(
+				waitForControllerReady(f.ClientSet, 4*time.Minute),
+				"wait for controller StatefulSet",
+			)
+
+			ginkgo.By("check node DaemonSet is ready")
+			framework.ExpectNoError(
+				waitForNodeServerReady(f.ClientSet, 3*time.Minute),
+				"wait for node DaemonSet",
+			)
 		})
 
-		ginkgo.It("Test the flow for Dynamic volume provisioning", func() {
-			testPodName := "spdkcsi-test"
-			// WaitForFirstConsumer StorageClasses defer provisioning until a pod is scheduled.
-			// Deploy a pod alongside the PVC so the CSI provisioner is triggered, then verify
-			// the PV is created and the pod reaches Running before testing persistence.
-			ginkgo.By("creating a PVC and binding it to a pod", func() {
-				deployPVC()
-				deployTestPod()
-				defer deletePVCAndTestPod()
-				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
+		ginkgo.It("dynamically provisioned volume binds and pod reaches Running", func() {
+			ginkgo.By("create PVC and test pod")
+			deployPVC()
+			deployTestPod()
+			// DeferCleanup is scoped to this It block and runs even on failure.
+			ginkgo.DeferCleanup(deletePVCAndTestPod)
+
+			ginkgo.By("wait for test pod to be ready")
+			framework.ExpectNoError(
+				waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName),
+				"wait for test pod",
+			)
 		})
 
-		ginkgo.It("Test filesystem volume expansion", func() {
-			testPodName := "spdkcsi-test"
+		ginkgo.It("filesystem volume can be expanded online", func() {
 			pvcName := "spdkcsi-pvc"
 			expandedSize := resource.MustParse("2Gi")
-			testPodLabel := metav1.ListOptions{
-				LabelSelector: "app=spdkcsi-pvc",
-			}
+			testPodLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
 
-			ginkgo.By("creating a PVC and pod", func() {
-				deployPVC()
-				deployTestPod()
-				defer deletePVCAndTestPod()
+			ginkgo.By("create PVC and test pod")
+			deployPVC()
+			deployTestPod()
+			ginkgo.DeferCleanup(deletePVCAndTestPod)
 
-				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
+			ginkgo.By("wait for test pod to be ready")
+			framework.ExpectNoError(
+				waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName),
+				"wait for test pod",
+			)
 
-				err = resizePVC(f.ClientSet, pvcName, expandedSize)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
+			ginkgo.By("resize PVC to 2Gi")
+			framework.ExpectNoError(resizePVC(f.ClientSet, pvcName, expandedSize), "resize PVC")
 
-				err = waitForPVCStorageCapacity(f.ClientSet, pvcName, expandedSize, 5*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
+			ginkgo.By("wait for PVC status capacity to reflect new size")
+			framework.ExpectNoError(
+				waitForPVCStorageCapacity(f.ClientSet, pvcName, expandedSize, 5*time.Minute),
+				"wait for PVC capacity",
+			)
 
-				err = waitForFilesystemSize(f, &testPodLabel, "/spdkvol", expandedSize.Value()*9/10, 5*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
+			ginkgo.By("wait for filesystem inside pod to reflect new size")
+			framework.ExpectNoError(
+				waitForFilesystemSize(f, &testPodLabel, "/spdkvol", expandedSize.Value()*9/10, 5*time.Minute),
+				"wait for filesystem resize",
+			)
 		})
 
-		ginkgo.It("Test mounted volume stats", func() {
-			testPodName := "spdkcsi-test"
-			testPodLabel := metav1.ListOptions{
-				LabelSelector: "app=spdkcsi-pvc",
-			}
+		ginkgo.It("kubelet reports volume stats for a mounted volume", func() {
+			testPodLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
 
-			ginkgo.By("creating a mounted PVC with data", func() {
-				deployPVC()
-				deployTestPod()
-				defer deletePVCAndTestPod()
+			ginkgo.By("create PVC and test pod")
+			deployPVC()
+			deployTestPod()
+			ginkgo.DeferCleanup(deletePVCAndTestPod)
 
-				err := waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
+			ginkgo.By("wait for test pod to be ready")
+			framework.ExpectNoError(
+				waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName),
+				"wait for test pod",
+			)
 
-				writeDataToPod(f, &testPodLabel, "volume stats test data", "/spdkvol/stats-test")
+			ginkgo.By("write data so the volume is non-empty")
+			writeDataToPod(f, &testPodLabel, "volume stats test data", "/spdkvol/stats-test")
 
-				err = waitForMountedVolumeStats(f.ClientSet, testPodName, 5*time.Minute)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
+			ginkgo.By("wait for kubelet to populate volume stats")
+			framework.ExpectNoError(
+				waitForMountedVolumeStats(f.ClientSet, testPodName, 5*time.Minute),
+				"wait for kubelet volume stats",
+			)
 		})
 
-		ginkgo.It("Test multiple PVCs", func() {
-			multiTestPodName := "spdkcsi-test-multi"
-			ginkgo.By("create multiple pvcs and a pod with multiple pvcs attached, and check data persistence after the pod is removed and recreated", func() {
-				deployMultiPvcs()
-				deployTestPodWithMultiPvcs()
-				defer func() {
-					deleteMultiPvcsAndTestPodWithMultiPvcs()
-					if err := waitForTestPodGone(f.ClientSet, multiTestPodName); err != nil {
-						ginkgo.Fail(err.Error())
-					}
-					for _, pvcName := range []string{"spdkcsi-pvc1", "spdkcsi-pvc2", "spdkcsi-pvc3"} {
-						if err := waitForPvcGone(f.ClientSet, pvcName); err != nil {
-							ginkgo.Fail(err.Error())
-						}
-					}
-				}()
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
+		ginkgo.It("data persists across pod restarts when using multiple PVCs", func() {
+			ginkgo.By("create three PVCs and a pod that mounts all three")
+			deployMultiPvcs()
+			deployTestPodWithMultiPvcs()
+			ginkgo.DeferCleanup(func() {
+				deleteMultiPvcsAndTestPodWithMultiPvcs()
+				// Wait for full teardown so the next test suite starts clean.
+				if err := waitForTestPodGone(f.ClientSet, multiTestPodName); err != nil {
+					framework.Logf("timed out waiting for multi-PVC pod to terminate: %v", err)
 				}
-
-				err = checkDataPersistForMultiPvcs(f)
-				if err != nil {
-					ginkgo.Fail(err.Error())
+				for _, pvcName := range []string{"spdkcsi-pvc1", "spdkcsi-pvc2", "spdkcsi-pvc3"} {
+					if err := waitForPvcGone(f.ClientSet, pvcName); err != nil {
+						framework.Logf("timed out waiting for PVC %s to be deleted: %v", pvcName, err)
+					}
 				}
 			})
+
+			ginkgo.By("wait for multi-PVC pod to be ready")
+			framework.ExpectNoError(
+				waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName),
+				"wait for multi-PVC test pod",
+			)
+
+			ginkgo.By("verify data persists across a pod restart")
+			checkDataPersistForMultiPvcs(f)
 		})
 	})
 })

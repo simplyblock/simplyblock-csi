@@ -3,17 +3,15 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	. "github.com/onsi/gomega" //nolint
+	ginkgo "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,35 +21,17 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
-
-	"github.com/spdk/spdk-csi/pkg/util"
 )
 
-var nameSpace string
-var storageClassName string
-var operatorMode bool
-var systemNamespace string
-
-type storageNode struct {
-	UUID   string `json:"uuid"`
-	NodeIP string `json:"node_ip"`
-}
+var (
+	nameSpace       string
+	storageClassName string
+	operatorMode    bool
+	systemNamespace string
+)
 
 const (
-
-	// deployment yaml files
-	yamlDir                  = "../deploy/kubernetes/"
-	driverPath               = yamlDir + "driver.yaml"
-	secretPath               = yamlDir + "secret.yaml"
-	configmapPath            = yamlDir + "config-map.yaml"
-	nodeserverConfigmapPath  = yamlDir + "nodeserver-config-map.yaml"
-	controllerRbacPath       = yamlDir + "controller-rbac.yaml"
-	nodeRbacPath             = yamlDir + "node-rbac.yaml"
-	controllerPath           = yamlDir + "controller.yaml"
-	nodePath                 = yamlDir + "node.yaml"
-	storageClassPath         = yamlDir + "storageclass.yaml"
-	cachingnodePath          = yamlDir + "caching-node.yaml"
-	jobPath                  = yamlDir + "job.yaml"
+	// Template YAML paths (relative to the e2e/ directory).
 	pvcPath                  = "templates/pvc.yaml"
 	cachepvcPath             = "templates/pvc-cache.yaml"
 	testPodPath              = "templates/testpod.yaml"
@@ -62,16 +42,13 @@ const (
 	testPodWithSnapshotPath2 = "templates/testpod-snapshot2.yaml"
 	testPodWithClonePath     = "templates/testpod-clone.yaml"
 
-	// controller statefulset and node daemonset names
+	// Kubernetes resource names.
 	controllerStsName = "simplyblock-csi-controller"
 	nodeDsName        = "simplyblock-csi-node"
 	testPodName       = "spdkcsi-test"
 	multiTestPodName  = "spdkcsi-test-multi"
 	cachetestPodName  = "spdkcsi-cache-test"
-	PodStatusRunning  = "Running"
 )
-
-var ctx = context.TODO()
 
 func init() {
 	nameSpace = os.Getenv("CSI_NAMESPACE")
@@ -89,6 +66,8 @@ func init() {
 	}
 }
 
+// applyTemplateWithStorageClass applies a YAML template after substituting
+// the default storage class name with the one configured via STORAGE_CLASS_NAME.
 func applyTemplateWithStorageClass(ns, path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -108,83 +87,72 @@ func applyTemplateWithStorageClass(ns, path string) error {
 	return err
 }
 
+// ---------------------------------------------------------------------------
+// Deploy helpers — fail the test immediately on error.
+// ---------------------------------------------------------------------------
+
 func deployTestPod() {
 	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodPath)
-	if err != nil {
-		framework.Logf("failed to create test pod: %s", err)
-	}
-}
-
-func deleteTestPod() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodPath)
-	if err != nil {
-		framework.Logf("failed to delete test pod: %s", err)
-	}
-}
-
-func deployCacheTestPod() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", cachetestPodPath)
-	if err != nil {
-		framework.Logf("failed to create cache test pod: %s", err)
-	}
-}
-
-func deleteCacheTestPod() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", cachetestPodPath)
-	if err != nil {
-		framework.Logf("failed to delete cache test pod: %s", err)
-	}
+	framework.ExpectNoError(err, "deploy test pod")
 }
 
 func deployPVC() {
-	if err := applyTemplateWithStorageClass(nameSpace, pvcPath); err != nil {
-		framework.Logf("failed to create pvc: %s", err)
+	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, pvcPath), "deploy PVC")
+}
+
+func deploySnapshot() {
+	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath), "deploy snapshot resources")
+}
+
+func deploySnapshot2() {
+	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath2), "deploy snapshot2 resources")
+}
+
+func deployClone() {
+	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, testPodWithClonePath), "deploy clone resources")
+}
+
+func deployTestPodWithMultiPvcs() {
+	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithMultiPvcsPath)
+	framework.ExpectNoError(err, "deploy test pod with multi-PVCs")
+}
+
+func deployMultiPvcs() {
+	framework.ExpectNoError(applyTemplateWithStorageClass(nameSpace, multiPvcsPath), "deploy multi-PVCs")
+}
+
+// ---------------------------------------------------------------------------
+// Delete helpers — best-effort; log but do not fail on error so that a
+// cleanup hiccup does not shadow a legitimate test failure.
+// ---------------------------------------------------------------------------
+
+func deleteTestPod() {
+	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodPath); err != nil {
+		framework.Logf("failed to delete test pod: %v", err)
 	}
 }
 
 func deletePVC() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", pvcPath)
-	if err != nil {
-		framework.Logf("failed to delete pvc: %s", err)
-	}
-}
-
-func deploySnapshot() {
-	if err := applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath); err != nil {
-		framework.Logf("failed to deployed snapshot: %s", err)
+	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", pvcPath); err != nil {
+		framework.Logf("failed to delete PVC: %v", err)
 	}
 }
 
 func deleteSnapshot() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath)
-	if err != nil {
-		framework.Logf("failed to delete snapshot: %s", err)
-	}
-}
-
-func deploySnapshot2() {
-	if err := applyTemplateWithStorageClass(nameSpace, testPodWithSnapshotPath2); err != nil {
-		framework.Logf("failed to deployed snapshot: %s", err)
+	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath); err != nil {
+		framework.Logf("failed to delete snapshot resources: %v", err)
 	}
 }
 
 func deleteSnapshot2() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath2)
-	if err != nil {
-		framework.Logf("failed to delete snapshot: %s", err)
-	}
-}
-
-func deployClone() {
-	if err := applyTemplateWithStorageClass(nameSpace, testPodWithClonePath); err != nil {
-		framework.Logf("failed to deployed Cloned Volume: %s", err)
+	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithSnapshotPath2); err != nil {
+		framework.Logf("failed to delete snapshot2 resources: %v", err)
 	}
 }
 
 func deleteClone() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithClonePath)
-	if err != nil {
-		framework.Logf("failed to delete cloned volume : %s", err)
+	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithClonePath); err != nil {
+		framework.Logf("failed to delete clone resources: %v", err)
 	}
 }
 
@@ -193,48 +161,15 @@ func deletePVCAndTestPod() {
 	deletePVC()
 }
 
-func deployCachePVC() {
-	if err := applyTemplateWithStorageClass(nameSpace, cachepvcPath); err != nil {
-		framework.Logf("failed to create cache pvc: %s", err)
-	}
-}
-
-func deleteCachePVC() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", cachepvcPath)
-	if err != nil {
-		framework.Logf("failed to delete cache pvc: %s", err)
-	}
-}
-
-func deleteCachePVCAndCacheTestPod() {
-	deleteCacheTestPod()
-	deleteCachePVC()
-}
-
-func deployTestPodWithMultiPvcs() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "apply", "-f", testPodWithMultiPvcsPath)
-	if err != nil {
-		framework.Logf("failed to create test pod with multiple pvcs: %s", err)
-	}
-}
-
 func deleteTestPodWithMultiPvcs() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithMultiPvcsPath)
-	if err != nil {
-		framework.Logf("failed to delete test pod with multiple pvcs: %s", err)
-	}
-}
-
-func deployMultiPvcs() {
-	if err := applyTemplateWithStorageClass(nameSpace, multiPvcsPath); err != nil {
-		framework.Logf("failed to create pvcs: %s", err)
+	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", testPodWithMultiPvcsPath); err != nil {
+		framework.Logf("failed to delete multi-PVC test pod: %v", err)
 	}
 }
 
 func deleteMultiPvcs() {
-	_, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", multiPvcsPath)
-	if err != nil {
-		framework.Logf("failed to delete pvcs: %s", err)
+	if _, err := e2ekubectl.RunKubectl(nameSpace, "delete", "-f", multiPvcsPath); err != nil {
+		framework.Logf("failed to delete multi-PVCs: %v", err)
 	}
 }
 
@@ -243,23 +178,26 @@ func deleteMultiPvcsAndTestPodWithMultiPvcs() {
 	deleteMultiPvcs()
 }
 
+// ---------------------------------------------------------------------------
+// Wait helpers — all use wait.PollUntilContextTimeout (replaces deprecated
+// wait.PollImmediate).
+// ---------------------------------------------------------------------------
+
 func waitForControllerReady(c kubernetes.Interface, timeout time.Duration) error {
 	ns := nameSpace
 	if operatorMode {
 		ns = systemNamespace
 	}
-	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		sts, err := c.AppsV1().StatefulSets(ns).Get(ctx, controllerStsName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		if sts.Status.Replicas == sts.Status.ReadyReplicas {
-			return true, nil
-		}
-		return false, nil
-	})
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			sts, err := c.AppsV1().StatefulSets(ns).Get(ctx, controllerStsName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			return sts.Status.Replicas == sts.Status.ReadyReplicas, nil
+		})
 	if err != nil {
-		return fmt.Errorf("failed to wait for controller ready: %w", err)
+		return fmt.Errorf("controller StatefulSet %q not ready within %s: %w", controllerStsName, timeout, err)
 	}
 	return nil
 }
@@ -269,109 +207,225 @@ func waitForNodeServerReady(c kubernetes.Interface, timeout time.Duration) error
 	if operatorMode {
 		ns = systemNamespace
 	}
-	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		ds, err := c.AppsV1().DaemonSets(ns).Get(ctx, nodeDsName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		if ds.Status.NumberReady == ds.Status.DesiredNumberScheduled {
-			return true, nil
-		}
-		return false, nil
-	})
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			ds, err := c.AppsV1().DaemonSets(ns).Get(ctx, nodeDsName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			return ds.Status.NumberReady == ds.Status.DesiredNumberScheduled, nil
+		})
 	if err != nil {
-		return fmt.Errorf("failed to wait for node server ready: %w", err)
+		return fmt.Errorf("node DaemonSet %q not ready within %s: %w", nodeDsName, timeout, err)
 	}
 	return nil
 }
 
-func waitForTestPodReady(c kubernetes.Interface, timeout time.Duration, testPodName string) error {
-	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, testPodName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		if string(pod.Status.Phase) == PodStatusRunning {
-			return true, nil
-		}
-		return false, nil
-	})
+// waitForTestPodReady polls until podName is Running with every container
+// reporting Ready, or until timeout.  It returns immediately with an error if
+// the pod enters a terminal phase (Failed/Succeeded).
+func waitForTestPodReady(c kubernetes.Interface, timeout time.Duration, podName string) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			switch pod.Status.Phase {
+			case corev1.PodFailed, corev1.PodSucceeded:
+				return false, fmt.Errorf("pod %q entered terminal phase %s", podName, pod.Status.Phase)
+			case corev1.PodRunning:
+				if len(pod.Status.ContainerStatuses) == 0 {
+					return false, nil
+				}
+				for _, cs := range pod.Status.ContainerStatuses {
+					if !cs.Ready {
+						return false, nil
+					}
+				}
+				return true, nil
+			default:
+				return false, nil
+			}
+		})
 	if err != nil {
-		return fmt.Errorf("failed to wait for test pod ready: %w", err)
+		return fmt.Errorf("pod %q not ready within %s: %w", podName, timeout, err)
 	}
 	return nil
 }
 
-func waitForCacheTestPodReady(c kubernetes.Interface, timeout time.Duration) error {
-	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, cachetestPodName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		if string(pod.Status.Phase) == PodStatusRunning {
-			return true, nil
-		}
-		return false, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to wait for cache test pod ready: %w", err)
-	}
-	return nil
-}
-
-func waitForTestPodGone(c kubernetes.Interface, testPodName string) error {
-	err := wait.PollImmediate(3*time.Second, 5*time.Minute, func() (bool, error) {
-		_, err := c.CoreV1().Pods(nameSpace).Get(ctx, testPodName, metav1.GetOptions{})
-		if err != nil {
+func waitForTestPodGone(c kubernetes.Interface, podName string) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, 5*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
+			_, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
 			if k8serrors.IsNotFound(err) {
 				return true, nil
 			}
 			return false, err
-		}
-		return false, nil
-	})
+		})
 	if err != nil {
-		return fmt.Errorf("failed to wait for test pod gone: %w", err)
+		return fmt.Errorf("pod %q still present after 5 minutes: %w", podName, err)
 	}
 	return nil
 }
 
 func waitForPvcGone(c kubernetes.Interface, pvcName string) error {
-	err := wait.PollImmediate(3*time.Second, 5*time.Minute, func() (bool, error) {
-		_, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
-		if err != nil {
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, 5*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
+			_, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
 			if k8serrors.IsNotFound(err) {
 				return true, nil
 			}
 			return false, err
-		}
-		return false, nil
-	})
+		})
 	if err != nil {
-		return fmt.Errorf("failed to wait for pvc (%s) gone: %w", pvcName, err)
+		return fmt.Errorf("PVC %q still present after 5 minutes: %w", pvcName, err)
 	}
 	return nil
 }
 
-func execCommandInPod(f *framework.Framework, c, ns string, opt *metav1.ListOptions) (stdOut, stdErr string) {
-	podPot := getCommandInPodOpts(f, c, ns, opt)
-	stdOut, stdErr, err := e2epod.ExecWithOptions(f, podPot)
-	if stdErr != "" {
-		framework.Logf("stdErr occurred: %v", stdErr)
+func waitForPVCStorageCapacity(c kubernetes.Interface, pvcName string, minSize resource.Quantity, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			capacity, ok := pvc.Status.Capacity[corev1.ResourceStorage]
+			if !ok {
+				return false, nil
+			}
+			return capacity.Cmp(minSize) >= 0, nil
+		})
+	if err != nil {
+		return fmt.Errorf("PVC %q capacity did not reach %s within %s: %w", pvcName, minSize.String(), timeout, err)
 	}
-	Expect(err).ShouldNot(HaveOccurred()) //nolint
+	return nil
+}
+
+func waitForFilesystemSize(f *framework.Framework, opt *metav1.ListOptions, mountPath string, minBytes int64, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 5*time.Second, timeout, true,
+		func(_ context.Context) (bool, error) {
+			sizeBytes, err := filesystemSizeBytes(f, opt, mountPath)
+			if err != nil {
+				framework.Logf("filesystem size check failed: %v", err)
+				return false, err
+			}
+			return sizeBytes >= minBytes, nil
+		})
+	if err != nil {
+		return fmt.Errorf("filesystem at %q did not reach %d bytes within %s: %w", mountPath, minBytes, timeout, err)
+	}
+	return nil
+}
+
+func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(context.Background(), 10*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if pod.Spec.NodeName == "" {
+				return false, nil
+			}
+
+			raw, err := c.CoreV1().RESTClient().Get().
+				Resource("nodes").
+				Name(pod.Spec.NodeName).
+				SubResource("proxy").
+				Suffix("stats", "summary").
+				DoRaw(ctx)
+			if err != nil {
+				// Kubelet stats may not be immediately available; keep polling.
+				framework.Logf("kubelet stats not yet available on node %s: %v", pod.Spec.NodeName, err)
+				return false, nil
+			}
+
+			var summary kubeletStatsSummary
+			if err := json.Unmarshal(raw, &summary); err != nil {
+				return false, fmt.Errorf("parse kubelet stats summary: %w", err)
+			}
+
+			for _, podStats := range summary.Pods {
+				if podStats.PodRef.Namespace != nameSpace || podStats.PodRef.Name != podName {
+					continue
+				}
+				for _, vol := range podStats.VolumeStats {
+					if vol.CapacityBytes != nil && *vol.CapacityBytes > 0 &&
+						vol.AvailableBytes != nil && vol.UsedBytes != nil {
+						return true, nil
+					}
+				}
+				return false, nil
+			}
+			return false, nil
+		})
+	if err != nil {
+		return fmt.Errorf("kubelet volume stats for pod %q not populated within %s: %w", podName, timeout, err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// PVC helpers
+// ---------------------------------------------------------------------------
+
+func resizePVC(c kubernetes.Interface, pvcName string, newSize resource.Quantity) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(context.Background(), pvcName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if pvc.Spec.Resources.Requests == nil {
+			pvc.Spec.Resources.Requests = corev1.ResourceList{}
+		}
+		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
+		_, err = c.CoreV1().PersistentVolumeClaims(nameSpace).Update(context.Background(), pvc, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+func createPVC(c kubernetes.Interface, ns, pvcName, scName string, size int64) error {
+	_, err := c.CoreV1().PersistentVolumeClaims(ns).Create(context.Background(), &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: pvcName},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			StorageClassName: &scName,
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI),
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Pod exec helpers
+// ---------------------------------------------------------------------------
+
+// execCommandInPod runs cmd inside the first pod matching opt and returns
+// stdout/stderr.  It asserts (via Gomega) that the exec call itself succeeds;
+// callers only need to inspect the returned strings.
+func execCommandInPod(f *framework.Framework, cmd, ns string, opt *metav1.ListOptions) (stdOut, stdErr string) {
+	opts := getCommandInPodOpts(f, cmd, ns, opt)
+	stdOut, stdErr, err := e2epod.ExecWithOptions(f, opts)
+	if stdErr != "" {
+		framework.Logf("exec stderr: %v", stdErr)
+	}
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "exec %q in pod", cmd)
 	return stdOut, stdErr
 }
 
-func getCommandInPodOpts(f *framework.Framework, c, ns string, opt *metav1.ListOptions) e2epod.ExecOptions {
-	cmd := []string{"/bin/sh", "-c", c}
-	podList, err := e2epod.PodClientNS(f, ns).List(ctx, *opt)
-	framework.ExpectNoError(err)
-	Expect(podList.Items).NotTo(BeNil())  //nolint
-	Expect(err).ShouldNot(HaveOccurred()) //nolint
+func getCommandInPodOpts(f *framework.Framework, cmd, ns string, opt *metav1.ListOptions) e2epod.ExecOptions {
+	podList, err := e2epod.PodClientNS(f, ns).List(context.Background(), *opt)
+	framework.ExpectNoError(err, "list pods for exec (selector: %s)", opt.LabelSelector)
+	gomega.Expect(podList.Items).NotTo(gomega.BeEmpty(), "no pods matched selector %q", opt.LabelSelector)
 
 	return e2epod.ExecOptions{
-		Command:            cmd,
+		Command:            []string{"/bin/sh", "-c", cmd},
 		PodName:            podList.Items[0].Name,
 		Namespace:          ns,
 		ContainerName:      podList.Items[0].Spec.Containers[0].Name,
@@ -382,154 +436,55 @@ func getCommandInPodOpts(f *framework.Framework, c, ns string, opt *metav1.ListO
 	}
 }
 
-func checkDataPersist(f *framework.Framework) error {
-	data := "Data that needs to be stored"
-	// write data to PVC
-	dataPath := "/spdkvol/test"
-	opt := metav1.ListOptions{
-		LabelSelector: "app=spdkcsi-pvc",
-	}
-	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, &opt)
-
-	deleteTestPod()
-	err := waitForTestPodGone(f.ClientSet, testPodName)
-	if err != nil {
-		return err
-	}
-
-	deployTestPod()
-	err = waitForTestPodReady(f.ClientSet, 5*time.Minute, testPodName)
-	if err != nil {
-		return err
-	}
-
-	// read data from PVC
-	persistData, stdErr := execCommandInPod(f, "cat "+dataPath, nameSpace, &opt)
-	Expect(stdErr).Should(BeEmpty()) //nolint
-	if !strings.Contains(persistData, data) {
-		return fmt.Errorf("data not persistent: expected data %s received data %s ", data, persistData)
-	}
-
-	return err
+// writeDataToPod writes data to dataPath inside the first pod matching opt.
+func writeDataToPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPath string) {
+	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, opt)
 }
 
-func checkDataPersistForMultiPvcs(f *framework.Framework) error {
+// compareDataInPod asserts that each data[i] string appears in dataPaths[i]
+// inside the first pod matching opt.
+func compareDataInPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPaths []string) {
+	for i := range data {
+		out, _ := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, opt)
+		gomega.Expect(out).To(gomega.ContainSubstring(data[i]),
+			"data not persisted at path %s", dataPaths[i])
+	}
+}
+
+// checkDataPersistForMultiPvcs writes distinct content to each of three
+// volumes, deletes and recreates the pod, then asserts all data survived the
+// restart.
+func checkDataPersistForMultiPvcs(f *framework.Framework) {
 	dataContents := []string{
 		"Data that needs to be stored to vol1",
 		"Data that needs to be stored to vol2",
 		"Data that needs to be stored to vol3",
 	}
-	// write data to PVC
-	dataPaths := []string{
-		"/spdkvol1/test",
-		"/spdkvol2/test",
-		"/spdkvol3/test",
-	}
-	opt := metav1.ListOptions{
-		LabelSelector: "app=spdkcsi-pvc",
-	}
-	for i := 0; i < len(dataPaths); i++ {
+	dataPaths := []string{"/spdkvol1/test", "/spdkvol2/test", "/spdkvol3/test"}
+	opt := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
+
+	ginkgo.By("writing data to each volume")
+	for i := range dataPaths {
 		execCommandInPod(f, fmt.Sprintf("echo %s > %s", dataContents[i], dataPaths[i]), nameSpace, &opt)
 	}
 
+	ginkgo.By("deleting and recreating the pod to test persistence")
 	deleteTestPodWithMultiPvcs()
-	err := waitForTestPodGone(f.ClientSet, multiTestPodName)
-	if err != nil {
-		return err
-	}
+	framework.ExpectNoError(waitForTestPodGone(f.ClientSet, multiTestPodName), "wait for multi-PVC pod to terminate")
 
 	deployTestPodWithMultiPvcs()
-	err = waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName)
-	if err != nil {
-		return err
-	}
+	framework.ExpectNoError(waitForTestPodReady(f.ClientSet, 3*time.Minute, multiTestPodName), "wait for multi-PVC pod after restart")
 
-	// read data from PVC
-	for i := 0; i < len(dataPaths); i++ {
-		persistData, stdErr := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, &opt)
-		Expect(stdErr).Should(BeEmpty()) //nolint
-		if !strings.Contains(persistData, dataContents[i]) {
-			return fmt.Errorf("data not persistent: expected data %s received data %s ", dataContents[i], persistData)
-		}
+	ginkgo.By("verifying data survived the pod restart")
+	for i := range dataPaths {
+		out, _ := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, &opt)
+		gomega.Expect(out).To(gomega.ContainSubstring(dataContents[i]),
+			"data not persisted at %s after pod restart", dataPaths[i])
 	}
-	return err
 }
 
-func verifyDynamicPVCreation(c kubernetes.Interface, pvcName string, timeout time.Duration) error {
-	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-
-		if pvc.Status.Phase != corev1.ClaimBound {
-			return false, nil
-		}
-
-		pvName := pvc.Spec.VolumeName
-		pv, err := c.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-
-		return pv.Spec.ClaimRef != nil && pv.Spec.StorageClassName != "", nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to verify dynamic PV creation for PVC %s: %w", pvcName, err)
-	}
-	return nil
-}
-
-func resizePVC(c kubernetes.Interface, pvcName string, newSize resource.Quantity) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		if pvc.Spec.Resources.Requests == nil {
-			pvc.Spec.Resources.Requests = corev1.ResourceList{}
-		}
-		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
-		_, err = c.CoreV1().PersistentVolumeClaims(nameSpace).Update(ctx, pvc, metav1.UpdateOptions{})
-		return err
-	})
-}
-
-func waitForPVCStorageCapacity(c kubernetes.Interface, pvcName string, minSize resource.Quantity, timeout time.Duration) error {
-	err := wait.PollImmediate(3*time.Second, timeout, func() (bool, error) {
-		pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-
-		capacity, ok := pvc.Status.Capacity[corev1.ResourceStorage]
-		if !ok {
-			return false, nil
-		}
-
-		return capacity.Cmp(minSize) >= 0, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to wait for PVC %s capacity to reach %s: %w", pvcName, minSize.String(), err)
-	}
-	return nil
-}
-
-func waitForFilesystemSize(f *framework.Framework, opt *metav1.ListOptions, mountPath string, minBytes int64, timeout time.Duration) error {
-	err := wait.PollImmediate(5*time.Second, timeout, func() (bool, error) {
-		sizeBytes, err := filesystemSizeBytes(f, opt, mountPath)
-		if err != nil {
-			framework.Logf("failed to read filesystem size: %v", err)
-			return false, err
-		}
-		return sizeBytes >= minBytes, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to wait for filesystem at %s to reach at least %d bytes: %w", mountPath, minBytes, err)
-	}
-	return nil
-}
-
+// filesystemSizeBytes returns the total capacity (bytes) of the filesystem
+// at mountPath as reported by df inside the pod.
 func filesystemSizeBytes(f *framework.Framework, opt *metav1.ListOptions, mountPath string) (int64, error) {
 	stdOut, stdErr := execCommandInPod(f, fmt.Sprintf("df -P -k %s | awk 'NR==2 {print $2}'", mountPath), nameSpace, opt)
 	if stdErr != "" {
@@ -556,524 +511,4 @@ type kubeletStatsSummary struct {
 			UsedBytes      *uint64 `json:"usedBytes"`
 		} `json:"volume"`
 	} `json:"pods"`
-}
-
-func waitForMountedVolumeStats(c kubernetes.Interface, podName string, timeout time.Duration) error {
-	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
-		pod, err := c.CoreV1().Pods(nameSpace).Get(ctx, podName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-		if pod.Spec.NodeName == "" {
-			return false, nil
-		}
-
-		raw, err := c.CoreV1().RESTClient().Get().
-			Resource("nodes").
-			Name(pod.Spec.NodeName).
-			SubResource("proxy").
-			Suffix("stats", "summary").
-			DoRaw(ctx)
-		if err != nil {
-			framework.Logf("failed to read kubelet stats summary from node %s: %v", pod.Spec.NodeName, err)
-			return false, fmt.Errorf("failed to read kubelet stats summary from node %s: %w", pod.Spec.NodeName, err)
-		}
-
-		var summary kubeletStatsSummary
-		if err := json.Unmarshal(raw, &summary); err != nil {
-			return false, fmt.Errorf("failed to parse kubelet stats summary: %w", err)
-		}
-
-		for _, podStats := range summary.Pods {
-			if podStats.PodRef.Namespace != nameSpace || podStats.PodRef.Name != podName {
-				continue
-			}
-			for _, volume := range podStats.VolumeStats {
-				if volume.CapacityBytes != nil && *volume.CapacityBytes > 0 &&
-					volume.AvailableBytes != nil &&
-					volume.UsedBytes != nil {
-					return true, nil
-				}
-			}
-			return false, nil
-		}
-
-		return false, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to wait for kubelet volume stats for pod %s: %w", podName, err)
-	}
-	return nil
-}
-
-type simplyblockCreds struct {
-	Simplyblock SimplyBlock `json:"simplybk"`
-}
-
-type SimplyBlock struct {
-	IP     string `json:"ip"`
-	UUID   string `json:"uuid"`
-	Secret string `json:"secret"`
-}
-
-type csiClusterEntry struct {
-	ClusterID       string `json:"cluster_id"`
-	ClusterEndpoint string `json:"cluster_endpoint"`
-	ClusterSecret   string `json:"cluster_secret"`
-}
-
-type csiCredentialsV2 struct {
-	Clusters []csiClusterEntry `json:"clusters"`
-}
-
-// getSimplyBlockCreds returns cluster credentials from the appropriate source.
-// In operator mode it reads simplyblock-csi-secret-v2 from systemNamespace;
-// otherwise it reads simplyblock-csi-cm + simplyblock-csi-secret from nameSpace.
-func getSimplyBlockCreds(c kubernetes.Interface) (SimplyBlock, error) {
-	if operatorMode {
-		secret, err := c.CoreV1().Secrets(systemNamespace).Get(ctx, "simplyblock-csi-secret-v2", metav1.GetOptions{})
-		if err != nil {
-			return SimplyBlock{}, err
-		}
-		var creds csiCredentialsV2
-		if err := json.Unmarshal(secret.Data["secret.json"], &creds); err != nil {
-			return SimplyBlock{}, err
-		}
-		if len(creds.Clusters) == 0 {
-			return SimplyBlock{}, errors.New("no clusters found in simplyblock-csi-secret-v2")
-		}
-		c0 := creds.Clusters[0]
-		return SimplyBlock{IP: c0.ClusterEndpoint, UUID: c0.ClusterID, Secret: c0.ClusterSecret}, nil
-	}
-
-	cm, err := c.CoreV1().ConfigMaps(nameSpace).Get(ctx, "simplyblock-csi-cm", metav1.GetOptions{})
-	if err != nil {
-		return SimplyBlock{}, err
-	}
-	var creds simplyblockCreds
-	if err := json.Unmarshal([]byte(cm.Data["config.json"]), &creds); err != nil {
-		return SimplyBlock{}, err
-	}
-	secret, err := c.CoreV1().Secrets(nameSpace).Get(ctx, "simplyblock-csi-secret", metav1.GetOptions{})
-	if err != nil {
-		return SimplyBlock{}, err
-	}
-	if err := json.Unmarshal(secret.Data["secret.json"], &creds); err != nil {
-		return SimplyBlock{}, err
-	}
-	return creds.Simplyblock, nil
-}
-
-type StorageNodes struct {
-	Nodes []StorageNode `json:"results"`
-}
-
-type StorageNode struct {
-	UUID        string `json:"id"`
-	APIendpoint string `json:"api_endpoint"`
-}
-
-func (s SimplyBlock) getStoragenode(random int) (string, string, error) {
-	var rpcClient util.RPCClient
-	rpcClient.ClusterID = s.UUID
-	rpcClient.ClusterIP = s.IP
-	rpcClient.ClusterSecret = s.Secret
-
-	rpcClient.HTTPClient = &http.Client{Timeout: 10 * time.Second}
-
-	// get the list of storage nodes
-	out, err := rpcClient.CallSBCLI("GET", "/storagenode", nil)
-	if err != nil {
-		return "", "", err
-	}
-
-	// TODO: get a random storage node
-	storageNodes, ok := out.([]interface{})[random].(map[string]interface{})
-
-	if !ok {
-		return "", "", errors.New("failed to get storage node from simplyblock api")
-	}
-	sn, ok := storageNodes["hostname"].(string)
-	snid, ok := storageNodes["uuid"].(string)
-
-	if !ok {
-		return "", "", errors.New("failed to get storage node from simplyblock api")
-	}
-	return sn, snid, nil
-}
-
-func (s SimplyBlock) numberOfNodes() (int, error) {
-	var rpcClient util.RPCClient
-	rpcClient.ClusterID = s.UUID
-	rpcClient.ClusterIP = s.IP
-	rpcClient.ClusterSecret = s.Secret
-
-	rpcClient.HTTPClient = &http.Client{Timeout: 10 * time.Second}
-
-	out, err := rpcClient.CallSBCLI("GET", "/storagenode", nil)
-	if err != nil {
-		return 0, err
-	}
-
-	//get the number of storage nodes
-	sn := len(out.([]interface{}))
-	return sn, nil
-
-}
-
-func checkNodeStatus(nodeID string, expected string, rpcClient *util.RPCClient, retries int, delay time.Duration) error {
-	for try := 1; try <= retries; try++ {
-		time.Sleep(delay)
-
-		url := fmt.Sprintf("/storagenode/%s", nodeID)
-		response, err := rpcClient.CallSBCLI("GET", url, nil)
-		if err != nil {
-			return fmt.Errorf("error calling RPC: %w", err)
-		}
-
-		respArray, ok := response.([]interface{})
-		if !ok || len(respArray) == 0 {
-			return fmt.Errorf("unexpected response format: %v", response)
-		}
-
-		resp, ok := respArray[0].(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected response format: %v", respArray[0])
-		}
-
-		status, ok := resp["status"].(string)
-		if !ok {
-			return fmt.Errorf("status field missing or invalid in response: %v", resp)
-		}
-
-		// check node is online and healthy
-		if expected == "online" {
-			healthy, ok := resp["health_check"].(bool)
-			if !ok {
-				return fmt.Errorf("health field missing or invalid in response: %v", resp)
-			}
-			if status == expected && healthy {
-				return nil
-			}
-		}
-
-		if status == expected {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("storage node %s did not transition to '%s' state after %d retries", nodeID, expected, retries)
-}
-
-func (s SimplyBlock) restartStorageNode(nodeID string) error {
-
-	var rpcClient util.RPCClient
-	rpcClient.ClusterID = s.UUID
-	rpcClient.ClusterIP = s.IP
-	rpcClient.ClusterSecret = s.Secret
-	rpcClient.HTTPClient = http.DefaultClient
-
-	// Step 1: Suspend Storage Node
-	url := fmt.Sprintf("/storagenode/suspend/%s", nodeID)
-	if _, err := rpcClient.CallSBCLI("GET", url, nil); err != nil {
-		return fmt.Errorf("failed to suspend storage node: %w", err)
-	}
-	//check whether the node has suspended
-	expectedStatus := "suspended"
-	retries := 20
-	delay := 10 * time.Second
-
-	err := checkNodeStatus(nodeID, expectedStatus, &rpcClient, retries, delay)
-
-	if err != nil {
-		return err
-	}
-
-	// Step 2: Shutdown Storage Node
-	url = fmt.Sprintf("/storagenode/shutdown/%s/?force=True", nodeID)
-	if _, err := rpcClient.CallSBCLI("GET", url, nil); err != nil {
-		return fmt.Errorf("failed to shutdown storage node: %w", err)
-	}
-
-	//check whether the node has shutdown
-	expectedStatus = "offline"
-	err = checkNodeStatus(nodeID, expectedStatus, &rpcClient, retries, delay)
-
-	if err != nil {
-		return err
-	}
-
-	// Step 3: Fetch Storage Node Info
-	url = fmt.Sprintf("/storagenode/%s", nodeID)
-	resp, err := rpcClient.CallSBCLI("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to fetch storage node info: %w", err)
-	}
-
-	result, ok := resp.([]interface{})[0].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("type assertion failed")
-	}
-
-	// Step 4: Restart Storage Node
-	args := storageNode{
-		UUID:   result["id"].(string),
-		NodeIP: result["api_endpoint"].(string),
-	}
-	url = "/storagenode/restart/"
-	if _, err := rpcClient.CallSBCLI("PUT", url, args); err != nil {
-		return fmt.Errorf("failed to restart storage node: %w", err)
-	}
-
-	expectedStatus = "online"
-	err = checkNodeStatus(nodeID, expectedStatus, &rpcClient, retries, delay)
-
-	if err != nil {
-		return err
-	} else {
-		return nil
-	}
-
-}
-
-func waitForPodRunning(ctx context.Context, c kubernetes.Interface, namespace, podName string, timeout time.Duration) error {
-	// Create a timeout context
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	// Polling interval
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting for pod %s to be running", podName)
-		case <-ticker.C:
-			pod, err := c.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to get pod %s: %w", podName, err)
-			}
-			if pod.Status.Phase == PodStatusRunning {
-				return nil
-			}
-			// Optionally, handle other statuses, e.g., Failed or Unknown
-			// fmt.Printf("Current status of pod %s is %s\n", podName, pod.Status.Phase)
-		}
-	}
-}
-
-func createSimplePod(c kubernetes.Interface, nameSpace, podName, pvcClaimName string) error {
-	volumeName := "spdk-csi-vol"
-	_, err := c.CoreV1().Pods(nameSpace).Create(ctx, &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: podName,
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:  "spdk-csi-container",
-					Image: "busybox:latest",
-					Command: []string{
-						"sleep",
-						"100000",
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      volumeName,
-							MountPath: "/spdkvol",
-						},
-					},
-				},
-			},
-			Volumes: []corev1.Volume{
-				{
-					Name: volumeName,
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: pvcClaimName,
-						},
-					},
-				},
-			},
-		},
-	}, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
-
-	// wait for the pod to be running
-	return waitForPodRunning(ctx, c, nameSpace, podName, 5*time.Minute)
-}
-
-func createPVC(c kubernetes.Interface, nameSpace, pvcName, storageClassName string, size int64) error {
-	_, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Create(ctx, &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: pvcName,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			StorageClassName: &storageClassName,
-			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI), // 256Mi
-				},
-			},
-		},
-	}, metav1.CreateOptions{})
-	return err
-}
-
-func createFioWorkloadPod(c kubernetes.Interface, nameSpace, podName, configMapName, pvcClaimName string) error {
-	// create a pod with the storage class
-	// RUN fio workload on this pod
-	volumeName := "spdk-csi-vol"
-	_, err := c.CoreV1().Pods(nameSpace).Create(ctx, &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: podName,
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:  "spdk-csi-container",
-					Image: "manoharbrm/fio:latest",
-					Command: []string{
-						"fio",
-						"/fio/fio.cfg",
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      volumeName,
-							MountPath: "/spdkvol",
-						},
-						{
-							Name:      configMapName,
-							MountPath: "/fio",
-						},
-					},
-				},
-			},
-			Volumes: []corev1.Volume{
-				{
-					Name: volumeName,
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: pvcClaimName,
-						},
-					},
-				},
-				{
-					Name: configMapName,
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: configMapName,
-							},
-						},
-					},
-				},
-			},
-		},
-	}, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
-	err = waitForPodRunning(ctx, c, nameSpace, podName, 1*time.Minute)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func createFioConfigMap(c kubernetes.Interface, nameSpace, configMapName string) error {
-	_, err := c.CoreV1().ConfigMaps(nameSpace).Create(ctx, &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: configMapName,
-		},
-		Data: map[string]string{
-			"fio.cfg": `
-				[test]
-				ioengine=aiolib
-				direct=1
-				iodepth=4
-				time_based=1
-				runtime=1000
-				readwrite=randrw
-				bs=4K,8K,16K,32K,64K,128K,256K
-				nrfiles=4
-				size=4G
-				verify=md5
-				numjobs=3
-				directory=/spdkvol`,
-		},
-	}, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func createstorageClassWithHostID(c kubernetes.Interface, storageClassName, hostID string) error {
-	allowVolumeExpansion := true
-	storageClass := &storagev1.StorageClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: storageClassName,
-		},
-		Provisioner: "csi.simplyblock.io",
-		Parameters: map[string]string{
-			"hostID":                    hostID,
-			"pool_name":                 "testing1",
-			"distr_ndcs":                "1",
-			"distr_npcs":                "1",
-			"qos_rw_iops":               "0",
-			"qos_rw_mbytes":             "0",
-			"qos_r_mbytes":              "0",
-			"qos_w_mbytes":              "0",
-			"compression":               "False",
-			"encryption":                "False",
-			"csi.storage.k8s.io/fstype": "ext4",
-		},
-		AllowVolumeExpansion: &allowVolumeExpansion,
-	}
-
-	_, err := c.StorageV1().StorageClasses().Create(ctx, storageClass, metav1.CreateOptions{})
-	return err
-}
-
-func getStorageNode(c kubernetes.Interface, random int) (string, string, error) {
-	s, err := getSimplyBlockCreds(c)
-	if err != nil {
-		return "", "", err
-	}
-	return s.getStoragenode(random)
-}
-func numberOfNodes(c kubernetes.Interface) (int, error) {
-	s, err := getSimplyBlockCreds(c)
-	if err != nil {
-		return 0, err
-	}
-	return s.numberOfNodes()
-}
-
-func restartStorageNode(c kubernetes.Interface, nodeID string) error {
-	s, err := getSimplyBlockCreds(c)
-	if err != nil {
-		return err
-	}
-	return s.restartStorageNode(nodeID)
-}
-func writeDataToPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPath string) {
-	execCommandInPod(f, fmt.Sprintf("echo %s > %s", data, dataPath), nameSpace, opt)
-}
-
-func compareDataInPod(f *framework.Framework, opt *metav1.ListOptions, data, dataPaths []string) error {
-	for i := range data {
-		// read data from PVC
-		persistData, stdErr := execCommandInPod(f, "cat "+dataPaths[i], nameSpace, opt)
-		Expect(stdErr).Should(BeEmpty()) //nolint
-		if !strings.Contains(persistData, data[i]) {
-			return fmt.Errorf("data not persistent: expected data %s received data %s ", data[i], persistData)
-		}
-	}
-	return nil
 }

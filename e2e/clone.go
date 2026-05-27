@@ -11,42 +11,46 @@ import (
 var _ = ginkgo.Describe("SPDKCSI-CLONE", func() {
 	f := framework.NewDefaultFramework("spdkcsi")
 
-	ginkgo.Context("Test SPDK CSI Volume Clone", func() {
-		ginkgo.It("Test SPDK CSI Clone", func() {
-			testPodLabel := metav1.ListOptions{
-				LabelSelector: "app=spdkcsi-pvc",
-			}
-			testPodName := "spdkcsi-test"
-			cloneTestPodName := "spdkcsi-test-clone"
-			persistData := []string{"Data that needs to be stored"}
-			persistDataPath := []string{"/spdkvol/test"}
+	ginkgo.It("cloned volume contains data written to the source volume", func() {
+		testPodLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
 
-			ginkgo.By("create source pvc and write data", func() {
-				deployPVC()
-				deployTestPod()
-				defer deleteTestPod()
+		ginkgo.By("create source PVC")
+		deployPVC()
+		ginkgo.DeferCleanup(deletePVC)
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				writeDataToPod(f, &testPodLabel, persistData[0], persistDataPath[0])
-			})
+		ginkgo.By("deploy test pod and write data to source PVC")
+		deployTestPod()
+		framework.ExpectNoError(
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName),
+			"wait for source test pod",
+		)
+		writeDataToPod(f, &testPodLabel, "Data that needs to be stored", "/spdkvol/test")
 
-			ginkgo.By("create clone and check data persistency", func() {
-				deployClone()
-				defer deleteClone()
-				defer deletePVC()
+		// The clone API requires the source PVC to not be in use while cloning
+		// on some backends.  Delete the test pod and wait for full termination
+		// before creating the clone so there is no ambiguity about which pod
+		// the label selector resolves to during verification.
+		ginkgo.By("delete source test pod before cloning")
+		deleteTestPod()
+		framework.ExpectNoError(
+			waitForTestPodGone(f.ClientSet, testPodName),
+			"wait for source test pod to terminate",
+		)
 
-				err := waitForTestPodReady(f.ClientSet, 3*time.Minute, cloneTestPodName)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-				err = compareDataInPod(f, &testPodLabel, persistData, persistDataPath)
-				if err != nil {
-					ginkgo.Fail(err.Error())
-				}
-			})
-		})
+		ginkgo.By("create clone PVC and pod")
+		deployClone()
+		ginkgo.DeferCleanup(deleteClone)
+
+		ginkgo.By("wait for clone pod to be ready")
+		framework.ExpectNoError(
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-clone"),
+			"wait for clone pod",
+		)
+
+		ginkgo.By("verify clone contains the data written to the source")
+		compareDataInPod(f, &testPodLabel,
+			[]string{"Data that needs to be stored"},
+			[]string{"/spdkvol/test"},
+		)
 	})
 })
