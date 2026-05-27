@@ -16,8 +16,10 @@ limitations under the License.
 
 package util
 
+import "time"
+
 const (
-	cfgRPCTimeoutSeconds = 120
+	httpClientTimeout = 120 * time.Second
 )
 
 // Config stores parsed command line parameters

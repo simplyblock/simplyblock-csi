@@ -854,12 +854,9 @@ func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.Co
 
 	volumeInfo, err := sbclient.VolumeInfo(ctx, spdkVol.lvolID, "")
 	if err != nil {
-		klog.Errorf("failed to get spdkVol for %s: %v", volumeID, err)
-
+		klog.Errorf("failed to get volume info for %s: %v", volumeID, err)
 		return &csi.ControllerGetVolumeResponse{
-			Volume: &csi.Volume{
-				VolumeId: volumeID,
-			},
+			Volume: &csi.Volume{VolumeId: volumeID},
 			Status: &csi.ControllerGetVolumeResponse_VolumeStatus{
 				VolumeCondition: &csi.VolumeCondition{
 					Abnormal: true,
@@ -869,17 +866,29 @@ func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.Co
 		}, nil
 	}
 
-	volume := &csi.Volume{
-		VolumeId:      spdkVol.lvolID,
-		VolumeContext: volumeInfo,
+	healthy, reason, err := sbclient.VolumeHealth(ctx, spdkVol.lvolID)
+	if err != nil {
+		klog.Errorf("failed to get volume health for %s: %v", volumeID, err)
+		return &csi.ControllerGetVolumeResponse{
+			Volume: &csi.Volume{VolumeId: volumeID},
+			Status: &csi.ControllerGetVolumeResponse_VolumeStatus{
+				VolumeCondition: &csi.VolumeCondition{
+					Abnormal: true,
+					Message:  err.Error(),
+				},
+			},
+		}, nil
 	}
 
 	return &csi.ControllerGetVolumeResponse{
-		Volume: volume,
+		Volume: &csi.Volume{
+			VolumeId:      spdkVol.lvolID,
+			VolumeContext: volumeInfo,
+		},
 		Status: &csi.ControllerGetVolumeResponse_VolumeStatus{
 			VolumeCondition: &csi.VolumeCondition{
-				Abnormal: false,
-				Message:  "",
+				Abnormal: !healthy,
+				Message:  reason,
 			},
 		},
 	}, nil
