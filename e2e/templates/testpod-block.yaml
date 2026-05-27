@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spdkcsi-test-block
+  labels:
+    app: spdkcsi-pvc-block
+spec:
+  containers:
+  - name: alpine
+    image: alpine:3
+    imagePullPolicy: IfNotPresent
+    command: ["sleep", "365d"]
+    volumeDevices:
+    - name: spdk-block-vol
+      devicePath: /dev/spdk-block
+  volumes:
+  - name: spdk-block-vol
+    persistentVolumeClaim:
+      claimName: spdkcsi-pvc-block

@@ -1,0 +1,8 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: spdk-snapshot-deletion-test
+spec:
+  volumeSnapshotClassName: simplyblock-csi-snapshotclass
+  source:
+    persistentVolumeClaimName: spdkcsi-pvc

@@ -9,46 +9,47 @@ import (
 )
 
 var _ = ginkgo.Describe("SPDKCSI-CLONE", func() {
-	f := framework.NewDefaultFramework("spdkcsi")
+	f := newTestFramework("spdkcsi")
 
 	ginkgo.It("cloned volume contains data written to the source volume", func() {
+		ns := f.Namespace.Name
 		testPodLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
 
 		ginkgo.By("create source PVC")
-		deployPVC()
-		ginkgo.DeferCleanup(deletePVC)
+		deployPVC(ns)
+		ginkgo.DeferCleanup(func() { deletePVC(ns) })
 
 		ginkgo.By("deploy test pod and write data to source PVC")
-		deployTestPod()
+		deployTestPod(ns)
 		framework.ExpectNoError(
-			waitForTestPodReady(f.ClientSet, 3*time.Minute, testPodName),
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, ns, testPodName),
 			"wait for source test pod",
 		)
-		writeDataToPod(f, &testPodLabel, "Data that needs to be stored", "/spdkvol/test")
+		writeDataToPod(f, ns, &testPodLabel, "Data that needs to be stored", "/spdkvol/test")
 
 		// The clone API requires the source PVC to not be in use while cloning
 		// on some backends.  Delete the test pod and wait for full termination
 		// before creating the clone so there is no ambiguity about which pod
 		// the label selector resolves to during verification.
 		ginkgo.By("delete source test pod before cloning")
-		deleteTestPod()
+		deleteTestPod(ns)
 		framework.ExpectNoError(
-			waitForTestPodGone(f.ClientSet, testPodName),
+			waitForTestPodGone(f.ClientSet, ns, testPodName),
 			"wait for source test pod to terminate",
 		)
 
 		ginkgo.By("create clone PVC and pod")
-		deployClone()
-		ginkgo.DeferCleanup(deleteClone)
+		deployClone(ns)
+		ginkgo.DeferCleanup(func() { deleteClone(ns) })
 
 		ginkgo.By("wait for clone pod to be ready")
 		framework.ExpectNoError(
-			waitForTestPodReady(f.ClientSet, 3*time.Minute, "spdkcsi-test-clone"),
+			waitForTestPodReady(f.ClientSet, 3*time.Minute, ns, "spdkcsi-test-clone"),
 			"wait for clone pod",
 		)
 
 		ginkgo.By("verify clone contains the data written to the source")
-		compareDataInPod(f, &testPodLabel,
+		compareDataInPod(f, ns, &testPodLabel,
 			[]string{"Data that needs to be stored"},
 			[]string{"/spdkvol/test"},
 		)

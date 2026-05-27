@@ -19,7 +19,7 @@ import (
 )
 
 var _ = ginkgo.Describe("SPDKCSI-MULTICLUSTER", func() {
-	f := framework.NewDefaultFramework("spdkcsi-multicluster")
+	f := newTestFramework("spdkcsi-multicluster")
 
 	ginkgo.BeforeEach(func() {
 		if os.Getenv("MULTI_CLUSTER_E2E") != "true" {
@@ -28,6 +28,8 @@ var _ = ginkgo.Describe("SPDKCSI-MULTICLUSTER", func() {
 	})
 
 	ginkgo.It("provisions volumes on the backend cluster selected by pod topology", func() {
+		ns := f.Namespace.Name
+
 		clusterRefs := envList("MULTI_CLUSTER_REFS", []string{"simplyblock-cluster-a", "simplyblock-cluster-b"})
 		zones := envList("MULTI_CLUSTER_ZONES", []string{"multi-cluster-a", "multi-cluster-b"})
 		poolName := envOrDefault("MULTI_CLUSTER_POOL_NAME", "pool1")
@@ -58,25 +60,25 @@ var _ = ginkgo.Describe("SPDKCSI-MULTICLUSTER", func() {
 
 			ginkgo.By(fmt.Sprintf("provision PVC %s with StorageClass %s for zone %s", pvcName, scName, zone))
 			framework.ExpectNoError(
-				createPVC(f.ClientSet, nameSpace, pvcName, scName, 1*1024*1024*1024),
+				createPVC(f.ClientSet, ns, pvcName, scName, 1*1024*1024*1024),
 				"create PVC %s", pvcName,
 			)
 			ginkgo.DeferCleanup(func() {
-				gomega.Expect(deletePodIfExists(f.ClientSet, podName)).To(gomega.Succeed())
-				gomega.Expect(deletePVCIfExists(f.ClientSet, pvcName)).To(gomega.Succeed())
+				gomega.Expect(deletePodIfExists(f.ClientSet, ns, podName)).To(gomega.Succeed())
+				gomega.Expect(deletePVCIfExists(f.ClientSet, ns, pvcName)).To(gomega.Succeed())
 			})
 
 			framework.ExpectNoError(
-				createTopologyPinnedPod(f.ClientSet, nameSpace, podName, pvcName, zone),
+				createTopologyPinnedPod(f.ClientSet, ns, podName, pvcName, zone),
 				"create topology-pinned pod %s", podName,
 			)
 
 			framework.ExpectNoError(
-				waitForTestPodReady(f.ClientSet, 5*time.Minute, podName),
+				waitForTestPodReady(f.ClientSet, 5*time.Minute, ns, podName),
 				"wait for pod %s", podName,
 			)
 
-			pv, err := waitForPVCBound(f.ClientSet, pvcName, 5*time.Minute)
+			pv, err := waitForPVCBound(f.ClientSet, ns, pvcName, 5*time.Minute)
 			framework.ExpectNoError(err, "wait for PVC %s to bind", pvcName)
 
 			framework.ExpectNoError(
@@ -85,7 +87,7 @@ var _ = ginkgo.Describe("SPDKCSI-MULTICLUSTER", func() {
 			)
 
 			opt := metav1.ListOptions{FieldSelector: "metadata.name=" + podName}
-			writeDataToPod(f, &opt, fmt.Sprintf("multi cluster data %d", i+1), "/spdkvol/test")
+			writeDataToPod(f, ns, &opt, fmt.Sprintf("multi cluster data %d", i+1), "/spdkvol/test")
 		}
 	})
 })
@@ -199,11 +201,11 @@ func createTopologyPinnedPod(c kubernetes.Interface, namespace, podName, pvcClai
 	return err
 }
 
-func waitForPVCBound(c kubernetes.Interface, pvcName string, timeout time.Duration) (*corev1.PersistentVolume, error) {
+func waitForPVCBound(c kubernetes.Interface, ns, pvcName string, timeout time.Duration) (*corev1.PersistentVolume, error) {
 	var pv *corev1.PersistentVolume
 	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
 		func(ctx context.Context) (bool, error) {
-			pvc, err := c.CoreV1().PersistentVolumeClaims(nameSpace).Get(ctx, pvcName, metav1.GetOptions{})
+			pvc, err := c.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvcName, metav1.GetOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -235,16 +237,16 @@ func verifyPVClusterAndTopology(pv *corev1.PersistentVolume, expectedClusterID, 
 	return nil
 }
 
-func deletePodIfExists(c kubernetes.Interface, podName string) error {
-	err := c.CoreV1().Pods(nameSpace).Delete(context.Background(), podName, metav1.DeleteOptions{})
+func deletePodIfExists(c kubernetes.Interface, ns, podName string) error {
+	err := c.CoreV1().Pods(ns).Delete(context.Background(), podName, metav1.DeleteOptions{})
 	if k8serrors.IsNotFound(err) {
 		return nil
 	}
 	return err
 }
 
-func deletePVCIfExists(c kubernetes.Interface, pvcName string) error {
-	err := c.CoreV1().PersistentVolumeClaims(nameSpace).Delete(context.Background(), pvcName, metav1.DeleteOptions{})
+func deletePVCIfExists(c kubernetes.Interface, ns, pvcName string) error {
+	err := c.CoreV1().PersistentVolumeClaims(ns).Delete(context.Background(), pvcName, metav1.DeleteOptions{})
 	if k8serrors.IsNotFound(err) {
 		return nil
 	}

@@ -112,15 +112,22 @@ unit-test:
 
 # e2e test
 .PHONY: e2e-test
-# Pass extra arguments to e2e tests. Could be used
-# to pass -xpu argument and running only fouced tests
-# for quick testing.
-# The below example tests:
-#   make e2e-test E2E_TEST_ARGS='-xpu=true --ginkgo.focus=\"TEST SPDK CSI SMA NVME\"'
+# Pass extra arguments to e2e tests.
+# Use E2E_PROCS=N to run specs in parallel (requires the ginkgo CLI).
+# Use E2E_TEST_ARGS to pass additional ginkgo flags.
+# Examples:
+#   make e2e-test E2E_PROCS=4
+#   make e2e-test E2E_PROCS=4 E2E_TEST_ARGS='--skip="SPDKCSI-MULTICLUSTER|XFS"'
+#   make e2e-test E2E_TEST_ARGS='--focus="SPDKCSI-NVMEOF"'
+E2E_PROCS=
 E2E_TEST_ARGS=
 e2e-test:
 	@echo === running e2e test
-	go test -v -race -timeout 30m ./e2e $(E2E_TEST_ARGS)
+	@if [ -n "$(E2E_PROCS)" ]; then \
+		go run github.com/onsi/ginkgo/v2/ginkgo --procs=$(E2E_PROCS) --race --timeout=30m $(E2E_TEST_ARGS) ./e2e/; \
+	else \
+		go test -race -timeout 30m ./e2e $(E2E_TEST_ARGS); \
+	fi
 
 # helm test
 .PHONY: helm-test
