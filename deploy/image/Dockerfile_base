@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/ubi:10.2
+FROM registry.access.redhat.com/ubi9/ubi:9.8
 LABEL name="simplyblock"
 LABEL vendor="Simplyblock"
 LABEL version="1.0.0"
@@ -11,10 +11,10 @@ COPY LICENSE /licenses/LICENSE
 ARG TARGETPLATFORM
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
         echo "ARM64 version"; \
-        dnf install -y https://yum.oracle.com/repo/OracleLinux/OL10/baseos/latest/aarch64/getPackage/oraclelinux-release-el10-1.0-17.el10.aarch64.rpm ; \
+        dnf install -y https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/aarch64/getPackage/oraclelinux-release-el9-1.0-26.el9.aarch64.rpm ; \
     else \
         echo "AMD64 version"; \
-        dnf install -y https://yum.oracle.com/repo/OracleLinux/OL10/baseos/latest/x86_64/getPackage/oraclelinux-release-el10-1.0-17.el10.x86_64.rpm ; \
+        dnf install -y https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/x86_64/getPackage/oraclelinux-release-el9-1.0-26.el9.x86_64.rpm ; \
     fi
 
 RUN dnf update -y  --nogpgcheck
