@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: '0 6 * * *'  # Daily at 06:00 UTC
   workflow_dispatch:
+    inputs:
+      notify_slack:
+        description: 'Send Slack notification on failure'
+        type: boolean
+        default: true
 
 env:
   IMAGE_NAME: simplyblock/spdkcsi
@@ -82,7 +87,7 @@ jobs:
           retention-days: 90
 
       - name: Notify Slack on scan failure
-        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        if: failure() && env.SLACK_WEBHOOK_URL != '' && (github.event_name != 'workflow_dispatch' || inputs.notify_slack)
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
