@@ -59,7 +59,7 @@ spec:
         - "--timeout=180s"
         - "--kube-api-qps=50"
         - "--kube-api-burst=100"
-        - "--worker-threads=5"
+        - "--worker-threads=1"
         - "--retry-interval-start=2s"
         - "--leader-election=false"
         - "--extra-create-metadata=true"
