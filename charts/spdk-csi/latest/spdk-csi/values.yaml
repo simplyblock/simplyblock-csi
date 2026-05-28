@@ -7,7 +7,7 @@ driverName: csi.simplyblock.io
 image:
   csi:
     repository: quay.io/simplyblock-io/spdkcsi
-    tag: v26.2.4
+    tag: v26.2.5
     pullPolicy: Always
   csiProvisioner:
     repository: quay.io/simplyblock-io/csi-provisioner
@@ -39,7 +39,7 @@ image:
     pullPolicy: Always
   simplyblock:
     repository: quay.io/simplyblock-io/simplyblock
-    tag: "26.2.4-PRE"
+    tag: "26.2.5-PRE"
     pullPolicy: Always
   storageNode:
     repository: quay.io/simplyblock-io/storage-node-handler
@@ -47,7 +47,7 @@ image:
     pullPolicy: Always
   operator:
     repository: quay.io/simplyblock-io/simplyblock-operator
-    tag: v26.2.4
+    tag: v26.2.5
     pullPolicy: Always
   numaResource:
     repository: quay.io/simplyblock-io/numa-resource-plugin
