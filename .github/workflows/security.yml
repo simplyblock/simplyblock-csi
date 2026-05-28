@@ -10,6 +10,7 @@ on:
 
 env:
   IMAGE_NAME: simplyblock/spdkcsi
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 jobs:
   scan:
@@ -35,12 +36,22 @@ jobs:
           load: true
           tags: ${{ env.IMAGE_NAME }}:scan
 
+      - name: Generate SBOM with Syft (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_NAME }}:scan
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: false
+
       # Grype uses Red Hat's Security Data API — much more current than Trivy's OVAL source.
+      # Scanning the Syft SBOM ensures the vulnerability scan and the archived SBOM
+      # describe the exact same package set.
       - name: Run Grype vulnerability scan (Red Hat advisories)
         id: grype
         uses: anchore/scan-action@v6
         with:
-          image: ${{ env.IMAGE_NAME }}:scan
+          sbom: sbom.cdx.json
           severity-cutoff: medium
           fail-build: true
           only-fixed: true
@@ -63,13 +74,6 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
-      - name: Generate SBOM (CycloneDX)
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          image-ref: ${{ env.IMAGE_NAME }}:scan
-          format: cyclonedx
-          output: sbom.cdx.json
-
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
         with:
@@ -78,7 +82,7 @@ jobs:
           retention-days: 90
 
       - name: Notify Slack on scan failure
-        if: failure()
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
