@@ -57,6 +57,7 @@ jobs:
         uses: anchore/scan-action@v6
         with:
           sbom: sbom.cdx.json
+          grype-version: latest
           severity-cutoff: medium
           fail-build: true
           only-fixed: true
