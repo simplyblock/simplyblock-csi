@@ -23,7 +23,6 @@ var _ = ginkgo.Describe("SPDKCSI-FILESYSTEM", func() {
 	ginkgo.It("XFS volume is provisioned and data persists across pod restarts", func() {
 		ns := f.Namespace.Name
 		const xfsSC = "spdkcsi-e2e-xfs"
-		testPodLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
 
 		ginkgo.By("create XFS StorageClass derived from the default one")
 		createStorageClassWithParams(f.ClientSet, xfsSC, map[string]string{
@@ -86,7 +85,7 @@ var _ = ginkgo.Describe("SPDKCSI-FILESYSTEM", func() {
 		)
 
 		ginkgo.By("verify data survived the pod restart")
-		compareDataInPod(f, ns, &testPodLabel,
+		compareDataInPod(f, ns, &xfsPodLabel,
 			[]string{"xfs-persistence-test-data"},
 			[]string{"/spdkvol/test"},
 		)
