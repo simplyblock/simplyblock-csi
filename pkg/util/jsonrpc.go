@@ -126,12 +126,21 @@ type connectionInfo struct {
 	Port int    `json:"port"`
 }
 
+// lvolStatusOnline is the only status where a volume is fully operational.
+// Other possible values are "ofline", "in_deletion", and "in_creation".
+const lvolStatusOnline = "online"
+
 // LvolResp is the v2 VolumeDTO returned by the SimplyBlock API
 type LvolResp struct {
 	Name     string `json:"name"`
 	UUID     string `json:"id"`
 	LvolSize int64  `json:"size"`
 	Status   string `json:"status"`
+}
+
+// IsOnline reports whether the volume is in the online state and usable by the CSI driver.
+func (l *LvolResp) IsOnline() bool {
+	return l.Status == lvolStatusOnline
 }
 
 // RPCClient holds the connection information to the SimplyBlock Cluster
@@ -287,7 +296,9 @@ func (client *RPCClient) getVolumeByUUID(lvolID string) (*LvolResp, error) {
 	return &result, nil
 }
 
-// getVolumeByName lists all volumes in the pool and returns the one with matching name
+// getVolumeByName lists all volumes in the pool and returns the one with matching name.
+// Only volumes in the "online" state are considered; volumes in other states (e.g.
+// "ofline", "in_creation", "in_deletion") are invisible to the CSI driver.
 func (client *RPCClient) getVolumeByName(name string) (*LvolResp, error) {
 	volumes, err := client.listVolumes()
 	if err != nil {
@@ -295,6 +306,10 @@ func (client *RPCClient) getVolumeByName(name string) (*LvolResp, error) {
 	}
 	for _, v := range volumes {
 		if v.Name == name {
+			if !v.IsOnline() {
+				klog.V(4).Infof("volume %q found but skipped: status %q is not online", name, v.Status)
+				continue
+			}
 			return v, nil
 		}
 	}
@@ -328,8 +343,18 @@ func (client *RPCClient) listVolumes() ([]*LvolResp, error) {
 	return results, nil
 }
 
-// getVolumeInfo returns the NVMe connection info for a volume
+// getVolumeInfo returns the NVMe connection info for a volume.
+// It returns an error if the volume is not in the "online" state, preventing
+// connect attempts against volumes that are offline, being created, or being deleted.
 func (client *RPCClient) getVolumeInfo(lvolID string, hostNQN string) (map[string]string, error) {
+	vol, err := client.getVolumeByUUID(lvolID)
+	if err != nil {
+		return nil, err
+	}
+	if !vol.IsOnline() {
+		return nil, fmt.Errorf("volume %s is not online (status: %q)", lvolID, vol.Status)
+	}
+
 	path := client.v2volume(lvolID) + "connect"
 	if hostNQN != "" {
 		path += "?host_nqn=" + url.QueryEscape(hostNQN)

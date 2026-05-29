@@ -208,9 +208,24 @@ func (node *NodeNVMf) GetVolumeSize(lvolID string) (string, error) {
 	return size, err
 }
 
-// ListVolumes returns a list of volumes
+// ListVolumes returns a list of online volumes
 func (node *NodeNVMf) ListVolumes() ([]*LvolResp, error) {
-	return node.Client.listVolumes()
+	allVolumes, err := node.Client.listVolumes()
+	if err != nil {
+		return nil, err
+	}
+	onlineVolumes := allVolumes[:0]
+	for _, v := range allVolumes {
+		if !v.IsOnline() {
+			klog.V(4).Infof(
+				"ListVolumes: skipping volume %q (id=%s) with status %q",
+				v.Name, v.UUID, v.Status,
+			)
+			continue
+		}
+		onlineVolumes = append(onlineVolumes, v)
+	}
+	return onlineVolumes, nil
 }
 
 // GetMasterLvols returns master lvols for the given pool UUID
