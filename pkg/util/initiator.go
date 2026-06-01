@@ -105,7 +105,7 @@ type subsystemResponse struct {
 
 type NodeInfo struct {
 	NodeID string   `json:"storage_node_id"` // v2 VolumeDTO field
-	Nodes  []string `json:"nodes"`            // URL paths in v2; converted to UUIDs after parsing
+	Nodes  []string `json:"nodes"`           // URL paths in v2; converted to UUIDs after parsing
 	Status string   `json:"status"`
 }
 
@@ -391,37 +391,18 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			return "", err
 		}
 
-		ctrlLossTmo := 60
-		if len(connections) == 1 {
-			ctrlLossTmo *= 15
-		}
+		ctrlLossTmo := connections[0].CtrlLossTmo
 
 		connected := 0
 		var lastErr error
 
 		for _, conn := range connections {
-			cmdLine := []string{
-				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-				"-a", conn.IP, "-s", strconv.Itoa(conn.Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
-				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
-			}
-
-			if nvmf.hostIface != "" {
-				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
-			}
-
-			// if nvmf.hostNQN != "" {
-			// 	cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
-			// }
-
-			err := execWithTimeoutRetry(cmdLine, 40, len(connections))
+			err := connectViaNVMe(conn, ctrlLossTmo)
 			if err != nil {
-				// go on checking device status in case caused by duplicated request
-				klog.Errorf("command %v failed: %s", cmdLine, err)
+				klog.Errorf("nvme connect failed for %s:%d: %v", conn.IP, conn.Port, err)
 				lastErr = err
 				continue
 			}
-
 			connected++
 		}
 		if connected == 0 {
@@ -816,12 +797,15 @@ func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*
 
 func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	cmd := []string{
-		"nvme", "connect", "-t", conn.TargetType,
+		"nvme", "connect", "-t", strings.ToLower(conn.TargetType),
 		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
 		"-n", conn.Nqn,
 		"-l", strconv.Itoa(ctrlLossTmo),
 		"-c", strconv.Itoa(conn.ReconnectDelay),
 		"-i", strconv.Itoa(conn.NrIoQueues),
+	}
+	if conn.HostIface != "" {
+		cmd = append(cmd, "-f", conn.HostIface)
 	}
 	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
 		klog.Errorf("nvme connect failed: %v", err)
@@ -969,7 +953,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 	}
 	maxSeenMu.Unlock()
 
-	ctrlLossTmo := 60
+	ctrlLossTmo := expectedConns[0].CtrlLossTmo
 
 	optConn := expectedConns[0]
 	nonOptConns := expectedConns[1:]
