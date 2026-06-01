@@ -391,7 +391,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			return "", err
 		}
 
-		ctrlLossTmo := connections[0].CtrlLossTmo
+		ctrlLossTmo := 60
 
 		connected := 0
 		var lastErr error
@@ -935,7 +935,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 	}
 	maxSeenMu.Unlock()
 
-	ctrlLossTmo := expectedConns[0].CtrlLossTmo
+	ctrlLossTmo := 60
 
 	optConn := expectedConns[0]
 	nonOptConns := expectedConns[1:]
@@ -984,7 +984,7 @@ func reconcileOptimizedPath(
 		klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping IP change reconnect", nodeInfo.NodeID)
 		return
 	}
-	if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+	if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
 		klog.Errorf("reconcileOptimizedPath: connect to new IP %s failed: %v", conn.IP, err)
 	}
 }
