@@ -59,7 +59,6 @@ type SpdkCsiInitiator interface {
 // initiatorNVMf is an implementation of NVMf tcp initiator
 type initiatorNVMf struct {
 	targetType     string
-	connections    []connectionInfo
 	nqn            string
 	reconnectDelay string
 	nrIoQueues     string
@@ -221,16 +220,8 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 	klog.Infof("Simplyblock targetType created :%s", targetType)
 	switch targetType {
 	case TargetTypeTCP, TargetTypeRDMA:
-		var connections []connectionInfo
-
-		err := json.Unmarshal([]byte(volumeContext["connections"]), &connections)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshall connections. Error: %v", err.Error())
-		}
-
 		return &initiatorNVMf{
 			targetType:     volumeContext["targetType"],
-			connections:    connections,
 			nqn:            volumeContext["nqn"],
 			reconnectDelay: volumeContext["reconnectDelay"],
 			nrIoQueues:     volumeContext["nrIoQueues"],
@@ -381,12 +372,6 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 }
 
 func (nvmf *initiatorNVMf) Connect() (string, error) {
-	klog.Info("connections", nvmf.connections)
-	ctrlLossTmo := 60
-	if len(nvmf.connections) == 1 {
-		ctrlLossTmo *= 15
-	}
-
 	alreadyConnected, err := isNqnConnected(nvmf.nqn)
 	if err != nil {
 		klog.Errorf("Failed to check existing connections: %v", err)
@@ -406,32 +391,18 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 			return "", err
 		}
 
+		ctrlLossTmo := connections[0].CtrlLossTmo
+
 		connected := 0
 		var lastErr error
 
-		for i, _ := range nvmf.connections {
-			cmdLine := []string{
-				"nvme", "connect", "-t", strings.ToLower(nvmf.targetType),
-				"-a", connections[i].IP, "-s", strconv.Itoa(connections[i].Port), "-n", nvmf.nqn, "-l", strconv.Itoa(ctrlLossTmo),
-				"-c", nvmf.reconnectDelay, "-i", nvmf.nrIoQueues,
-			}
-
-			if nvmf.hostIface != "" {
-				cmdLine = append(cmdLine, "-f", nvmf.hostIface)
-			}
-
-			// if nvmf.hostNQN != "" {
-			// 	cmdLine = append(cmdLine, "--hostnqn="+nvmf.hostNQN)
-			// }
-
-			err := execWithTimeoutRetry(cmdLine, 40, len(nvmf.connections))
+		for _, conn := range connections {
+			err := connectViaNVMe(conn, ctrlLossTmo, len(connections))
 			if err != nil {
-				// go on checking device status in case caused by duplicated request
-				klog.Errorf("command %v failed: %s", cmdLine, err)
+				klog.Errorf("nvme connect failed for %s:%d: %v", conn.IP, conn.Port, err)
 				lastErr = err
 				continue
 			}
-
 			connected++
 		}
 		if connected == 0 {
@@ -824,16 +795,19 @@ func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*
 	return connections, nil
 }
 
-func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
+func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo, retries int) error {
 	cmd := []string{
-		"nvme", "connect", "-t", conn.TargetType,
+		"nvme", "connect", "-t", strings.ToLower(conn.TargetType),
 		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
 		"-n", conn.Nqn,
 		"-l", strconv.Itoa(ctrlLossTmo),
 		"-c", strconv.Itoa(conn.ReconnectDelay),
 		"-i", strconv.Itoa(conn.NrIoQueues),
 	}
-	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
+	if conn.HostIface != "" {
+		cmd = append(cmd, "-f", conn.HostIface)
+	}
+	if err := execWithTimeoutRetry(cmd, 40, retries); err != nil {
 		klog.Errorf("nvme connect failed: %v", err)
 		return err
 	}
@@ -961,7 +935,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 	}
 	maxSeenMu.Unlock()
 
-	ctrlLossTmo := 60
+	ctrlLossTmo := expectedConns[0].CtrlLossTmo
 
 	optConn := expectedConns[0]
 	nonOptConns := expectedConns[1:]
@@ -995,7 +969,7 @@ func reconcileOptimizedPath(
 			return
 		}
 		klog.Infof("reconcileOptimizedPath: connecting missing optimized path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileOptimizedPath: connect to %s failed: %v", conn.IP, err)
 		}
 		return
@@ -1070,7 +1044,7 @@ func reconcileNonOptimizedPaths(
 			continue
 		}
 		klog.Infof("reconcileNonOptimizedPaths: connecting missing path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileNonOptimizedPaths: connect to %s failed: %v", conn.IP, err)
 		}
 	}
