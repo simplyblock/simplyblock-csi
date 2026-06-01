@@ -328,28 +328,13 @@ func (client *RPCClient) listVolumes() ([]*LvolResp, error) {
 	return results, nil
 }
 
-// getVolumeInfo returns the NVMe connection info for a volume
+// getVolumeInfo returns the NVMe connection info for a volume as a CSI VolumeContext map.
 func (client *RPCClient) getVolumeInfo(lvolID string, hostNQN string) (map[string]string, error) {
-	path := client.v2volume(lvolID) + "connect"
-	if hostNQN != "" {
-		path += "?host_nqn=" + url.QueryEscape(hostNQN)
-	}
-
-	out, err := client.CallSBCLI("GET", path, nil)
+	result, err := client.getLvolConnections(lvolID, hostNQN)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSuchDevice) {
 			err = ErrJSONNoSuchDevice
 		}
-		return nil, err
-	}
-
-	byteData, err := json.Marshal(out)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*LvolConnectResp
-	if err := json.Unmarshal(byteData, &result); err != nil {
 		return nil, err
 	}
 	if len(result) == 0 {
@@ -360,7 +345,6 @@ func (client *RPCClient) getVolumeInfo(lvolID string, hostNQN string) (map[strin
 	for _, r := range result {
 		connections = append(connections, connectionInfo{IP: r.IP, Port: r.Port})
 	}
-
 	_, model := getLvolIDFromNQN(result[0].Nqn)
 	connectionsData, err := json.Marshal(connections)
 	if err != nil {

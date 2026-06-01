@@ -121,9 +121,6 @@ spec:
           mountPath: /dev
         - name: host-sys
           mountPath: /sys
-        - name: csi-nodeserver-config
-          mountPath: /etc/spdkcsi-nodeserver-config/
-          readOnly: true
         - name: csi-config
           mountPath: /etc/spdkcsi-config/
           readOnly: true
@@ -170,10 +167,6 @@ spec:
         hostPath:
           path: /var/lib/simplyblock/guardian
           type: DirectoryOrCreate
-      - name: csi-nodeserver-config
-        configMap:
-          name: simplyblock-csi-nodeservercm
-          optional: true
       - name: csi-config
         configMap:
           name: simplyblock-csi-cm
