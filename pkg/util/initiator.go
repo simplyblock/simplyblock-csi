@@ -397,7 +397,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		var lastErr error
 
 		for _, conn := range connections {
-			err := connectViaNVMe(conn, ctrlLossTmo)
+			err := connectViaNVMe(conn, ctrlLossTmo, len(connections))
 			if err != nil {
 				klog.Errorf("nvme connect failed for %s:%d: %v", conn.IP, conn.Port, err)
 				lastErr = err
@@ -795,7 +795,7 @@ func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*
 	return connections, nil
 }
 
-func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
+func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo, retries int) error {
 	cmd := []string{
 		"nvme", "connect", "-t", strings.ToLower(conn.TargetType),
 		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
@@ -807,7 +807,7 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	if conn.HostIface != "" {
 		cmd = append(cmd, "-f", conn.HostIface)
 	}
-	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
+	if err := execWithTimeoutRetry(cmd, 40, retries); err != nil {
 		klog.Errorf("nvme connect failed: %v", err)
 		return err
 	}
@@ -987,7 +987,7 @@ func reconcileOptimizedPath(
 			return
 		}
 		klog.Infof("reconcileOptimizedPath: connecting missing optimized path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileOptimizedPath: connect to %s failed: %v", conn.IP, err)
 		}
 		return
@@ -1007,7 +1007,7 @@ func reconcileOptimizedPath(
 		klog.Errorf("reconcileOptimizedPath: disconnect stale %s failed: %v", activeIP, err)
 		return
 	}
-	if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+	if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
 		klog.Errorf("reconcileOptimizedPath: connect to new IP %s failed: %v", conn.IP, err)
 	}
 }
@@ -1071,7 +1071,7 @@ func reconcileNonOptimizedPaths(
 			continue
 		}
 		klog.Infof("reconcileNonOptimizedPaths: connecting missing path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
+		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileNonOptimizedPaths: connect to %s failed: %v", conn.IP, err)
 		}
 	}
