@@ -106,7 +106,7 @@ type subsystemResponse struct {
 
 type NodeInfo struct {
 	NodeID string   `json:"storage_node_id"` // v2 VolumeDTO field
-	Nodes  []string `json:"nodes"`            // URL paths in v2; converted to UUIDs after parsing
+	Nodes  []string `json:"nodes"`           // URL paths in v2; converted to UUIDs after parsing
 	Status string   `json:"status"`
 }
 
@@ -840,24 +840,6 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo int) error {
 	return nil
 }
 
-func disconnectViaNVMe(devicePath string, path path) error {
-	cmd := []string{
-		"nvme", "disconnect", "-d", path.Name,
-	}
-
-	if err := execWithTimeoutRetry(cmd, 40, 1); err != nil {
-		klog.Errorf("nvme disconnect failed: %v", err)
-		return err
-	}
-
-	mu.Lock()
-	delete(devicePresentMap, devicePath)
-	delete(deviceToLvolIDMap, devicePath)
-	mu.Unlock()
-
-	return nil
-}
-
 // confirmSubsystemNeedsRecovery re-checks the subsystem 5 times over 5 seconds
 // and returns true only if the path count remained stable at initialPathCount for
 // all 5 checks. This debounces spurious triggers during normal ANA switchovers.
@@ -1028,11 +1010,6 @@ func reconcileOptimizedPath(
 		klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping IP change reconnect", nodeInfo.NodeID)
 		return
 	}
-	klog.Infof("reconcileOptimizedPath: IP changed old=%s new=%s, reconnecting", activeIP, conn.IP)
-	if err := disconnectViaNVMe(devicePath, active[0]); err != nil {
-		klog.Errorf("reconcileOptimizedPath: disconnect stale %s failed: %v", activeIP, err)
-		return
-	}
 	if err := connectViaNVMe(conn, ctrlLossTmo); err != nil {
 		klog.Errorf("reconcileOptimizedPath: connect to new IP %s failed: %v", conn.IP, err)
 	}
@@ -1066,12 +1043,8 @@ func reconcileNonOptimizedPaths(
 	}
 
 	// Step 1: disconnect stale paths (IP no longer expected → node IP changed).
-	for ip, p := range activeIPMap {
+	for ip, _ := range activeIPMap {
 		if !expectedIPSet[ip] {
-			klog.Infof("reconcileNonOptimizedPaths: stale IP %s disconnecting", ip)
-			if err := disconnectViaNVMe(devicePath, p); err != nil {
-				klog.Errorf("reconcileNonOptimizedPaths: disconnect stale %s failed: %v", ip, err)
-			}
 			delete(activeIPMap, ip)
 		}
 	}
