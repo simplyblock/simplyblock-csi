@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"net"
 	"sync"
 	"time"
 
@@ -772,13 +773,31 @@ func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
 	return &info, nil
 }
 
-func isNodeOnline(spdkNode *NodeNVMf, nodeID string) bool {
+func isTCPReachable(ip string, port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+func isNodeOnline(spdkNode *NodeNVMf, nodeID, ip string, port int) bool {
 	status, err := spdkNode.Client.getStorageNodeStatus(nodeID)
 	if err != nil {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
 	}
-	return status == "online"
+	if status != "online" {
+		return false
+	}
+	if ip != "" && port != 0 {
+		if !isTCPReachable(ip, port) {
+			klog.Infof("isNodeOnline: node %s API online but %s:%d not TCP-reachable", nodeID, ip, port)
+			return false
+		}
+	}
+	return true
 }
 
 func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
@@ -964,7 +983,7 @@ func reconcileOptimizedPath(
 	ctrlLossTmo int,
 ) {
 	if len(active) == 0 {
-		if !isNodeOnline(sbcClient, nodeInfo.NodeID) {
+		if !isNodeOnline(sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
 			klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping", nodeInfo.NodeID)
 			return
 		}
@@ -980,7 +999,7 @@ func reconcileOptimizedPath(
 		return
 	}
 
-	if !isNodeOnline(sbcClient, nodeInfo.NodeID) {
+	if !isNodeOnline(sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
 		klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping IP change reconnect", nodeInfo.NodeID)
 		return
 	}
@@ -1030,7 +1049,7 @@ func reconcileNonOptimizedPaths(
 			continue // skip primary
 		}
 		totalSecondaries++
-		if isNodeOnline(sbcClient, nodeID) {
+		if isNodeOnline(sbcClient, nodeID, "", 0) {
 			onlineSecondaries++
 		}
 	}
@@ -1041,6 +1060,10 @@ func reconcileNonOptimizedPaths(
 
 	for _, conn := range conns {
 		if _, exists := activeIPMap[conn.IP]; exists {
+			continue
+		}
+		if !isTCPReachable(conn.IP, conn.Port) {
+			klog.Infof("reconcileNonOptimizedPaths: %s:%d not TCP-reachable, skipping", conn.IP, conn.Port)
 			continue
 		}
 		klog.Infof("reconcileNonOptimizedPaths: connecting missing path ip=%s", conn.IP)
