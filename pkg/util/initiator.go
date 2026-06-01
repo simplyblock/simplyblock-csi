@@ -783,17 +783,21 @@ func isTCPReachable(ip string, port int) bool {
 }
 
 func isNodeOnline(spdkNode *NodeNVMf, nodeID, ip string, port int) bool {
-	status, err := spdkNode.Client.getStorageNodeStatus(nodeID)
+	status, nodeIP, nodePort, err := spdkNode.Client.getStorageNodeInfo(nodeID)
 	if err != nil {
-		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
+		klog.Errorf("failed to fetch node info for node %s: %v", nodeID, err)
 		return false
 	}
 	if status != "online" {
 		return false
 	}
-	if ip != "" && port != 0 {
-		if !isTCPReachable(ip, port) {
-			klog.Infof("isNodeOnline: node %s API online but %s:%d not TCP-reachable", nodeID, ip, port)
+	checkIP, checkPort := ip, port
+	if checkIP == "" {
+		checkIP, checkPort = nodeIP, nodePort
+	}
+	if checkIP != "" && checkPort != 0 {
+		if !isTCPReachable(checkIP, checkPort) {
+			klog.Infof("isNodeOnline: node %s API online but %s:%d not TCP-reachable", nodeID, checkIP, checkPort)
 			return false
 		}
 	}
