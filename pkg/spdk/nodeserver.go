@@ -23,7 +23,6 @@ import (
 	osexec "os/exec"
 	"strconv"
 	"strings"
-	"time"
 
 	"path/filepath"
 	"unsafe"
@@ -31,10 +30,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog"
 	mount "k8s.io/mount-utils"
@@ -50,13 +46,10 @@ import (
 
 type nodeServer struct {
 	*csicommon.DefaultNodeServer
-	mounter       mount.Interface
-	volumeLocks   *util.VolumeLocks
-	xpuConnClient *grpc.ClientConn
-	xpuTargetType string
-	kvmPciBridges int
-	kubeClient    kubernetes.Interface
-	guardian      *util.Guardian
+	mounter     mount.Interface
+	volumeLocks *util.VolumeLocks
+	kubeClient  kubernetes.Interface
+	guardian    *util.Guardian
 }
 
 func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
@@ -77,75 +70,6 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 			ns.kubeClient = clientset
 		}
 	}
-
-	// get xPU nodes' configs, see deploy/kubernetes/nodeserver-config-map.yaml
-	// as spdkcsi-nodeservercm configMap volume is optional when deploying k8s, check nodeserver-config-map.yaml is missing or empty
-	spdkcsiNodeServerConfigFile := "/etc/spdkcsi-nodeserver-config/nodeserver-config.json"
-	spdkcsiNodeServerConfigFileEnv := "SPDKCSI_CONFIG_NODESERVER"
-	configFile := util.FromEnv(spdkcsiNodeServerConfigFileEnv, spdkcsiNodeServerConfigFile)
-	_, err = os.Stat(configFile)
-	klog.Infof("check whether the configuration file (%s) which is supposed to contain xPU info exists", spdkcsiNodeServerConfigFile)
-	if os.IsNotExist(err) {
-		klog.Infof("configuration file specified in %s (%s by default) is missing or empty", spdkcsiNodeServerConfigFileEnv, spdkcsiNodeServerConfigFile)
-		return ns, nil
-	}
-	//nolint:tagliatelle // not using json:snake case
-	var config struct {
-		XPUList []struct {
-			Name       string `json:"name"`
-			TargetType string `json:"targetType"`
-			TargetAddr string `json:"targetAddr"`
-		} `json:"xpuList"`
-		KvmPciBridges int `json:"kvmPciBridges,omitempty"`
-	}
-
-	err = util.ParseJSONFile(configFile, &config)
-	if err != nil {
-		return nil, fmt.Errorf("error in the configuration file specified in %s (%s by default): %w", spdkcsiNodeServerConfigFileEnv, spdkcsiNodeServerConfigFile, err)
-	}
-	klog.Infof("obtained xPU info (%v) from configuration file (%s)", config.XPUList, spdkcsiNodeServerConfigFile)
-
-	ns.kvmPciBridges = config.KvmPciBridges
-	klog.Infof("obtained KvmPciBridges num (%v) from configuration file (%s)", config.KvmPciBridges, spdkcsiNodeServerConfigFile)
-
-	// try to set up a connection to the first available xPU node in the list via grpc
-	// once the connection is built, send pings every 10 seconds if there is no activity
-	// FIXME (JingYan): when there are multiple xPU nodes, find a better way to choose one to connect with
-
-	var xpuConnClient, conn *grpc.ClientConn
-	var xpuTargetType string
-
-	for i := range config.XPUList {
-		if config.XPUList[i].TargetType != "" && config.XPUList[i].TargetAddr != "" {
-			klog.Infof("TargetType: %v, TargetAddr: %v.", config.XPUList[i].TargetType, config.XPUList[i].TargetAddr)
-			conn, err = grpc.Dial(
-				config.XPUList[i].TargetAddr,
-				grpc.WithTransportCredentials(insecure.NewCredentials()),
-				grpc.WithBlock(),
-				grpc.WithKeepaliveParams(keepalive.ClientParameters{
-					Time:                10 * time.Second,
-					Timeout:             1 * time.Second,
-					PermitWithoutStream: true,
-				}),
-				grpc.FailOnNonTempDialError(true),
-			)
-			if err != nil {
-				klog.Errorf("failed to connect to xPU node in: %s, %s", config.XPUList[i].TargetAddr, err)
-			} else {
-				klog.Infof("connected to xPU node %v with TargetType as %v", config.XPUList[i].TargetAddr, config.XPUList[i].TargetType)
-				xpuConnClient = conn
-				xpuTargetType = config.XPUList[i].TargetType
-				break
-			}
-		} else {
-			klog.Errorf("missing xPU TargetType or TargetAddr in xPUList index %d, skipping this xPU node", i)
-		}
-	}
-	if xpuConnClient == nil && xpuTargetType == "" {
-		klog.Infof("failed to connect to any xPU node in the xpuList or xpuList is empty, will continue without xPU node")
-	}
-	ns.xpuConnClient = xpuConnClient
-	ns.xpuTargetType = xpuTargetType
 
 	nodeName := ns.Driver.GetNodeID()
 	gcfg := util.NewDefaultGuardianConfig(nodeName)

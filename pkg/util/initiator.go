@@ -39,7 +39,6 @@ const (
 	// TargetTypeNVMf is the target type for NVMe over Fabrics
 	TargetTypeTCP  = "tcp"
 	TargetTypeRDMA = "rdma"
-
 )
 
 // SpdkCsiInitiator defines interface for NVMeoF/iSCSI initiator
