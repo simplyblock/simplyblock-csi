@@ -21,12 +21,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"net"
 	"sync"
 	"time"
 
@@ -640,21 +640,17 @@ func isTCPReachable(ip string, port int) bool {
 }
 
 func isNodeOnline(spdkNode *NodeNVMf, nodeID, ip string, port int) bool {
-	status, nodeIP, nodePort, err := spdkNode.Client.getStorageNodeInfo(nodeID)
+	status, err := spdkNode.Client.getStorageNodeStatus(nodeID)
 	if err != nil {
-		klog.Errorf("failed to fetch node info for node %s: %v", nodeID, err)
+		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
 	}
 	if status != "online" {
 		return false
 	}
-	checkIP, checkPort := ip, port
-	if checkIP == "" {
-		checkIP, checkPort = nodeIP, nodePort
-	}
-	if checkIP != "" && checkPort != 0 {
-		if !isTCPReachable(checkIP, checkPort) {
-			klog.Infof("isNodeOnline: node %s API online but %s:%d not TCP-reachable", nodeID, checkIP, checkPort)
+	if ip != "" && port != 0 {
+		if !isTCPReachable(ip, port) {
+			klog.Infof("isNodeOnline: node %s API online but %s:%d not TCP-reachable", nodeID, ip, port)
 			return false
 		}
 	}
@@ -916,6 +912,17 @@ func reconcileNonOptimizedPaths(
 	}
 	if totalSecondaries > 0 && onlineSecondaries == 0 {
 		klog.Infof("reconcileNonOptimizedPaths: all %d secondary node(s) offline, skipping", totalSecondaries)
+		return
+	}
+
+	tcpReachable := 0
+	for _, conn := range conns {
+		if isTCPReachable(conn.IP, conn.Port) {
+			tcpReachable++
+		}
+	}
+	if len(conns) > 0 && tcpReachable == 0 {
+		klog.Infof("reconcileNonOptimizedPaths: no secondary NVMe-oF endpoints TCP-reachable, skipping")
 		return
 	}
 

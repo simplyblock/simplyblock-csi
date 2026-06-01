@@ -624,25 +624,23 @@ func (client *RPCClient) getLvolConnections(lvolID, hostNQN string) ([]*LvolConn
 	return result, nil
 }
 
-// getStorageNodeInfo returns the status, management IP, and NVMe-oF port for a storage node.
-func (client *RPCClient) getStorageNodeInfo(nodeID string) (status, mgmtIP string, nvmfPort int, err error) {
+// getStorageNodeStatus returns the status string for a storage node by UUID.
+func (client *RPCClient) getStorageNodeStatus(nodeID string) (string, error) {
 	out, err := client.CallSBCLI("GET", client.v2storageNode(nodeID), nil)
 	if err != nil {
-		return "", "", 0, err
+		return "", err
 	}
 	b, err := json.Marshal(out)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("failed to marshal node info response: %w", err)
+		return "", fmt.Errorf("failed to marshal node status response: %w", err)
 	}
 	var resp struct {
-		Status   string `json:"status"`
-		MgmtIP   string `json:"mgmt_ip"`
-		NvmfPort int    `json:"nvmf_port"`
+		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(b, &resp); err != nil {
-		return "", "", 0, fmt.Errorf("failed to unmarshal node info response: %w", err)
+		return "", fmt.Errorf("failed to unmarshal node status response: %w", err)
 	}
-	return resp.Status, resp.MgmtIP, resp.NvmfPort, nil
+	return resp.Status, nil
 }
 
 // CallSBCLI is a generic function to call the SimplyBlock API v2
