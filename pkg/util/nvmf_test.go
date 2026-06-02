@@ -97,40 +97,40 @@ func writeTestPEMs(t *testing.T) (caFile, certFile, keyFile string) {
 	return caFile, certFile, keyFile
 }
 
-func transportOf(t *testing.T, n *NodeNVMf) *http.Transport {
+func transportOf(t *testing.T, n *ClusterClient) *http.Transport {
 	t.Helper()
-	tr, ok := n.Client.HTTPClient.Transport.(*http.Transport)
+	tr, ok := n.API.conn.HTTP.Transport.(*http.Transport)
 	if !ok {
-		t.Fatalf("transport is %T, want *http.Transport", n.Client.HTTPClient.Transport)
+		t.Fatalf("transport is %T, want *http.Transport", n.API.conn.HTTP.Transport)
 	}
 	return tr
 }
 
-func TestNewNVMfDisabled(t *testing.T) {
+func TestNewClusterClientDisabled(t *testing.T) {
 	t.Setenv(envTLSConnect, "disabled")
-	n, err := NewNVMf("c", "http://api.example.com:5000", "s")
+	n, err := NewClusterClient("c", "http://api.example.com:5000", "s")
 	if err != nil {
-		t.Fatalf("NewNVMf: %v", err)
+		t.Fatalf("NewClusterClient: %v", err)
 	}
-	if n.Client.ClusterIP != "http://api.example.com:5000" {
-		t.Errorf("ClusterIP rewritten unexpectedly: %s", n.Client.ClusterIP)
+	if n.API.conn.Endpoint != "http://api.example.com:5000" {
+		t.Errorf("Endpoint rewritten unexpectedly: %s", n.API.conn.Endpoint)
 	}
-	if n.Client.HTTPClient.Transport != http.DefaultTransport {
-		t.Errorf("expected http.DefaultTransport, got %T", n.Client.HTTPClient.Transport)
+	if n.API.conn.HTTP.Transport != http.DefaultTransport {
+		t.Errorf("expected http.DefaultTransport, got %T", n.API.conn.HTTP.Transport)
 	}
 }
 
-func TestNewNVMfAnonymous(t *testing.T) {
+func TestNewClusterClientAnonymous(t *testing.T) {
 	caFile, _, _ := writeTestPEMs(t)
 	t.Setenv(envTLSConnect, "anonymous")
 	t.Setenv(envTLSCAFile, caFile)
 
-	n, err := NewNVMf("c", "http://api.example.com:5000", "s")
+	n, err := NewClusterClient("c", "http://api.example.com:5000", "s")
 	if err != nil {
-		t.Fatalf("NewNVMf: %v", err)
+		t.Fatalf("NewClusterClient: %v", err)
 	}
-	if n.Client.ClusterIP != "https://api.example.com:5000" {
-		t.Errorf("ClusterIP not rewritten to https: %s", n.Client.ClusterIP)
+	if n.API.conn.Endpoint != "https://api.example.com:5000" {
+		t.Errorf("Endpoint not rewritten to https: %s", n.API.conn.Endpoint)
 	}
 	cfg := transportOf(t, n).TLSClientConfig
 	if cfg == nil || cfg.RootCAs == nil {
@@ -141,16 +141,16 @@ func TestNewNVMfAnonymous(t *testing.T) {
 	}
 }
 
-func TestNewNVMfAuthenticated(t *testing.T) {
+func TestNewClusterClientAuthenticated(t *testing.T) {
 	caFile, certFile, keyFile := writeTestPEMs(t)
 	t.Setenv(envTLSConnect, "authenticated")
 	t.Setenv(envTLSCAFile, caFile)
 	t.Setenv(envTLSCert, certFile)
 	t.Setenv(envTLSKey, keyFile)
 
-	n, err := NewNVMf("c", "http://api.example.com:5000", "s")
+	n, err := NewClusterClient("c", "http://api.example.com:5000", "s")
 	if err != nil {
-		t.Fatalf("NewNVMf: %v", err)
+		t.Fatalf("NewClusterClient: %v", err)
 	}
 	cfg := transportOf(t, n).TLSClientConfig
 	if cfg == nil || cfg.RootCAs == nil {
@@ -161,17 +161,17 @@ func TestNewNVMfAuthenticated(t *testing.T) {
 	}
 }
 
-func TestNewNVMfInvalidMode(t *testing.T) {
+func TestNewClusterClientInvalidMode(t *testing.T) {
 	t.Setenv(envTLSConnect, "bogus")
-	if _, err := NewNVMf("c", "http://api.example.com:5000", "s"); err == nil {
+	if _, err := NewClusterClient("c", "http://api.example.com:5000", "s"); err == nil {
 		t.Fatal("expected error for invalid SB_TLS_CONNECT, got nil")
 	}
 }
 
-func TestNewNVMfMissingCA(t *testing.T) {
+func TestNewClusterClientMissingCA(t *testing.T) {
 	t.Setenv(envTLSConnect, "anonymous")
 	t.Setenv(envTLSCAFile, filepath.Join(t.TempDir(), "missing.crt"))
-	if _, err := NewNVMf("c", "http://api.example.com:5000", "s"); err == nil {
+	if _, err := NewClusterClient("c", "http://api.example.com:5000", "s"); err == nil {
 		t.Fatal("expected error for missing CA file, got nil")
 	}
 }

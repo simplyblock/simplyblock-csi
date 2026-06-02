@@ -104,6 +104,7 @@ var (
 	// without querying the API on every cycle.
 	maxSeenPathsMap = make(map[string]int)
 	maxSeenMu       sync.Mutex
+
 )
 
 // clusterConfig represents the Kubernetes secret structure
@@ -120,7 +121,7 @@ type ClustersInfo struct {
 // NewsimplyBlockClient creates a new Simplyblock client scoped to a cluster and optionally a pool.
 // poolIDOrName may be a pool UUID (used as-is) or a pool name (resolved via API), or empty
 // (no pool context — only cluster-level operations will work).
-func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (*NodeNVMf, error) {
+func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (*ClusterClient, error) {
 	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
 	var clusters ClustersInfo
 	err := ParseJSONFile(secretFile, &clusters)
@@ -149,29 +150,36 @@ func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (
 		clusterConfig.ClusterEndpoint,
 	)
 
-	node, err := NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret)
+	conn, err := NewConnection(clusterConfig.ClusterEndpoint)
 	if err != nil {
 		return nil, err
 	}
+	c := &ClusterClient{
+		API: &APIClient{
+			ClusterID:     clusterID,
+			ClusterSecret: clusterConfig.ClusterSecret,
+			conn:          conn,
+		},
+	}
 
 	if poolIDOrName != "" {
-		poolUUID, err := resolvePoolUUID(ctx, node, poolIDOrName)
+		poolUUID, err := resolvePoolUUID(ctx, c, poolIDOrName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve pool %q: %w", poolIDOrName, err)
 		}
-		node.Client.PoolID = poolUUID
+		c.poolID = poolUUID
 	}
 
-	return node, nil
+	return c, nil
 }
 
 // resolvePoolUUID returns poolIDOrName as-is if it is already a UUID,
 // otherwise looks up the pool UUID by name via the API.
-func resolvePoolUUID(ctx context.Context, node *NodeNVMf, poolIDOrName string) (string, error) {
+func resolvePoolUUID(ctx context.Context, c *ClusterClient, poolIDOrName string) (string, error) {
 	if isUUID(poolIDOrName) {
 		return poolIDOrName, nil
 	}
-	return node.GetPoolUUIDByName(ctx, poolIDOrName)
+	return c.GetPoolUUIDByName(ctx, poolIDOrName)
 }
 
 // isUUID reports whether s is a standard UUID (8-4-4-4-12 hex, with hyphens).
@@ -274,11 +282,11 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 
 	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
 
-	devicePath, err := waitForDeviceReady(deviceGlob, 20)
+	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 20)
 	if err != nil {
 		klog.Warningf("New device symlink not found (%s). Retrying legacy format: %s", deviceGlob, deviceGlobOld)
 
-		devicePath, err = waitForDeviceReady(deviceGlobOld, 10)
+		devicePath, err = waitForDeviceReady(ctx, deviceGlobOld, 10)
 		if err != nil {
 			return "", fmt.Errorf("device not found in both new (%s) and old (%s) formats: %w",
 				deviceGlob, deviceGlobOld, err)
@@ -310,8 +318,8 @@ func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 }
 
 // when timeout is set as 0, try to find the device file immediately
-// otherwise, wait for device file comes up or timeout
-func waitForDeviceReady(deviceGlob string, seconds int) (string, error) {
+// otherwise, wait for device file comes up or timeout.
+func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (string, error) {
 	for i := 0; i <= seconds; i++ {
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
@@ -321,7 +329,11 @@ func waitForDeviceReady(deviceGlob string, seconds int) (string, error) {
 		if len(matches) >= 1 {
 			return matches[0], nil
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
 	return "", fmt.Errorf("timed out waiting device ready: %s", deviceGlob)
 }
@@ -609,18 +621,18 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 	return nil
 }
 
-func fetchNodeInfo(ctx context.Context, spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
-	if err := spdkNode.Client.findPoolForVolume(ctx, lvolID); err != nil {
-		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
-	}
-	resp, err := spdkNode.Client.CallSBCLI(ctx, "GET", spdkNode.Client.v2volume(lvolID), nil)
+func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*NodeInfo, error) {
+	poolID, err := client.poolForVolume(ctx, lvolID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch node info: %v", err)
+		return nil, fmt.Errorf("failed to resolve pool for volume %s: %w", lvolID, err)
+	}
+	raw, err := client.API.do(ctx, "GET", client.API.v2volume(poolID, lvolID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch node info: %w", err)
 	}
 	var info NodeInfo
-	respBytes, _ := json.Marshal(resp)
-	if err := json.Unmarshal(respBytes, &info); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal node info: %v", err)
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal node info: %w", err)
 	}
 	// v2 nodes field returns URL paths; extract UUIDs from last path segment
 	for i, n := range info.Nodes {
@@ -629,8 +641,8 @@ func fetchNodeInfo(ctx context.Context, spdkNode *NodeNVMf, lvolID string) (*Nod
 	return &info, nil
 }
 
-func isNodeOnline(ctx context.Context, spdkNode *NodeNVMf, nodeID string) bool {
-	status, err := spdkNode.Client.getStorageNodeStatus(ctx, nodeID)
+func isNodeOnline(ctx context.Context, client *ClusterClient, nodeID string) bool {
+	status, err := client.API.getStorageNodeStatus(ctx, nodeID)
 	if err != nil {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
@@ -638,13 +650,14 @@ func isNodeOnline(ctx context.Context, spdkNode *NodeNVMf, nodeID string) bool {
 	return status == "online"
 }
 
-func fetchLvolConnection(ctx context.Context, spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
-	if err := spdkNode.Client.findPoolForVolume(ctx, lvolID); err != nil {
-		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
-	}
-	connections, err := spdkNode.Client.getLvolConnections(ctx, lvolID, hostNQN)
+func fetchLvolConnection(ctx context.Context, client *ClusterClient, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
+	poolID, err := client.poolForVolume(ctx, lvolID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch connection: %v", err)
+		return nil, fmt.Errorf("failed to resolve pool for volume %s: %w", lvolID, err)
+	}
+	connections, err := client.API.getLvolConnections(ctx, poolID, lvolID, hostNQN)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch connection: %w", err)
 	}
 	if len(connections) == 0 {
 		return nil, fmt.Errorf("empty connection response for volume %s", lvolID)
@@ -831,7 +844,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 }
 
 func reconcileOptimizedPath(
-	sbcClient *NodeNVMf,
+	sbcClient *ClusterClient,
 	nodeInfo *NodeInfo,
 	devicePath string,
 	conn *LvolConnectResp,
@@ -872,7 +885,7 @@ func reconcileOptimizedPath(
 // reconcileNonOptimizedPaths handles connections[1..N] (secondary nodes).
 // Works for both 2-path (1 secondary) and 3-path (2 secondaries).
 func reconcileNonOptimizedPaths(
-	sbcClient *NodeNVMf,
+	sbcClient *ClusterClient,
 	nodeInfo *NodeInfo,
 	devicePath string,
 	conns []*LvolConnectResp,

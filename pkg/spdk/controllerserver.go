@@ -587,17 +587,17 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	return &createVolReq, nil
 }
 
-func (cs *controllerServer) getExistingVolume(ctx context.Context, name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
+func (cs *controllerServer) getExistingVolume(ctx context.Context, name, poolName string, sbclient util.ClusterAPI, vol *csi.Volume) (*csi.Volume, error) {
 	volume, err := sbclient.GetVolume(ctx, name, poolName)
 	if err == nil {
-		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volume.UUID)
+		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volume.UUID)
 		klog.V(5).Info("volume already exists", vol.GetVolumeId())
 		return vol, nil
 	}
 	return nil, err
 }
 
-func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest, sbclient *util.NodeNVMf) (*csi.Volume, error) {
+func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest, sbclient util.ClusterAPI) (*csi.Volume, error) {
 	size := req.GetCapacityRange().GetRequiredBytes()
 	if size == 0 {
 		klog.Warningln("invalid volume size, resize to 1G")
@@ -645,7 +645,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
 	klog.V(5).Info("successfully created volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return &vol, nil
@@ -683,7 +683,7 @@ func getSnapshot(csiSnapshotID string) (*spdkSnapshot, error) {
 	}
 }
 
-func (cs *controllerServer) publishVolume(ctx context.Context, volumeID string, sbclient *util.NodeNVMf) (map[string]string, error) {
+func (cs *controllerServer) publishVolume(ctx context.Context, volumeID string, sbclient util.ClusterAPI) (map[string]string, error) {
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
 		return nil, err
@@ -939,7 +939,7 @@ func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
 	klog.V(5).Info("successfully Restored Snapshot from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
@@ -976,7 +976,7 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
 	}
-	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volumeID)
+	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
 	klog.V(5).Info("successfully created clone volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return vol, nil
