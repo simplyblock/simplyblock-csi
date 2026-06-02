@@ -170,9 +170,9 @@ func NewClusterClient(clusterID, endpoint, clusterSecret string) (*ClusterClient
 		return nil, err
 	}
 	client := APIClient{
-		ClusterID:     clusterID,
-		ClusterSecret: clusterSecret,
-		conn:          conn,
+		ClusterID:  clusterID,
+		Credential: clusterSecret,
+		conn:       conn,
 	}
 	return &ClusterClient{API: &client}, nil
 }

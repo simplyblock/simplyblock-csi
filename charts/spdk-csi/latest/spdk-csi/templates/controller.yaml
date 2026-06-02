@@ -129,6 +129,10 @@ spec:
             fieldRef:
               fieldPath: spec.nodeName
         {{- include "simplyblock.tlsEnv" . | nindent 8 }}
+        {{- if .Values.controller.saAuth.enabled }}
+        - name: SPDKCSI_SA_TOKEN
+          value: /var/run/secrets/kubernetes.io/serviceaccount/token
+        {{- end }}
         volumeMounts:
         - name: socket-dir
           mountPath: /csi

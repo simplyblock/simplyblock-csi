@@ -123,9 +123,9 @@ type Connection struct {
 // and borrows a Connection to reach the webappapi service.
 // It is immutable after construction; pool scoping is handled by the caller.
 type APIClient struct {
-	ClusterID     string
-	ClusterSecret string
-	conn          *Connection
+	ClusterID  string
+	Credential string // cluster_secret for v1, or SA JWT / cluster_secret for v2 Bearer auth
+	conn       *Connection
 }
 
 // ClusterStatus is a partial view of the GET /clusters/{id}/ response in v2.
@@ -644,9 +644,9 @@ func (client APIClient) do(ctx context.Context, method, path string, body any) (
 
 func (client APIClient) authorizationHeader(path string) string {
 	if strings.HasPrefix(path, "api/v2/") {
-		return "Bearer " + client.ClusterSecret
+		return "Bearer " + client.Credential
 	}
-	return client.ClusterID + " " + client.ClusterSecret
+	return client.ClusterID + " " + client.Credential
 }
 
 // locationToUUID extracts the last path segment from a Location header value.
