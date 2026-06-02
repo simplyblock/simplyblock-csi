@@ -314,7 +314,7 @@ func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 		}
 	}
 
-	return waitForDeviceGone(deviceGlob)
+	return waitForDeviceGone(ctx, deviceGlob)
 }
 
 // when timeout is set as 0, try to find the device file immediately
@@ -339,7 +339,7 @@ func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (st
 }
 
 // wait for device file gone or timeout
-func waitForDeviceGone(deviceGlob string) error {
+func waitForDeviceGone(ctx context.Context, deviceGlob string) error {
 	for i := 0; i <= 20; i++ {
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
@@ -348,7 +348,11 @@ func waitForDeviceGone(deviceGlob string) error {
 		if len(matches) == 0 {
 			return nil
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled waiting for device gone %s: %w", deviceGlob, ctx.Err())
+		}
 	}
 	return fmt.Errorf("timed out waiting device gone: %s", deviceGlob)
 }
@@ -513,6 +517,43 @@ func getSubsystemsForDevice(devicePath string) ([]subsystemResponse, error) {
 	}
 
 	return subsystems, nil
+}
+
+// FindDeviceByLvolID returns the /dev/disk/by-id symlink path for the NVMe
+// block device associated with lvolID, or ("", nil) if not connected.
+// The lvolID is used as the device model name by the simplyblock storage layer.
+func FindDeviceByLvolID(lvolID string) (string, error) {
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", lvolID))
+	matches, err := filepath.Glob(deviceGlob)
+	if err != nil {
+		return "", fmt.Errorf("glob %s: %w", deviceGlob, err)
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	if len(matches) > 1 {
+		klog.Warningf("FindDeviceByLvolID: multiple /dev/disk/by-id entries for lvolID %s: %v — using first", lvolID, matches)
+	}
+	return matches[0], nil
+}
+
+// DisconnectByLvolID disconnects the NVMe device associated with lvolID via
+// OS-level discovery (/dev/disk/by-id).  It is idempotent: returns nil when
+// no matching device is found (already disconnected or never connected).
+func DisconnectByLvolID(ctx context.Context, lvolID string) error {
+	devicePath, err := FindDeviceByLvolID(lvolID)
+	if err != nil {
+		return err
+	}
+	if devicePath == "" {
+		klog.Infof("no NVMe device found for lvolID %s — already disconnected", lvolID)
+		return nil
+	}
+	if err := disconnectDevicePath(ctx, devicePath); err != nil {
+		return err
+	}
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", lvolID))
+	return waitForDeviceGone(ctx, deviceGlob)
 }
 
 func getLvolIDFromNQN(nqn string) (clusterID, lvolID string) {
