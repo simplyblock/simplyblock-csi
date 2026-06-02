@@ -225,11 +225,6 @@ func (c *ClusterClient) CreateVolume(ctx context.Context, params *CreateLVolData
 	return lvolID, nil
 }
 
-// GetVolume returns the LvolResp for the given volume name and pool name. Returns error if not found.
-func (c *ClusterClient) GetVolume(ctx context.Context, lvolName, poolName string) (*LvolResp, error) {
-	return c.API.getVolume(ctx, c.poolID, fmt.Sprintf("%s/%s", poolName, lvolName))
-}
-
 // GetVolumeSize returns the size of the volume
 func (c *ClusterClient) GetVolumeSize(ctx context.Context, lvolID string) (string, error) {
 	lvol, err := c.API.getVolume(ctx, c.poolID, lvolID)

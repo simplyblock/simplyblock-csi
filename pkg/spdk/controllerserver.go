@@ -587,16 +587,6 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	return &createVolReq, nil
 }
 
-func (cs *controllerServer) getExistingVolume(ctx context.Context, name, poolName string, sbclient util.ClusterAPI, vol *csi.Volume) (*csi.Volume, error) {
-	volume, err := sbclient.GetVolume(ctx, name, poolName)
-	if err == nil {
-		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volume.UUID)
-		klog.V(5).Info("volume already exists", vol.GetVolumeId())
-		return vol, nil
-	}
-	return nil, err
-}
-
 func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest, sbclient util.ClusterAPI) (*csi.Volume, error) {
 	size := req.GetCapacityRange().GetRequiredBytes()
 	if size == 0 {
@@ -613,11 +603,6 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 
 	klog.V(5).Info("provisioning volume from SDK node..")
 	poolName := req.GetParameters()["pool_name"]
-	existingVolume, err := cs.getExistingVolume(ctx, req.GetName(), poolName, sbclient, &vol)
-	if err == nil {
-		return existingVolume, nil
-	}
-
 	if req.GetVolumeContentSource() != nil {
 		clonedVolume, clonedErr := cs.handleVolumeContentSource(ctx, req, poolName, &vol, capacityBytes)
 		if clonedErr != nil {
