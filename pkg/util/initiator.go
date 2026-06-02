@@ -535,17 +535,19 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 }
 
 func isNqnConnected(nqn string) (bool, error) {
-	cmd := exec.Command("nvme", "list-subsys")
+	cmd := exec.Command("nvme", "list-subsys", "-o", "json")
 	output, err := cmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("failed to execute nvme list-subsys: %v", err)
 	}
 
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, nqn) {
-			parts := strings.Fields(line)
-			if len(parts) > 0 {
+	var subsystems []subsystemResponse
+	if err := json.Unmarshal(output, &subsystems); err != nil {
+		return false, fmt.Errorf("failed to unmarshal nvme list-subsys output: %v", err)
+	}
+	for _, host := range subsystems {
+		for _, s := range host.Subsystems {
+			if s.NQN == nqn {
 				return true, nil
 			}
 		}
