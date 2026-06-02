@@ -63,7 +63,6 @@ type ClusterAPI interface {
 
 	// Volumes
 	CreateVolume(ctx context.Context, params *CreateLVolData) (string, error)
-	GetVolume(ctx context.Context, lvolName, poolName string) (*LvolResp, error)
 	GetVolumeSize(ctx context.Context, lvolID string) (string, error)
 	ListVolumes(ctx context.Context) ([]*LvolResp, error)
 	ResizeVolume(ctx context.Context, lvolID string, newSize int64) (bool, error)
@@ -249,30 +248,6 @@ func (client APIClient) getVolumeByUUID(ctx context.Context, poolID, lvolID stri
 		return nil, fmt.Errorf("failed to unmarshal volume response: %w", err)
 	}
 	return &result, nil
-}
-
-// getVolumeByName lists all volumes in the pool and returns the one with matching name
-func (client APIClient) getVolumeByName(ctx context.Context, poolID, name string) (*LvolResp, error) {
-	volumes, err := client.listVolumes(ctx, poolID)
-	if err != nil {
-		return nil, err
-	}
-	for _, v := range volumes {
-		if v.Name == name {
-			return v, nil
-		}
-	}
-	return nil, ErrJSONNoSuchDevice
-}
-
-// getVolume accepts either a UUID or a "poolName/volName" path (legacy callers)
-func (client APIClient) getVolume(ctx context.Context, poolID, lvolIDOrPath string) (*LvolResp, error) {
-	if strings.Contains(lvolIDOrPath, "/") {
-		// "poolName/volName" — extract the volume name and search by name
-		parts := strings.SplitN(lvolIDOrPath, "/", 2)
-		return client.getVolumeByName(ctx, poolID, parts[1])
-	}
-	return client.getVolumeByUUID(ctx, poolID, lvolIDOrPath)
 }
 
 // listVolumes returns all volumes in the pool
