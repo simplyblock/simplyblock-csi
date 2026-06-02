@@ -297,7 +297,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	poolName := req.GetParameters()["pool_name"]
-	sbClient, err := util.NewsimplyBlockClient(selection.clusterID, poolName)
+	sbClient, err := util.NewsimplyBlockClient(ctx, selection.clusterID, poolName)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +411,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		klog.Errorf("failed to get spdk volume, volumeID: %s err: %v", volumeID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -456,7 +456,7 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID, sbSnapshot.poolID)
+	sbclient, err := util.NewsimplyBlockClient(ctx, sbSnapshot.clusterID, sbSnapshot.poolID)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -709,7 +709,7 @@ func (cs *controllerServer) deleteVolume(ctx context.Context, volumeID string) e
 	if err != nil {
 		return err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return err
 	}
@@ -721,7 +721,7 @@ func (cs *controllerServer) unpublishVolume(ctx context.Context, volumeID string
 	if err != nil {
 		return err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return err
 	}
@@ -740,7 +740,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, err
 	}
 
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return nil, err
 	}
@@ -766,7 +766,7 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, _ *csi.ListSnapsh
 	}
 
 	for _, clusterID := range clusters {
-		sbclient, err := util.NewsimplyBlockClient(clusterID, "")
+		sbclient, err := util.NewsimplyBlockClient(ctx, clusterID, "")
 		if err != nil {
 			klog.Errorf("failed to create spdk client: %v", err)
 			return nil, status.Error(codes.Internal, err.Error())
@@ -852,7 +852,7 @@ func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.Co
 		return nil, err
 	}
 
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -922,7 +922,7 @@ func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *
 		return nil, err
 	}
 	// Use destination pool (from StorageClass params), not source snapshot pool.
-	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID, poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, sbSnapshot.clusterID, poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -963,7 +963,7 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 		return nil, err
 	}
 	// Volume clone goes to the same pool as the source volume.
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())

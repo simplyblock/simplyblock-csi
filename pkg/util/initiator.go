@@ -120,7 +120,7 @@ type ClustersInfo struct {
 // NewsimplyBlockClient creates a new Simplyblock client scoped to a cluster and optionally a pool.
 // poolIDOrName may be a pool UUID (used as-is) or a pool name (resolved via API), or empty
 // (no pool context — only cluster-level operations will work).
-func NewsimplyBlockClient(clusterID, poolIDOrName string) (*NodeNVMf, error) {
+func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (*NodeNVMf, error) {
 	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
 	var clusters ClustersInfo
 	err := ParseJSONFile(secretFile, &clusters)
@@ -155,7 +155,7 @@ func NewsimplyBlockClient(clusterID, poolIDOrName string) (*NodeNVMf, error) {
 	}
 
 	if poolIDOrName != "" {
-		poolUUID, err := resolvePoolUUID(node, poolIDOrName)
+		poolUUID, err := resolvePoolUUID(ctx, node, poolIDOrName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve pool %q: %w", poolIDOrName, err)
 		}
@@ -167,11 +167,11 @@ func NewsimplyBlockClient(clusterID, poolIDOrName string) (*NodeNVMf, error) {
 
 // resolvePoolUUID returns poolIDOrName as-is if it is already a UUID,
 // otherwise looks up the pool UUID by name via the API.
-func resolvePoolUUID(node *NodeNVMf, poolIDOrName string) (string, error) {
+func resolvePoolUUID(ctx context.Context, node *NodeNVMf, poolIDOrName string) (string, error) {
 	if isUUID(poolIDOrName) {
 		return poolIDOrName, nil
 	}
-	return node.GetPoolUUIDByName(context.Background(), poolIDOrName)
+	return node.GetPoolUUIDByName(ctx, poolIDOrName)
 }
 
 // isUUID reports whether s is a standard UUID (8-4-4-4-12 hex, with hyphens).
@@ -237,7 +237,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 
 	if !alreadyConnected {
 		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
-		sbcClient, err := NewsimplyBlockClient(clusterID, "")
+		sbcClient, err := NewsimplyBlockClient(ctx, clusterID, "")
 		if err != nil {
 			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
@@ -763,7 +763,7 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 		return cached
 	}
 
-	sbcClient, err := NewsimplyBlockClient(clusterID, "")
+	sbcClient, err := NewsimplyBlockClient(context.Background(), clusterID, "")
 	if err != nil {
 		klog.Warningf("resolveExpectedPathCount: client error for NQN %s: %v", nqn, err)
 		return cached
@@ -785,7 +785,7 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 }
 
 func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []path) error {
-	sbcClient, err := NewsimplyBlockClient(clusterID, "")
+	sbcClient, err := NewsimplyBlockClient(context.Background(), clusterID, "")
 	if err != nil {
 		return fmt.Errorf("failed to create SimplyBlock client: %w", err)
 	}

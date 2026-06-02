@@ -31,6 +31,9 @@ import (
 const rpcTimeout = 120 * time.Second
 
 func timeoutInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= rpcTimeout {
+		return handler(ctx, req)
+	}
 	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
 	return handler(ctx, req)
