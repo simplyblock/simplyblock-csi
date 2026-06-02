@@ -715,6 +715,9 @@ func (cs *controllerServer) unpublishVolume(ctx context.Context, volumeID string
 
 func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
+	unlock := cs.volumeLocks.Lock(volumeID)
+	defer unlock()
+
 	updatedSize := req.GetCapacityRange().GetRequiredBytes()
 
 	// Simplyblock backends are GiB aligned, so we round up to GiB.

@@ -407,6 +407,9 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	klog.Infof("NodeExpandVolume: called with args %+v", *req)
 
 	volumeID := req.GetVolumeId()
+	unlock := ns.volumeLocks.Lock(volumeID)
+	defer unlock()
+
 	volumeMountPath := req.GetVolumePath()
 
 	spdkVol, err := getSPDKVol(volumeID)
