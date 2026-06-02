@@ -451,6 +451,10 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	csiSnapshotID := req.GetSnapshotId()
+
+	unlock := cs.volumeLocks.Lock(csiSnapshotID)
+	defer unlock()
+
 	sbSnapshot, err := getSnapshot(csiSnapshotID)
 	if err != nil {
 		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
@@ -461,9 +465,6 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	unlock := cs.volumeLocks.Lock(csiSnapshotID)
-	defer unlock()
 
 	klog.Infof("Deleting Snapshot : csiSnapshotID=%s sbSnapshotID=%s", csiSnapshotID, sbSnapshot.snapshotID)
 
