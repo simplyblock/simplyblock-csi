@@ -484,13 +484,13 @@ func (g *Guardian) tick(ctx context.Context) {
 }
 
 func (g *Guardian) isClusterActiveByID(clusterID string) (ok bool, realStatus string, err error) {
-	node, err := NewsimplyBlockClient(clusterID, "")
+	node, err := NewsimplyBlockClient(context.Background(), clusterID, "")
 	if err != nil {
 		return false, "", err
 	}
 
 	clusterPath := fmt.Sprintf("api/v2/clusters/%s/", clusterID)
-	resp, err := node.Client.CallSBCLI("GET", clusterPath, nil)
+	resp, err := node.Client.CallSBCLI(context.Background(), "GET", clusterPath, nil)
 	if err != nil {
 		return false, "", err
 	}

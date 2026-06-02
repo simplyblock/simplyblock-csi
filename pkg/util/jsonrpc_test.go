@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -19,7 +20,7 @@ func TestCallSBCLIUsesBearerAuthForAPIV2(t *testing.T) {
 		})},
 	}
 
-	if _, err := client.CallSBCLI(http.MethodGet, "/api/v2/clusters/cluster-id/storage-pools/", nil); err != nil {
+	if _, err := client.CallSBCLI(context.Background(), http.MethodGet, "/api/v2/clusters/cluster-id/storage-pools/", nil); err != nil {
 		t.Fatalf("CallSBCLI: %v", err)
 	}
 	if gotAuth != "Bearer cluster-secret" {
@@ -39,7 +40,7 @@ func TestCallSBCLIUsesLegacyAuthOutsideAPIV2(t *testing.T) {
 		})},
 	}
 
-	if _, err := client.CallSBCLI(http.MethodGet, "/lvol/lvol-id", nil); err != nil {
+	if _, err := client.CallSBCLI(context.Background(), http.MethodGet, "/lvol/lvol-id", nil); err != nil {
 		t.Fatalf("CallSBCLI: %v", err)
 	}
 	if gotAuth != "cluster-id cluster-secret" {
@@ -70,7 +71,7 @@ func TestCloneVolumeUsesPostAndLocationHeader(t *testing.T) {
 		})},
 	}
 
-	cloneID, err := client.cloneVolume("source-id", "clone name", "1073741824", "default/my-pvc")
+	cloneID, err := client.cloneVolume(context.Background(), "source-id", "clone name", "1073741824", "default/my-pvc")
 	if err != nil {
 		t.Fatalf("cloneVolume: %v", err)
 	}

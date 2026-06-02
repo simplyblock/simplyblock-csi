@@ -297,7 +297,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	poolName := req.GetParameters()["pool_name"]
-	sbClient, err := util.NewsimplyBlockClient(selection.clusterID, poolName)
+	sbClient, err := util.NewsimplyBlockClient(ctx, selection.clusterID, poolName)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	volumeInfo, err := cs.publishVolume(csiVolume.GetVolumeId(), sbClient)
+	volumeInfo, err := cs.publishVolume(ctx, csiVolume.GetVolumeId(), sbClient)
 	if err != nil {
 		klog.Errorf("failed to publish volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -346,12 +346,12 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{Volume: csiVolume}, nil
 }
 
-func (cs *controllerServer) DeleteVolume(_ context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	unlock := cs.volumeLocks.Lock(volumeID)
 	defer unlock()
 	// no harm if volume already unpublished
-	err := cs.unpublishVolume(volumeID)
+	err := cs.unpublishVolume(ctx, volumeID)
 	switch {
 	case errors.Is(err, util.ErrVolumeUnpublished):
 		// unpublished but not deleted in last request?
@@ -365,7 +365,7 @@ func (cs *controllerServer) DeleteVolume(_ context.Context, req *csi.DeleteVolum
 	}
 
 	// no harm if volume already deleted
-	err = cs.deleteVolume(volumeID)
+	err = cs.deleteVolume(ctx, volumeID)
 	if errors.Is(err, util.ErrJSONNoSuchDevice) {
 		// deleted in previous request?
 		klog.Warningf("volume not exists: %s", volumeID)
@@ -377,7 +377,7 @@ func (cs *controllerServer) DeleteVolume(_ context.Context, req *csi.DeleteVolum
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
-func (cs *controllerServer) ValidateVolumeCapabilities(_ context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// make sure we support all requested caps
 	for _, cap := range req.GetVolumeCapabilities() {
 		supported := false
@@ -398,7 +398,7 @@ func (cs *controllerServer) ValidateVolumeCapabilities(_ context.Context, req *c
 	}, nil
 }
 
-func (cs *controllerServer) CreateSnapshot(_ context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	volumeID := req.GetSourceVolumeId()
 	klog.Infof("CreateSnapshot : volumeID=%s", volumeID)
 	unlock := cs.volumeLocks.Lock(volumeID)
@@ -411,20 +411,20 @@ func (cs *controllerServer) CreateSnapshot(_ context.Context, req *csi.CreateSna
 		klog.Errorf("failed to get spdk volume, volumeID: %s err: %v", volumeID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	snapshotID, err := sbclient.CreateSnapshot(spdkVol.lvolID, snapshotName)
+	snapshotID, err := sbclient.CreateSnapshot(ctx, spdkVol.lvolID, snapshotName)
 	klog.Infof("CreateSnapshot : snapshotID=%s", snapshotID)
 	if err != nil {
 		klog.Errorf("failed to create snapshot, volumeID: %s snapshotName: %s err: %v", volumeID, snapshotName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	volSize, err := sbclient.GetVolumeSize(spdkVol.lvolID)
+	volSize, err := sbclient.GetVolumeSize(ctx, spdkVol.lvolID)
 	klog.Infof("CreateSnapshot : volSize=%s", volSize)
 	if err != nil {
 		klog.Errorf("failed to get volume info, volumeID: %s err: %v", volumeID, err)
@@ -449,14 +449,14 @@ func (cs *controllerServer) CreateSnapshot(_ context.Context, req *csi.CreateSna
 	}, nil
 }
 
-func (cs *controllerServer) DeleteSnapshot(_ context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	csiSnapshotID := req.GetSnapshotId()
 	sbSnapshot, err := getSnapshot(csiSnapshotID)
 	if err != nil {
 		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, err
 	}
-	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID, sbSnapshot.poolID)
+	sbclient, err := util.NewsimplyBlockClient(ctx, sbSnapshot.clusterID, sbSnapshot.poolID)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -467,7 +467,7 @@ func (cs *controllerServer) DeleteSnapshot(_ context.Context, req *csi.DeleteSna
 
 	klog.Infof("Deleting Snapshot : csiSnapshotID=%s sbSnapshotID=%s", csiSnapshotID, sbSnapshot.snapshotID)
 
-	err = sbclient.DeleteSnapshot(sbSnapshot.snapshotID)
+	err = sbclient.DeleteSnapshot(ctx, sbSnapshot.snapshotID)
 	if err != nil {
 		klog.Errorf("failed to delete snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -587,8 +587,8 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	return &createVolReq, nil
 }
 
-func (cs *controllerServer) getExistingVolume(name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
-	volume, err := sbclient.GetVolume(name, poolName)
+func (cs *controllerServer) getExistingVolume(ctx context.Context, name, poolName string, sbclient *util.NodeNVMf, vol *csi.Volume) (*csi.Volume, error) {
+	volume, err := sbclient.GetVolume(ctx, name, poolName)
 	if err == nil {
 		vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.Client.ClusterID, sbclient.Client.PoolID, volume.UUID)
 		klog.V(5).Info("volume already exists", vol.GetVolumeId())
@@ -613,13 +613,13 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 
 	klog.V(5).Info("provisioning volume from SDK node..")
 	poolName := req.GetParameters()["pool_name"]
-	existingVolume, err := cs.getExistingVolume(req.GetName(), poolName, sbclient, &vol)
+	existingVolume, err := cs.getExistingVolume(ctx, req.GetName(), poolName, sbclient, &vol)
 	if err == nil {
 		return existingVolume, nil
 	}
 
 	if req.GetVolumeContentSource() != nil {
-		clonedVolume, clonedErr := cs.handleVolumeContentSource(req, poolName, &vol, capacityBytes)
+		clonedVolume, clonedErr := cs.handleVolumeContentSource(ctx, req, poolName, &vol, capacityBytes)
 		if clonedErr != nil {
 			return nil, clonedErr
 		}
@@ -640,7 +640,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	vol.VolumeContext["qos_r_mbytes"] = createVolReq.MaxRmBytes
 	vol.VolumeContext["qos_w_mbytes"] = createVolReq.MaxWmBytes
 
-	volumeID, err := sbclient.CreateVolume(createVolReq)
+	volumeID, err := sbclient.CreateVolume(ctx, createVolReq)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -683,12 +683,12 @@ func getSnapshot(csiSnapshotID string) (*spdkSnapshot, error) {
 	}
 }
 
-func (cs *controllerServer) publishVolume(volumeID string, sbclient *util.NodeNVMf) (map[string]string, error) {
+func (cs *controllerServer) publishVolume(ctx context.Context, volumeID string, sbclient *util.NodeNVMf) (map[string]string, error) {
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
 		return nil, err
 	}
-	err = sbclient.PublishVolume(spdkVol.lvolID)
+	err = sbclient.PublishVolume(ctx, spdkVol.lvolID)
 	if err != nil {
 		return nil, err
 	}
@@ -696,7 +696,7 @@ func (cs *controllerServer) publishVolume(volumeID string, sbclient *util.NodeNV
 	// hostNQN is not available in the controller path; pass empty string.
 	// If the volume has allowed_hosts configured, this call will fail and the
 	// node will re-fetch connection info at NodeStageVolume time using its own NQN.
-	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID, "")
+	volumeInfo, err := sbclient.VolumeInfo(ctx, spdkVol.lvolID, "")
 	if err != nil {
 		klog.Warningf("failed to get volume info for %s (will be fetched at stage time): %v", spdkVol.lvolID, err)
 		return map[string]string{}, nil
@@ -704,31 +704,31 @@ func (cs *controllerServer) publishVolume(volumeID string, sbclient *util.NodeNV
 	return volumeInfo, nil
 }
 
-func (cs *controllerServer) deleteVolume(volumeID string) error {
+func (cs *controllerServer) deleteVolume(ctx context.Context, volumeID string) error {
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
 		return err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return err
 	}
-	return sbclient.DeleteVolume(spdkVol.lvolID)
+	return sbclient.DeleteVolume(ctx, spdkVol.lvolID)
 }
 
-func (cs *controllerServer) unpublishVolume(volumeID string) error {
+func (cs *controllerServer) unpublishVolume(ctx context.Context, volumeID string) error {
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
 		return err
 	}
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return err
 	}
-	return sbclient.UnpublishVolume(spdkVol.lvolID)
+	return sbclient.UnpublishVolume(ctx, spdkVol.lvolID)
 }
 
-func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	updatedSize := req.GetCapacityRange().GetRequiredBytes()
 
@@ -740,12 +740,12 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 		return nil, err
 	}
 
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = sbclient.ResizeVolume(spdkVol.lvolID, capacityBytes)
+	_, err = sbclient.ResizeVolume(ctx, spdkVol.lvolID, capacityBytes)
 	if err != nil {
 		klog.Errorf("failed to resize lvol, LVolID: %s err: %v", spdkVol.lvolID, err)
 		return nil, err
@@ -757,7 +757,7 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 }
 
 // ListSnapshots lists all snapshots across all clusters
-func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+func (cs *controllerServer) ListSnapshots(ctx context.Context, _ *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 
 	var entries []*util.SnapshotResp
 	clusters, err := ListClusters()
@@ -766,13 +766,13 @@ func (cs *controllerServer) ListSnapshots(_ context.Context, _ *csi.ListSnapshot
 	}
 
 	for _, clusterID := range clusters {
-		sbclient, err := util.NewsimplyBlockClient(clusterID, "")
+		sbclient, err := util.NewsimplyBlockClient(ctx, clusterID, "")
 		if err != nil {
 			klog.Errorf("failed to create spdk client: %v", err)
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
-		snapshotEntries, err := sbclient.ListSnapshots()
+		snapshotEntries, err := sbclient.ListSnapshots(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -842,7 +842,7 @@ func ListClusters() (clusterIds []string, err error) {
 //		return nil, status.Error(codes.Unimplemented, "")
 //	}
 
-func (cs *controllerServer) ControllerGetVolume(_ context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	unlock := cs.volumeLocks.Lock(volumeID)
 	defer unlock()
@@ -852,13 +852,13 @@ func (cs *controllerServer) ControllerGetVolume(_ context.Context, req *csi.Cont
 		return nil, err
 	}
 
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	volumeInfo, err := sbclient.VolumeInfo(spdkVol.lvolID, "")
+	volumeInfo, err := sbclient.VolumeInfo(ctx, spdkVol.lvolID, "")
 	if err != nil {
 		klog.Errorf("failed to get spdkVol for %s: %v", volumeID, err)
 
@@ -899,19 +899,19 @@ func newControllerServer(d *csicommon.CSIDriver) (*controllerServer, error) {
 	return &server, nil
 }
 
-func (cs *controllerServer) handleVolumeContentSource(req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeContentSource(ctx context.Context, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	volumeSource := req.GetVolumeContentSource()
 	switch volumeSource.GetType().(type) {
 	case *csi.VolumeContentSource_Snapshot:
-		return cs.handleSnapshotSource(volumeSource.GetSnapshot(), req, poolName, vol, sizeBytes)
+		return cs.handleSnapshotSource(ctx, volumeSource.GetSnapshot(), req, poolName, vol, sizeBytes)
 	case *csi.VolumeContentSource_Volume:
-		return cs.handleVolumeSource(volumeSource.GetVolume(), req, poolName, vol, sizeBytes)
+		return cs.handleVolumeSource(ctx, volumeSource.GetVolume(), req, poolName, vol, sizeBytes)
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
 	}
 }
 
-func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *csi.VolumeContentSource_SnapshotSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	if snapshot == nil {
 		return nil, nil
 	}
@@ -922,7 +922,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 		return nil, err
 	}
 	// Use destination pool (from StorageClass params), not source snapshot pool.
-	sbclient, err := util.NewsimplyBlockClient(sbSnapshot.clusterID, poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, sbSnapshot.clusterID, poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -934,7 +934,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	pvcName, _ := params[CSIStorageNameKey]
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
-	volumeID, err := sbclient.CloneSnapshot(sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
+	volumeID, err := sbclient.CloneSnapshot(ctx, sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -945,7 +945,7 @@ func (cs *controllerServer) handleSnapshotSource(snapshot *csi.VolumeContentSour
 	return vol, nil
 }
 
-func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
+func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *csi.VolumeContentSource_VolumeSource, req *csi.CreateVolumeRequest, poolName string, vol *csi.Volume, sizeBytes int64) (*csi.Volume, error) {
 	if srcVolume == nil {
 		return nil, nil
 	}
@@ -963,7 +963,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 		return nil, err
 	}
 	// Volume clone goes to the same pool as the source volume.
-	sbclient, err := util.NewsimplyBlockClient(spdkVol.clusterID, spdkVol.poolName)
+	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolName)
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -971,7 +971,7 @@ func (cs *controllerServer) handleVolumeSource(srcVolume *csi.VolumeContentSourc
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
 	klog.Infof("CloneVolume : cloneName=%s", cloneName)
-	volumeID, err := sbclient.CloneVolume(spdkVol.lvolID, cloneName, newSize, pvcName)
+	volumeID, err := sbclient.CloneVolume(ctx, spdkVol.lvolID, cloneName, newSize, pvcName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
