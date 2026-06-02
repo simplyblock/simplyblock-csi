@@ -279,14 +279,12 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	}
 
 	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
-
 	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
 
-	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 20)
+	devicePath, err := waitForDeviceReady(ctx, deviceGlob)
 	if err != nil {
 		klog.Warningf("New device symlink not found (%s). Retrying legacy format: %s", deviceGlob, deviceGlobOld)
-
-		devicePath, err = waitForDeviceReady(ctx, deviceGlobOld, 10)
+		devicePath, err = waitForDeviceReady(ctx, deviceGlobOld)
 		if err != nil {
 			return "", fmt.Errorf("device not found in both new (%s) and old (%s) formats: %w",
 				deviceGlob, deviceGlobOld, err)
@@ -321,33 +319,31 @@ func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 	return waitForDeviceGone(ctx, deviceGlob)
 }
 
-// wait for device file comes up or timeout (seconds).
-func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (string, error) {
-	for i := 0; i < seconds; i++ {
+// waitForDeviceReady polls until a file matching deviceGlob appears or ctx is cancelled.
+func waitForDeviceReady(ctx context.Context, deviceGlob string) (string, error) {
+	for {
 		select {
 		case <-time.After(time.Second):
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", fmt.Errorf("timed out waiting for device %s: %w", deviceGlob, ctx.Err())
 		}
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
 			return "", err
 		}
-		// two symbol links under /dev/disk/by-id/ to same device
 		if len(matches) >= 1 {
 			return matches[0], nil
 		}
 	}
-	return "", fmt.Errorf("timed out waiting device ready: %s", deviceGlob)
 }
 
-// wait for device file gone or timeout
+// waitForDeviceGone polls until no file matching deviceGlob exists or ctx is cancelled.
 func waitForDeviceGone(ctx context.Context, deviceGlob string) error {
-	for i := 0; i < 20; i++ {
+	for {
 		select {
 		case <-time.After(time.Second):
 		case <-ctx.Done():
-			return fmt.Errorf("context cancelled waiting for device gone %s: %w", deviceGlob, ctx.Err())
+			return fmt.Errorf("timed out waiting for device gone %s: %w", deviceGlob, ctx.Err())
 		}
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
@@ -357,7 +353,6 @@ func waitForDeviceGone(ctx context.Context, deviceGlob string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("timed out waiting device gone: %s", deviceGlob)
 }
 
 // exec shell command with timeout(in seconds)
