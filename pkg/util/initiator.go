@@ -59,7 +59,8 @@ type initiatorNVMf struct {
 	reconnectDelay string
 	nrIoQueues     string
 	ctrlLossTmo    string
-	model          string
+	model          string // lvolID derived from NQN; correct in the normal case
+	uuid           string // volume's own lvolID; may differ from model when the backend rebuilt a shared subsystem under a deletion race
 	nsId           string
 	hostIface      string
 	hostNQN        string
@@ -215,6 +216,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			nrIoQueues:     volumeContext["nrIoQueues"],
 			ctrlLossTmo:    volumeContext["ctrlLossTmo"],
 			model:          volumeContext["model"],
+			uuid:           volumeContext["uuid"],
 			nsId:           volumeContext["nsId"],
 			hostIface:      volumeContext["hostIface"],
 			hostNQN:        volumeContext["hostNQN"],
@@ -278,86 +280,130 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 		}
 	}
 
-	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
-
-	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
-
-	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 20)
+	// Build candidate globs. model is NQN-derived and correct in the normal
+	// case; uuid is the volume's own lvolID and correct when the backend
+	// rebuilt a shared subsystem during a deletion race (model ≠ uuid).
+	// All globs are polled in each iteration so neither path adds latency.
+	globs := nvmeDeviceGlobs(nvmf.model, nvmf.uuid, nvmf.nsId)
+	devicePath, err := waitForDeviceReady(ctx, 20, globs...)
 	if err != nil {
-		klog.Warningf("New device symlink not found (%s). Retrying legacy format: %s", deviceGlob, deviceGlobOld)
-
-		devicePath, err = waitForDeviceReady(ctx, deviceGlobOld, 10)
-		if err != nil {
-			return "", fmt.Errorf("device not found in both new (%s) and old (%s) formats: %w",
-				deviceGlob, deviceGlobOld, err)
-		}
+		return "", fmt.Errorf("device not found (tried %v): %w", globs, err)
 	}
 	return devicePath, nil
 }
 
 func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
-	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
-	devicePath, err := filepath.Glob(deviceGlob)
-	if err != nil {
-		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
-	}
+	globs := nvmeDisconnectGlobs(nvmf.model, nvmf.uuid)
 
 	seen := make(map[string]bool)
-	for _, dp := range devicePath {
-		realPath, err := filepath.EvalSymlinks(dp)
+	for _, g := range globs {
+		paths, err := filepath.Glob(g)
 		if err != nil {
-			klog.Warningf("failed to resolve symlink %s: %v, skipping", dp, err)
-			continue
+			return fmt.Errorf("failed to find device paths matching %s: %v", g, err)
 		}
-		if seen[realPath] {
-			continue
-		}
-		seen[realPath] = true
-		if err := disconnectDevicePath(ctx, dp); err != nil {
-			return err
+		for _, dp := range paths {
+			realPath, err := filepath.EvalSymlinks(dp)
+			if err != nil {
+				klog.Warningf("failed to resolve symlink %s: %v, skipping", dp, err)
+				continue
+			}
+			if seen[realPath] {
+				continue
+			}
+			seen[realPath] = true
+			if err := disconnectDevicePath(ctx, dp); err != nil {
+				return err
+			}
 		}
 	}
 
-	return waitForDeviceGone(ctx, deviceGlob)
+	return waitForDeviceGone(ctx, globs...)
 }
 
-// wait for device file comes up or timeout (seconds).
-func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (string, error) {
+// nvmeDeviceGlobs returns the ordered list of /dev/disk/by-id globs to probe
+// for an NVMe device. model is the NQN-derived lvolID (correct in the normal
+// case); uuid is the volume's own lvolID (correct when the backend rebuilt a
+// shared subsystem during a deletion race). Duplicates are elided so when
+// model == uuid each pattern appears only once.
+func nvmeDeviceGlobs(model, uuid, nsId string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(g string) {
+		if !seen[g] {
+			seen[g] = true
+			out = append(out, g)
+		}
+	}
+	add(fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", model, nsId)))
+	add(fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", uuid, nsId)))
+	add(fmt.Sprintf(DevDiskByID, model))
+	add(fmt.Sprintf(DevDiskByID, uuid))
+	return out
+}
+
+// nvmeDisconnectGlobs returns globs covering all namespace symlinks for both
+// model and uuid, deduplicating when they are equal.
+func nvmeDisconnectGlobs(model, uuid string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(g string) {
+		if !seen[g] {
+			seen[g] = true
+			out = append(out, g)
+		}
+	}
+	add(fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", model)))
+	add(fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", uuid)))
+	return out
+}
+
+// waitForDeviceReady polls all globs each second until one matches or the
+// timeout elapses. All globs are checked per tick so the uuid-based fallback
+// adds no extra latency when the normal model-based path matches first.
+func waitForDeviceReady(ctx context.Context, seconds int, globs ...string) (string, error) {
 	for i := 0; i < seconds; i++ {
 		select {
 		case <-time.After(time.Second):
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
-		matches, err := filepath.Glob(deviceGlob)
-		if err != nil {
-			return "", err
-		}
-		// two symbol links under /dev/disk/by-id/ to same device
-		if len(matches) >= 1 {
-			return matches[0], nil
+		for _, g := range globs {
+			matches, err := filepath.Glob(g)
+			if err != nil {
+				return "", err
+			}
+			if len(matches) >= 1 {
+				return matches[0], nil
+			}
 		}
 	}
-	return "", fmt.Errorf("timed out waiting device ready: %s", deviceGlob)
+	return "", fmt.Errorf("timed out waiting device ready: %v", globs)
 }
 
-// wait for device file gone or timeout
-func waitForDeviceGone(ctx context.Context, deviceGlob string) error {
+// waitForDeviceGone polls until none of the globs match or the timeout elapses.
+func waitForDeviceGone(ctx context.Context, globs ...string) error {
 	for i := 0; i < 20; i++ {
 		select {
 		case <-time.After(time.Second):
 		case <-ctx.Done():
-			return fmt.Errorf("context cancelled waiting for device gone %s: %w", deviceGlob, ctx.Err())
+			return fmt.Errorf("context cancelled waiting for device gone %v: %w", globs, ctx.Err())
 		}
-		matches, err := filepath.Glob(deviceGlob)
-		if err != nil {
-			return err
+		anyPresent := false
+		for _, g := range globs {
+			matches, err := filepath.Glob(g)
+			if err != nil {
+				return err
+			}
+			if len(matches) > 0 {
+				anyPresent = true
+				break
+			}
 		}
-		if len(matches) == 0 {
+		if !anyPresent {
 			return nil
 		}
 	}
-	return fmt.Errorf("timed out waiting device gone: %s", deviceGlob)
+	return fmt.Errorf("timed out waiting device gone: %v", globs)
 }
 
 // exec shell command with timeout(in seconds)
