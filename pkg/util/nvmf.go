@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -92,15 +93,33 @@ func tlsServerName(clusterIP string) string {
 	return fmt.Sprintf("%s.%s.svc", host, strings.TrimSpace(string(ns)))
 }
 
-type NodeNVMf struct {
-	Client *RPCClient
+type ClusterClient struct {
+	API    *APIClient
+	poolID string // pool scope for this client; empty means cluster-level only
 }
 
-// NewNVMf creates a new NVMf client. The HTTP transport is selected by the
-// SB_TLS_CONNECT environment variable: "disabled" (or unset) uses plain HTTP;
-// "anonymous" uses HTTPS validated against SB_TLS_CERTIFICATE_AUTHORITY;
-// "authenticated" adds a client cert/key from SB_TLS_CERTIFICATE / SB_TLS_KEY.
-func NewNVMf(clusterID, clusterIP, clusterSecret string) (*NodeNVMf, error) {
+func (c *ClusterClient) ClusterID() string { return c.API.ClusterID }
+func (c *ClusterClient) PoolID() string    { return c.poolID }
+
+// poolForVolume returns the pool ID for lvolID. If this client is already
+// scoped to a pool, that pool ID is returned immediately. Otherwise all pools
+// are scanned to locate the volume.
+func (c *ClusterClient) poolForVolume(ctx context.Context, lvolID string) (string, error) {
+	if c.poolID != "" {
+		return c.poolID, nil
+	}
+	return c.API.findPoolForVolume(ctx, lvolID)
+}
+
+// NewConnection builds a shared HTTP connection to a webappapi endpoint.
+// TLS is configured from environment variables:
+//   - SB_TLS_CONNECT: "disabled" (default), "anonymous", or "authenticated"
+//   - SB_TLS_CERTIFICATE_AUTHORITY: path to CA bundle
+//   - SB_TLS_CERTIFICATE / SB_TLS_KEY: client cert/key for authenticated mode
+//
+// The returned Connection may be shared across multiple APIClients that
+// all reach the same webappapi service.
+func NewConnection(endpoint string) (*Connection, error) {
 	mode, err := parseTLSMode(os.Getenv(envTLSConnect))
 	if err != nil {
 		return nil, err
@@ -118,8 +137,8 @@ func NewNVMf(clusterID, clusterIP, clusterSecret string) (*NodeNVMf, error) {
 			return nil, fmt.Errorf("no certificates parsed from TLS CA %s", caFile)
 		}
 
-		clusterIP = strings.Replace(clusterIP, "http://", "https://", 1)
-		tlsCfg := &tls.Config{RootCAs: pool, ServerName: tlsServerName(clusterIP)}
+		endpoint = strings.Replace(endpoint, "http://", "https://", 1)
+		tlsCfg := &tls.Config{RootCAs: pool, ServerName: tlsServerName(endpoint)}
 
 		if mode == tlsAuthenticated {
 			certFile := envOr(envTLSCert, defaultTLSCert)
@@ -134,28 +153,42 @@ func NewNVMf(clusterID, clusterIP, clusterSecret string) (*NodeNVMf, error) {
 		transport = &http.Transport{TLSClientConfig: tlsCfg}
 	}
 
-	client := RPCClient{
-		HTTPClient:    &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second, Transport: transport},
-		ClusterID:     clusterID,
-		ClusterIP:     clusterIP,
-		ClusterSecret: clusterSecret,
+	return &Connection{
+		Endpoint: endpoint,
+		HTTP:     &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second, Transport: transport},
+	}, nil
+}
+
+// NewClusterClient creates a cluster-scoped API client.
+// It builds a Connection to the webappapi endpoint and binds it to the
+// given cluster credentials. For clusters that share an endpoint, prefer
+// building one Connection via NewConnection and constructing APIClient directly.
+func NewClusterClient(clusterID, endpoint, clusterSecret string) (*ClusterClient, error) {
+	conn, err := NewConnection(endpoint)
+	if err != nil {
+		return nil, err
 	}
-	return &NodeNVMf{Client: &client}, nil
+	client := APIClient{
+		ClusterID:     clusterID,
+		ClusterSecret: clusterSecret,
+		conn:          conn,
+	}
+	return &ClusterClient{API: &client}, nil
 }
 
-func (node *NodeNVMf) Info() string {
-	return node.Client.info()
+func (c *ClusterClient) Info() string {
+	return c.API.info()
 }
 
-func (node *NodeNVMf) LvStores() ([]LvStore, error) {
-	return node.Client.lvStores()
+func (c *ClusterClient) ListStoragePools(ctx context.Context) ([]StoragePool, error) {
+	return c.API.listStoragePools(ctx)
 }
 
 // VolumeInfo returns a string:string map containing information necessary
 // for CSI node(initiator) to connect to this target and identify the disk.
 // hostNQN is passed to the sbcli API when the volume has allowed_hosts configured.
-func (node *NodeNVMf) VolumeInfo(lvolID string, hostNQN string) (map[string]string, error) {
-	return node.Client.getVolumeInfo(lvolID, hostNQN)
+func (c *ClusterClient) VolumeInfo(ctx context.Context, lvolID string, hostNQN string) (map[string]string, error) {
+	return c.API.getVolumeInfo(ctx, c.poolID, lvolID, hostNQN)
 }
 
 // CreateLVolData is the data structure for creating a logical volume
@@ -183,8 +216,8 @@ type CreateLVolData struct {
 }
 
 // CreateVolume creates a logical volume and returns volume ID
-func (node *NodeNVMf) CreateVolume(params *CreateLVolData) (string, error) {
-	lvolID, err := node.Client.createVolume(params)
+func (c *ClusterClient) CreateVolume(ctx context.Context, params *CreateLVolData) (string, error) {
+	lvolID, err := c.API.createVolume(ctx, c.poolID, params)
 	if err != nil {
 		return "", err
 	}
@@ -192,14 +225,9 @@ func (node *NodeNVMf) CreateVolume(params *CreateLVolData) (string, error) {
 	return lvolID, nil
 }
 
-// GetVolume returns the LvolResp for the given volume name and pool name. Returns error if not found.
-func (node *NodeNVMf) GetVolume(lvolName, poolName string) (*LvolResp, error) {
-	return node.Client.getVolume(fmt.Sprintf("%s/%s", poolName, lvolName))
-}
-
 // GetVolumeSize returns the size of the volume
-func (node *NodeNVMf) GetVolumeSize(lvolID string) (string, error) {
-	lvol, err := node.Client.getVolume(lvolID)
+func (c *ClusterClient) GetVolumeSize(ctx context.Context, lvolID string) (string, error) {
+	lvol, err := c.API.getVolume(ctx, c.poolID, lvolID)
 	if err != nil {
 		return "", err
 	}
@@ -209,36 +237,36 @@ func (node *NodeNVMf) GetVolumeSize(lvolID string) (string, error) {
 }
 
 // ListVolumes returns a list of volumes
-func (node *NodeNVMf) ListVolumes() ([]*LvolResp, error) {
-	return node.Client.listVolumes()
+func (c *ClusterClient) ListVolumes(ctx context.Context) ([]*LvolResp, error) {
+	return c.API.listVolumes(ctx, c.poolID)
 }
 
 // GetMasterLvols returns master lvols for the given pool UUID
-func (node *NodeNVMf) GetMasterLvols(poolUUID string) ([]MasterLvol, error) {
-	return node.Client.getMasterLvols(poolUUID)
+func (c *ClusterClient) GetMasterLvols(ctx context.Context, poolUUID string) ([]MasterLvol, error) {
+	return c.API.getMasterLvols(ctx, poolUUID)
 }
 
 // GetPoolUUIDByName returns the UUID of the pool with the given name
-func (node *NodeNVMf) GetPoolUUIDByName(poolName string) (string, error) {
-	return node.Client.getPoolUUIDByName(poolName)
+func (c *ClusterClient) GetPoolUUIDByName(ctx context.Context, poolName string) (string, error) {
+	return c.API.getPoolUUIDByName(ctx, poolName)
 }
 
 // ResizeVolume resizes a volume
-func (node *NodeNVMf) ResizeVolume(lvolID string, newSize int64) (bool, error) {
-	return node.Client.resizeVolume(lvolID, newSize)
+func (c *ClusterClient) ResizeVolume(ctx context.Context, lvolID string, newSize int64) (bool, error) {
+	return c.API.resizeVolume(ctx, c.poolID, lvolID, newSize)
 }
 
 // ListSnapshots returns a list of snapshots. When PoolID is not set, iterates all pools.
-func (node *NodeNVMf) ListSnapshots() ([]*SnapshotResp, error) {
-	if node.Client.PoolID == "" {
-		return node.Client.listAllSnapshots()
+func (c *ClusterClient) ListSnapshots(ctx context.Context) ([]*SnapshotResp, error) {
+	if c.poolID == "" {
+		return c.API.listAllSnapshots(ctx)
 	}
-	return node.Client.listSnapshots()
+	return c.API.listSnapshots(ctx, c.poolID)
 }
 
 // CloneSnapshot clones a snapshot to a new volume
-func (node *NodeNVMf) CloneSnapshot(snapshotID, cloneName, newSize, pvcName string) (string, error) {
-	lvolID, err := node.Client.cloneSnapshot(snapshotID, cloneName, newSize, pvcName)
+func (c *ClusterClient) CloneSnapshot(ctx context.Context, snapshotID, cloneName, newSize, pvcName string) (string, error) {
+	lvolID, err := c.API.cloneSnapshot(ctx, c.poolID, snapshotID, cloneName, newSize, pvcName)
 	if err != nil {
 		return "", err
 	}
@@ -247,8 +275,8 @@ func (node *NodeNVMf) CloneSnapshot(snapshotID, cloneName, newSize, pvcName stri
 }
 
 // CloneVolume clones a volume to a new volume
-func (node *NodeNVMf) CloneVolume(lvolID, cloneName, newSize, pvcName string) (string, error) {
-	lvolID, err := node.Client.cloneVolume(lvolID, cloneName, newSize, pvcName)
+func (c *ClusterClient) CloneVolume(ctx context.Context, lvolID, cloneName, newSize, pvcName string) (string, error) {
+	lvolID, err := c.API.cloneVolume(ctx, c.poolID, lvolID, cloneName, newSize, pvcName)
 	if err != nil {
 		return "", err
 	}
@@ -258,19 +286,19 @@ func (node *NodeNVMf) CloneVolume(lvolID, cloneName, newSize, pvcName string) (s
 
 // CreateSnapshot creates a snapshot of a volume.
 // Returns a 3-part CSI snapshot ID: {clusterID}:{poolID}:{snapshotUUID}
-func (node *NodeNVMf) CreateSnapshot(lvolID, snapshotName string) (string, error) {
-	snapshotID, err := node.Client.snapshot(lvolID, snapshotName)
+func (c *ClusterClient) CreateSnapshot(ctx context.Context, lvolID, snapshotName string) (string, error) {
+	snapshotID, err := c.API.snapshot(ctx, c.poolID, lvolID, snapshotName)
 	if err != nil {
 		return "", err
 	}
-	csiID := fmt.Sprintf("%s:%s:%s", node.Client.ClusterID, node.Client.PoolID, snapshotID)
+	csiID := fmt.Sprintf("%s:%s:%s", c.API.ClusterID, c.poolID, snapshotID)
 	klog.V(5).Infof("snapshot created: %s", csiID)
 	return csiID, nil
 }
 
 // DeleteVolume deletes a volume
-func (node *NodeNVMf) DeleteVolume(lvolID string) error {
-	err := node.Client.deleteVolume(lvolID)
+func (c *ClusterClient) DeleteVolume(ctx context.Context, lvolID string) error {
+	err := c.API.deleteVolume(ctx, c.poolID, lvolID)
 	if err != nil {
 		return err
 	}
@@ -279,8 +307,8 @@ func (node *NodeNVMf) DeleteVolume(lvolID string) error {
 }
 
 // DeleteSnapshot deletes a snapshot
-func (node *NodeNVMf) DeleteSnapshot(snapshotID string) error {
-	err := node.Client.deleteSnapshot(snapshotID)
+func (c *ClusterClient) DeleteSnapshot(ctx context.Context, snapshotID string) error {
+	err := c.API.deleteSnapshot(ctx, c.poolID, snapshotID)
 	if err != nil {
 		return err
 	}
@@ -289,8 +317,8 @@ func (node *NodeNVMf) DeleteSnapshot(snapshotID string) error {
 }
 
 // PublishVolume exports a volume through NVMf target
-func (node *NodeNVMf) PublishVolume(lvolID string) error {
-	_, err := node.Client.CallSBCLI("GET", node.Client.v2volume(lvolID), nil)
+func (c *ClusterClient) PublishVolume(ctx context.Context, lvolID string) error {
+	_, err := c.API.do(ctx, "GET", c.API.v2volume(c.poolID, lvolID), nil)
 	if err != nil {
 		return err
 	}
@@ -299,12 +327,11 @@ func (node *NodeNVMf) PublishVolume(lvolID string) error {
 }
 
 // UnpublishVolume unexports a volume through NVMf target
-func (node *NodeNVMf) UnpublishVolume(lvolID string) error {
-	_, err := node.Client.CallSBCLI("GET", node.Client.v2volume(lvolID), nil)
+func (c *ClusterClient) UnpublishVolume(ctx context.Context, lvolID string) error {
+	_, err := c.API.do(ctx, "GET", c.API.v2volume(c.poolID, lvolID), nil)
 	if err != nil {
 		return err
 	}
-
 	klog.V(5).Infof("volume unpublished: %s", lvolID)
 	return nil
 }

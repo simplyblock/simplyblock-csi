@@ -11,15 +11,15 @@ image:
     pullPolicy: Always
   csiProvisioner:
     repository: quay.io/simplyblock-io/csi-provisioner
-    tag: v4.0.1
+    tag: v5.1.0
     pullPolicy: Always
   csiAttacher:
     repository: quay.io/simplyblock-io/csi-attacher
-    tag: v4.5.1
+    tag: v4.7.0
     pullPolicy: Always
   nodeDriverRegistrar:
     repository: quay.io/simplyblock-io/csi-node-driver-registrar
-    tag: v2.10.1
+    tag: v2.12.0
     pullPolicy: Always
   csiSnapshotter:
     repository: quay.io/simplyblock-io/csi-snapshotter
@@ -27,11 +27,11 @@ image:
     pullPolicy: Always
   csiResizer:
     repository: quay.io/simplyblock-io/csi-resizer
-    tag: v1.10.1
+    tag: v1.12.0
     pullPolicy: Always
   csiHealthMonitor:
     repository: quay.io/simplyblock-io/csi-external-health-monitor-controller
-    tag: v0.11.0
+    tag: v0.14.0
     pullPolicy: Always
   csiSnapshotterController:
     repository: quay.io/simplyblock-io/snapshot-controller

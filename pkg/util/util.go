@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,9 +31,6 @@ import (
 
 	"k8s.io/klog"
 )
-
-// file name in which volume context is stashed.
-const volumeContextFileName = "volume-context.json"
 
 const (
 	MIB = int64(1024 * 1024)
@@ -165,13 +163,13 @@ func detectNvmeDeviceName(nvmeModel string) (string, error) {
 }
 
 // get the Nvme block device
-func GetNvmeDeviceName(nvmeModel, bdf string) (string, error) {
+func GetNvmeDeviceName(ctx context.Context, nvmeModel, bdf string) (string, error) {
 	var deviceName string
 	var err error
 	if bdf != "" {
 		var uuidFilePath string
 		// find the uuid file path for the nvme device based on the bdf
-		uuidFilePath, err = waitForDeviceReady(fmt.Sprintf("/sys/bus/pci/devices/%s/nvme/nvme*/nvme*n*/uuid", bdf), 20)
+		uuidFilePath, err = waitForDeviceReady(ctx, fmt.Sprintf("/sys/bus/pci/devices/%s/nvme/nvme*/nvme*n*/uuid", bdf), 20)
 		if err != nil {
 			return "", fmt.Errorf("failed find device at %s: %w", uuidFilePath, err)
 		}
@@ -186,22 +184,22 @@ func GetNvmeDeviceName(nvmeModel, bdf string) (string, error) {
 
 	deviceGlob := "/dev/" + deviceName
 
-	return waitForDeviceReady(deviceGlob, 20)
+	return waitForDeviceReady(ctx, deviceGlob, 20)
 }
 
 // GetVirtioBlkDevice returns a block device available at the
 // given bdf path. If wait is true then it wait till a device
 // appear at the bdf path.
-func GetVirtioBlkDeviceName(bdf string, wait bool) (string, error) {
+func GetVirtioBlkDeviceName(ctx context.Context, bdf string, wait bool) (string, error) {
 	// The parent dir path of the block device for VirtioBlk should be
 	// in the form of "/sys/bus/pci/devices/0000:01:01.0/virtio2/block"
 	sysBusGlob := fmt.Sprintf("/sys/bus/pci/devices/%s/virtio*/block", bdf)
 	var deviceParentDirPath string
 	var err error
 	if wait {
-		deviceParentDirPath, err = waitForDeviceReady(sysBusGlob, 20)
+		deviceParentDirPath, err = waitForDeviceReady(ctx, sysBusGlob, 20)
 	} else {
-		deviceParentDirPath, err = waitForDeviceReady(sysBusGlob, 0)
+		deviceParentDirPath, err = waitForDeviceReady(ctx, sysBusGlob, 0)
 	}
 	if err != nil {
 		klog.Errorf("could not find the deviceParentDirPath (%s): %s", sysBusGlob, err)
@@ -222,7 +220,7 @@ func GetVirtioBlkDeviceName(bdf string, wait bool) (string, error) {
 	// wait for the block device ready for VirtioBlk, eg, in the form of "/dev/vda"
 	deviceGlob := "/dev/" + deviceName[0].Name()
 
-	return waitForDeviceReady(deviceGlob, 20)
+	return waitForDeviceReady(ctx, deviceGlob, 20)
 }
 
 // GetAvailablePhysicalFunction returns next available Pf and Vf by checking
@@ -262,72 +260,6 @@ func ConvertInterfaceToMap(data interface{}) (map[string]string, error) {
 	}
 
 	return strMap, nil
-}
-
-func stashContext(data interface{}, folder, fileName string) error {
-	encodedBytes, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to marshall context JSON: %w", err)
-	}
-	if _, err = os.Stat(folder); os.IsNotExist(err) {
-		err = os.MkdirAll(folder, 0o755)
-		if err != nil {
-			return err
-		}
-	}
-	fPath := filepath.Join(folder, fileName)
-	err = os.WriteFile(fPath, encodedBytes, 0o600)
-	if err != nil {
-		return fmt.Errorf("failed to marshall context JSON at path (%s): %w", fPath, err)
-	}
-	return nil
-}
-
-func lookupContext(folder, fileName string) (interface{}, error) {
-	var data interface{}
-	fPath := filepath.Join(folder, fileName)
-	encodedBytes, err := os.ReadFile(fPath) // #nosec - intended reading from fPath
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return data,
-				fmt.Errorf("failed to read stashed context JSON from path (%s): %w", fPath, err)
-		}
-		return data, errors.New("volume context JSON file not found")
-	}
-	err = json.Unmarshal(encodedBytes, &data)
-	if err != nil {
-		return data,
-			fmt.Errorf("failed to unmarshall stashed context JSON from path (%s): %w", fPath, err)
-	}
-	return data, nil
-}
-
-func cleanUpContext(folder, fileName string) error {
-	fPath := filepath.Join(folder, fileName)
-	if err := os.Remove(fPath); err != nil {
-		return fmt.Errorf("failed to cleanup volume context stash (%s): %w", fPath, err)
-	}
-	return nil
-}
-
-// StashVolumeContext stashes volume context into the volumeContextFileName at the passed in path, in
-// JSON format.
-func StashVolumeContext(volumeContext map[string]string, path string) error {
-	return stashContext(volumeContext, path, volumeContextFileName)
-}
-
-// LookupVolumeContext read and returns stashed volume context at passed in path
-func LookupVolumeContext(path string) (map[string]string, error) {
-	data, err := lookupContext(path, volumeContextFileName)
-	if err != nil {
-		return nil, err
-	}
-	return ConvertInterfaceToMap(data)
-}
-
-// CleanUpVolumeContext cleans up any stashed volume context at passed in path.
-func CleanUpVolumeContext(path string) error {
-	return cleanUpContext(path, volumeContextFileName)
 }
 
 func parseDurationFromEnv(key string, def time.Duration) time.Duration {

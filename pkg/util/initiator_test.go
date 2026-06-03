@@ -18,6 +18,7 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -54,7 +55,7 @@ func TestExecWithTimeoutTimeout(t *testing.T) {
 
 func runExecWithTimeout(cmdLine []string, timeout int) (int, error) {
 	start := time.Now()
-	err := execWithTimeout(cmdLine, timeout)
+	err := execWithTimeout(context.Background(), cmdLine, timeout)
 	elapsed := int(time.Since(start) / time.Second)
 	return elapsed, err
 }

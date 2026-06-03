@@ -49,8 +49,8 @@ const (
 //   - Caller(node service) should serialize calls to same initiator
 //   - Implementation should be idempotent to duplicated requests
 type SpdkCsiInitiator interface {
-	Connect() (string, error)
-	Disconnect() error
+	Connect(ctx context.Context) (string, error)
+	Disconnect(ctx context.Context) error
 }
 
 // initiatorNVMf is an implementation of NVMf tcp initiator
@@ -105,6 +105,7 @@ var (
 	// without querying the API on every cycle.
 	maxSeenPathsMap = make(map[string]int)
 	maxSeenMu       sync.Mutex
+
 )
 
 // clusterConfig represents the Kubernetes secret structure
@@ -121,7 +122,7 @@ type ClustersInfo struct {
 // NewsimplyBlockClient creates a new Simplyblock client scoped to a cluster and optionally a pool.
 // poolIDOrName may be a pool UUID (used as-is) or a pool name (resolved via API), or empty
 // (no pool context — only cluster-level operations will work).
-func NewsimplyBlockClient(clusterID, poolIDOrName string) (*NodeNVMf, error) {
+func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (*ClusterClient, error) {
 	secretFile := FromEnv("SPDKCSI_SECRET", "/etc/spdkcsi-secret/secret.json")
 	var clusters ClustersInfo
 	err := ParseJSONFile(secretFile, &clusters)
@@ -150,29 +151,36 @@ func NewsimplyBlockClient(clusterID, poolIDOrName string) (*NodeNVMf, error) {
 		clusterConfig.ClusterEndpoint,
 	)
 
-	node, err := NewNVMf(clusterID, clusterConfig.ClusterEndpoint, clusterConfig.ClusterSecret)
+	conn, err := NewConnection(clusterConfig.ClusterEndpoint)
 	if err != nil {
 		return nil, err
 	}
+	c := &ClusterClient{
+		API: &APIClient{
+			ClusterID:     clusterID,
+			ClusterSecret: clusterConfig.ClusterSecret,
+			conn:          conn,
+		},
+	}
 
 	if poolIDOrName != "" {
-		poolUUID, err := resolvePoolUUID(node, poolIDOrName)
+		poolUUID, err := resolvePoolUUID(ctx, c, poolIDOrName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve pool %q: %w", poolIDOrName, err)
 		}
-		node.Client.PoolID = poolUUID
+		c.poolID = poolUUID
 	}
 
-	return node, nil
+	return c, nil
 }
 
 // resolvePoolUUID returns poolIDOrName as-is if it is already a UUID,
 // otherwise looks up the pool UUID by name via the API.
-func resolvePoolUUID(node *NodeNVMf, poolIDOrName string) (string, error) {
+func resolvePoolUUID(ctx context.Context, c *ClusterClient, poolIDOrName string) (string, error) {
 	if isUUID(poolIDOrName) {
 		return poolIDOrName, nil
 	}
-	return node.GetPoolUUIDByName(poolIDOrName)
+	return c.GetPoolUUIDByName(ctx, poolIDOrName)
 }
 
 // isUUID reports whether s is a standard UUID (8-4-4-4-12 hex, with hyphens).
@@ -218,9 +226,9 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 	}
 }
 
-func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
+func execWithTimeoutRetry(ctx context.Context, cmdLine []string, timeout, retry int) (err error) {
 	for retry > 0 {
-		err = execWithTimeout(cmdLine, timeout)
+		err = execWithTimeout(ctx, cmdLine, timeout)
 		if err == nil {
 			return nil
 		}
@@ -229,7 +237,7 @@ func execWithTimeoutRetry(cmdLine []string, timeout, retry int) (err error) {
 	return err
 }
 
-func (nvmf *initiatorNVMf) Connect() (string, error) {
+func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	alreadyConnected, err := isNqnConnected(nvmf.nqn)
 	if err != nil {
 		klog.Errorf("Failed to check existing connections: %v", err)
@@ -238,12 +246,12 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 
 	if !alreadyConnected {
 		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
-		sbcClient, err := NewsimplyBlockClient(clusterID, "")
+		sbcClient, err := NewsimplyBlockClient(ctx, clusterID, "")
 		if err != nil {
 			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
 		}
-		connections, err := fetchLvolConnection(sbcClient, lvolID, nvmf.hostNQN)
+		connections, err := fetchLvolConnection(ctx, sbcClient, lvolID, nvmf.hostNQN)
 		if err != nil {
 			klog.Errorf("Failed to get lvol connection: %v", err)
 			return "", err
@@ -255,7 +263,7 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 		var lastErr error
 
 		for _, conn := range connections {
-			err := connectViaNVMe(conn, ctrlLossTmo, len(connections))
+			err := connectViaNVMe(ctx, conn, ctrlLossTmo, len(connections))
 			if err != nil {
 				klog.Errorf("nvme connect failed for %s:%d: %v", conn.IP, conn.Port, err)
 				lastErr = err
@@ -275,11 +283,11 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 
 	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
 
-	devicePath, err := waitForDeviceReady(deviceGlob, 20)
+	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 20)
 	if err != nil {
 		klog.Warningf("New device symlink not found (%s). Retrying legacy format: %s", deviceGlob, deviceGlobOld)
 
-		devicePath, err = waitForDeviceReady(deviceGlobOld, 10)
+		devicePath, err = waitForDeviceReady(ctx, deviceGlobOld, 10)
 		if err != nil {
 			return "", fmt.Errorf("device not found in both new (%s) and old (%s) formats: %w",
 				deviceGlob, deviceGlobOld, err)
@@ -288,32 +296,40 @@ func (nvmf *initiatorNVMf) Connect() (string, error) {
 	return devicePath, nil
 }
 
-func (nvmf *initiatorNVMf) Disconnect() error {
-	//deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
+func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
 	devicePath, err := filepath.Glob(deviceGlob)
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
 
-	if len(devicePath) > 1 {
-		return nil
-
-	} else if len(devicePath) == 1 {
-		err = disconnectDevicePath(devicePath[0])
-
+	seen := make(map[string]bool)
+	for _, dp := range devicePath {
+		realPath, err := filepath.EvalSymlinks(dp)
 		if err != nil {
+			klog.Warningf("failed to resolve symlink %s: %v, skipping", dp, err)
+			continue
+		}
+		if seen[realPath] {
+			continue
+		}
+		seen[realPath] = true
+		if err := disconnectDevicePath(ctx, dp); err != nil {
 			return err
 		}
 	}
 
-	return waitForDeviceGone(deviceGlob)
+	return waitForDeviceGone(ctx, deviceGlob)
 }
 
-// when timeout is set as 0, try to find the device file immediately
-// otherwise, wait for device file comes up or timeout
-func waitForDeviceReady(deviceGlob string, seconds int) (string, error) {
-	for i := 0; i <= seconds; i++ {
+// wait for device file comes up or timeout (seconds).
+func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (string, error) {
+	for i := 0; i < seconds; i++ {
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
 			return "", err
@@ -322,14 +338,18 @@ func waitForDeviceReady(deviceGlob string, seconds int) (string, error) {
 		if len(matches) >= 1 {
 			return matches[0], nil
 		}
-		time.Sleep(time.Second)
 	}
 	return "", fmt.Errorf("timed out waiting device ready: %s", deviceGlob)
 }
 
 // wait for device file gone or timeout
-func waitForDeviceGone(deviceGlob string) error {
-	for i := 0; i <= 20; i++ {
+func waitForDeviceGone(ctx context.Context, deviceGlob string) error {
+	for i := 0; i < 20; i++ {
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled waiting for device gone %s: %w", deviceGlob, ctx.Err())
+		}
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
 			return err
@@ -337,22 +357,21 @@ func waitForDeviceGone(deviceGlob string) error {
 		if len(matches) == 0 {
 			return nil
 		}
-		time.Sleep(time.Second)
 	}
 	return fmt.Errorf("timed out waiting device gone: %s", deviceGlob)
 }
 
 // exec shell command with timeout(in seconds)
-func execWithTimeout(cmdLine []string, timeout int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+func execWithTimeout(ctx context.Context, cmdLine []string, timeout int) error {
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	klog.Infof("running command: %v", cmdLine)
 	//nolint:gosec // execWithTimeout assumes valid cmd arguments
-	cmd := exec.CommandContext(ctx, cmdLine[0], cmdLine[1:]...)
+	cmd := exec.CommandContext(execCtx, cmdLine[0], cmdLine[1:]...)
 	output, err := cmd.CombinedOutput()
 
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		return errors.New("timed out")
 	}
 	if output != nil {
@@ -364,7 +383,7 @@ func execWithTimeout(cmdLine []string, timeout int) error {
 	return err
 }
 
-func disconnectDevicePath(devicePath string) error {
+func disconnectDevicePath(ctx context.Context, devicePath string) error {
 	var paths []path
 
 	realPath, err := filepath.EvalSymlinks(devicePath)
@@ -398,7 +417,7 @@ func disconnectDevicePath(devicePath string) error {
 	for _, p := range paths {
 		klog.Infof("Disconnecting device %s", p.Name)
 		disconnectCmd := []string{"nvme", "disconnect", "-d", p.Name}
-		err := execWithTimeoutRetry(disconnectCmd, 40, 1)
+		err := execWithTimeoutRetry(ctx, disconnectCmd, 40, 1)
 		if err != nil {
 			klog.Errorf("Failed to disconnect device %s: %v", p.Name, err)
 		}
@@ -502,6 +521,43 @@ func getSubsystemsForDevice(devicePath string) ([]subsystemResponse, error) {
 	}
 
 	return subsystems, nil
+}
+
+// FindDeviceByLvolID returns the /dev/disk/by-id symlink path for the NVMe
+// block device associated with lvolID, or ("", nil) if not connected.
+// The lvolID is used as the device model name by the simplyblock storage layer.
+func FindDeviceByLvolID(lvolID string) (string, error) {
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", lvolID))
+	matches, err := filepath.Glob(deviceGlob)
+	if err != nil {
+		return "", fmt.Errorf("glob %s: %w", deviceGlob, err)
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	if len(matches) > 1 {
+		klog.Warningf("FindDeviceByLvolID: multiple /dev/disk/by-id entries for lvolID %s: %v — using first", lvolID, matches)
+	}
+	return matches[0], nil
+}
+
+// DisconnectByLvolID disconnects the NVMe device associated with lvolID via
+// OS-level discovery (/dev/disk/by-id).  It is idempotent: returns nil when
+// no matching device is found (already disconnected or never connected).
+func DisconnectByLvolID(ctx context.Context, lvolID string) error {
+	devicePath, err := FindDeviceByLvolID(lvolID)
+	if err != nil {
+		return err
+	}
+	if devicePath == "" {
+		klog.Infof("no NVMe device found for lvolID %s — already disconnected", lvolID)
+		return nil
+	}
+	if err := disconnectDevicePath(ctx, devicePath); err != nil {
+		return err
+	}
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", lvolID))
+	return waitForDeviceGone(ctx, deviceGlob)
 }
 
 func getLvolIDFromNQN(nqn string) (clusterID, lvolID string) {
@@ -610,18 +666,18 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 	return nil
 }
 
-func fetchNodeInfo(spdkNode *NodeNVMf, lvolID string) (*NodeInfo, error) {
-	if err := spdkNode.Client.findPoolForVolume(lvolID); err != nil {
-		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
-	}
-	resp, err := spdkNode.Client.CallSBCLI("GET", spdkNode.Client.v2volume(lvolID), nil)
+func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*NodeInfo, error) {
+	poolID, err := client.poolForVolume(ctx, lvolID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch node info: %v", err)
+		return nil, fmt.Errorf("failed to resolve pool for volume %s: %w", lvolID, err)
+	}
+	raw, err := client.API.do(ctx, "GET", client.API.v2volume(poolID, lvolID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch node info: %w", err)
 	}
 	var info NodeInfo
-	respBytes, _ := json.Marshal(resp)
-	if err := json.Unmarshal(respBytes, &info); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal node info: %v", err)
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal node info: %w", err)
 	}
 	// v2 nodes field returns URL paths; extract UUIDs from last path segment
 	for i, n := range info.Nodes {
@@ -639,8 +695,8 @@ func isTCPReachable(ip string, port int) bool {
 	return true
 }
 
-func isNodeOnline(spdkNode *NodeNVMf, nodeID, ip string, port int) bool {
-	status, err := spdkNode.Client.getStorageNodeStatus(nodeID)
+func isNodeOnline(ctx context.Context, client *ClusterClient, nodeID, ip string, port int) bool {
+	status, err := client.API.getStorageNodeStatus(ctx, nodeID)
 	if err != nil {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
@@ -657,13 +713,14 @@ func isNodeOnline(spdkNode *NodeNVMf, nodeID, ip string, port int) bool {
 	return true
 }
 
-func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
-	if err := spdkNode.Client.findPoolForVolume(lvolID); err != nil {
-		return nil, fmt.Errorf("failed to resolve pool for volume %s: %v", lvolID, err)
-	}
-	connections, err := spdkNode.Client.getLvolConnections(lvolID, hostNQN)
+func fetchLvolConnection(ctx context.Context, client *ClusterClient, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
+	poolID, err := client.poolForVolume(ctx, lvolID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch connection: %v", err)
+		return nil, fmt.Errorf("failed to resolve pool for volume %s: %w", lvolID, err)
+	}
+	connections, err := client.API.getLvolConnections(ctx, poolID, lvolID, hostNQN)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch connection: %w", err)
 	}
 	if len(connections) == 0 {
 		return nil, fmt.Errorf("empty connection response for volume %s", lvolID)
@@ -671,7 +728,7 @@ func fetchLvolConnection(spdkNode *NodeNVMf, lvolID string, hostNQN string) ([]*
 	return connections, nil
 }
 
-func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo, retries int) error {
+func connectViaNVMe(ctx context.Context, conn *LvolConnectResp, ctrlLossTmo int, retries int) error {
 	cmd := []string{
 		"nvme", "connect", "-t", strings.ToLower(conn.TargetType),
 		"-a", conn.IP, "-s", strconv.Itoa(conn.Port),
@@ -683,7 +740,7 @@ func connectViaNVMe(conn *LvolConnectResp, ctrlLossTmo, retries int) error {
 	if conn.HostIface != "" {
 		cmd = append(cmd, "-f", conn.HostIface)
 	}
-	if err := execWithTimeoutRetry(cmd, 40, retries); err != nil {
+	if err := execWithTimeoutRetry(ctx, cmd, 40, retries); err != nil {
 		klog.Errorf("nvme connect failed: %v", err)
 		return err
 	}
@@ -764,12 +821,12 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 		return cached
 	}
 
-	sbcClient, err := NewsimplyBlockClient(clusterID, "")
+	sbcClient, err := NewsimplyBlockClient(context.Background(), clusterID, "")
 	if err != nil {
 		klog.Warningf("resolveExpectedPathCount: client error for NQN %s: %v", nqn, err)
 		return cached
 	}
-	conns, err := fetchLvolConnection(sbcClient, lvolID, "")
+	conns, err := fetchLvolConnection(context.Background(), sbcClient, lvolID, "")
 	if err != nil {
 		klog.Warningf("resolveExpectedPathCount: fetch error for NQN %s: %v", nqn, err)
 		return cached
@@ -786,17 +843,17 @@ func resolveExpectedPathCount(nqn, clusterID, lvolID string, currentActive int) 
 }
 
 func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []path) error {
-	sbcClient, err := NewsimplyBlockClient(clusterID, "")
+	sbcClient, err := NewsimplyBlockClient(context.Background(), clusterID, "")
 	if err != nil {
 		return fmt.Errorf("failed to create SimplyBlock client: %w", err)
 	}
 
-	nodeInfo, err := fetchNodeInfo(sbcClient, lvolID)
+	nodeInfo, err := fetchNodeInfo(context.Background(), sbcClient, lvolID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch node info for lvol %s: %w", lvolID, err)
 	}
 
-	expectedConns, err := fetchLvolConnection(sbcClient, lvolID, "")
+	expectedConns, err := fetchLvolConnection(context.Background(), sbcClient, lvolID, "")
 	if err != nil {
 		return fmt.Errorf("failed to fetch connections for lvol %s: %w", lvolID, err)
 	}
@@ -832,7 +889,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 }
 
 func reconcileOptimizedPath(
-	sbcClient *NodeNVMf,
+	sbcClient *ClusterClient,
 	nodeInfo *NodeInfo,
 	devicePath string,
 	conn *LvolConnectResp,
@@ -840,12 +897,12 @@ func reconcileOptimizedPath(
 	ctrlLossTmo int,
 ) {
 	if len(active) == 0 {
-		if !isNodeOnline(sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
+		if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
 			klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping", nodeInfo.NodeID)
 			return
 		}
 		klog.Infof("reconcileOptimizedPath: connecting missing optimized path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
+		if err := connectViaNVMe(context.Background(), conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileOptimizedPath: connect to %s failed: %v", conn.IP, err)
 		}
 		return
@@ -856,11 +913,11 @@ func reconcileOptimizedPath(
 		return
 	}
 
-	if !isNodeOnline(sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
+	if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
 		klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping IP change reconnect", nodeInfo.NodeID)
 		return
 	}
-	if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
+	if err := connectViaNVMe(context.Background(), conn, ctrlLossTmo, 1); err != nil {
 		klog.Errorf("reconcileOptimizedPath: connect to new IP %s failed: %v", conn.IP, err)
 	}
 }
@@ -868,7 +925,7 @@ func reconcileOptimizedPath(
 // reconcileNonOptimizedPaths handles connections[1..N] (secondary nodes).
 // Works for both 2-path (1 secondary) and 3-path (2 secondaries).
 func reconcileNonOptimizedPaths(
-	sbcClient *NodeNVMf,
+	sbcClient *ClusterClient,
 	nodeInfo *NodeInfo,
 	devicePath string,
 	conns []*LvolConnectResp,
@@ -906,7 +963,7 @@ func reconcileNonOptimizedPaths(
 			continue // skip primary
 		}
 		totalSecondaries++
-		if isNodeOnline(sbcClient, nodeID, "", 0) {
+		if isNodeOnline(context.Background(), sbcClient, nodeID, "", 0) {
 			onlineSecondaries++
 		}
 	}
@@ -935,7 +992,7 @@ func reconcileNonOptimizedPaths(
 			continue
 		}
 		klog.Infof("reconcileNonOptimizedPaths: connecting missing path ip=%s", conn.IP)
-		if err := connectViaNVMe(conn, ctrlLossTmo, 1); err != nil {
+		if err := connectViaNVMe(context.Background(), conn, ctrlLossTmo, 1); err != nil {
 			klog.Errorf("reconcileNonOptimizedPaths: connect to %s failed: %v", conn.IP, err)
 		}
 	}
