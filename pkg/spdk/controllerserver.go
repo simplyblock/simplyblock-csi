@@ -528,15 +528,13 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		pvcFullName = pvcName
 	}
 
-	hostID, err := getHostIDAnnotation(ctx, pvcName, pvcNamespace)
+	pvcAnns, err := fetchPVCAnnotations(ctx, pvcName, pvcNamespace)
 	if err != nil {
 		return nil, err
 	}
 
-	lvolID, err := getLvolIDAnnotation(ctx, pvcName, pvcNamespace)
-	if err != nil {
-		return nil, err
-	}
+	hostID := pvcAnnotation(pvcAnns, annotationHostID, deprecatedAnnotationHostID)
+	lvolID := pvcAnnotation(pvcAnns, annotationLvolID, deprecatedAnnotationLvolID)
 
 	// QoS from StorageClass, overridable per-PVC via annotations.
 	maxRWIOPS := params["qos_rw_iops"]
@@ -544,21 +542,17 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	maxRmBytes := params["qos_r_mbytes"]
 	maxWmBytes := params["qos_w_mbytes"]
 	if pvcNameSelected && pvcNamespaceSelected {
-		qos, qosErr := getQoSAnnotations(ctx, pvcName, pvcNamespace)
-		if qosErr != nil {
-			return nil, qosErr
+		if v := pvcAnnotation(pvcAnns, annotationQoSRWIOPS, deprecatedAnnotationQoSRWIOPS); v != "" {
+			maxRWIOPS = v
 		}
-		if qos.RWIOPS != "" {
-			maxRWIOPS = qos.RWIOPS
+		if v := pvcAnnotation(pvcAnns, annotationQoSRWMBps, deprecatedAnnotationQoSRWMBps); v != "" {
+			maxRWmBytes = v
 		}
-		if qos.RWMBps != "" {
-			maxRWmBytes = qos.RWMBps
+		if v := pvcAnnotation(pvcAnns, annotationQoSRMBps, deprecatedAnnotationQoSRMBps); v != "" {
+			maxRmBytes = v
 		}
-		if qos.RMBps != "" {
-			maxRmBytes = qos.RMBps
-		}
-		if qos.WMBps != "" {
-			maxWmBytes = qos.WMBps
+		if v := pvcAnnotation(pvcAnns, annotationQoSWMBps, deprecatedAnnotationQoSWMBps); v != "" {
+			maxWmBytes = v
 		}
 	}
 
@@ -967,85 +961,26 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 	return vol, nil
 }
 
-func getHostIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
+func fetchPVCAnnotations(ctx context.Context, pvcName, pvcNamespace string) (map[string]string, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		klog.Errorf("failed to get in-cluster config: %v", err)
-		return "", fmt.Errorf("could not get in-cluster config: %w", err)
+		return nil, fmt.Errorf("could not get in-cluster config: %w", err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		klog.Errorf("failed to create clientset: %v", err)
-		return "", fmt.Errorf("could not create clientset: %w", err)
+		return nil, fmt.Errorf("could not create clientset: %w", err)
 	}
 
 	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
-		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
+		return nil, fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
 	}
 
-	hostID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationHostID, deprecatedAnnotationHostID)
-	if hostID == "" {
-		return "", nil
-	}
-
-	return hostID, nil
-}
-
-func getLvolIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("failed to get in-cluster config: %v", err)
-		return "", fmt.Errorf("could not get in-cluster config: %w", err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorf("failed to create clientset: %v", err)
-		return "", fmt.Errorf("could not create clientset: %w", err)
-	}
-
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
-		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
-	}
-
-	lvolID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationLvolID, deprecatedAnnotationLvolID)
-	if lvolID == "" {
-		return "", nil
-	}
-
-	return lvolID, nil
-}
-
-func getNvmfModelIDAnnotation(ctx context.Context, pvcName, pvcNamespace string) (string, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("failed to get in-cluster config: %v", err)
-		return "", fmt.Errorf("could not get in-cluster config: %w", err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorf("failed to create clientset: %v", err)
-		return "", fmt.Errorf("could not create clientset: %w", err)
-	}
-
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
-		return "", fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
-	}
-
-	modelID := pvcAnnotation(pvc.ObjectMeta.Annotations, annotationNvmfModelID, deprecatedAnnotationNvmfModelID)
-	if modelID == "" {
-		return "", nil
-	}
-
-	return modelID, nil
+	return pvc.ObjectMeta.Annotations, nil
 }
 
 // pvcAnnotation returns the value for newKey, falling back to deprecatedKey for backward compat.
@@ -1056,39 +991,3 @@ func pvcAnnotation(annotations map[string]string, newKey, deprecatedKey string) 
 	return annotations[deprecatedKey]
 }
 
-// qosAnnotations holds per-PVC QoS override values read from PVC annotations.
-type qosAnnotations struct {
-	RWIOPS string
-	RWMBps string
-	RMBps  string
-	WMBps  string
-}
-
-// getQoSAnnotations returns per-PVC QoS overrides from PVC annotations.
-func getQoSAnnotations(ctx context.Context, pvcName, pvcNamespace string) (qosAnnotations, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("failed to get in-cluster config: %v", err)
-		return qosAnnotations{}, fmt.Errorf("could not get in-cluster config: %w", err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.Errorf("failed to create clientset: %v", err)
-		return qosAnnotations{}, fmt.Errorf("could not create clientset: %w", err)
-	}
-
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get PVC %s in namespace %s: %v", pvcName, pvcNamespace, err)
-		return qosAnnotations{}, fmt.Errorf("could not get PVC %s in namespace %s: %w", pvcName, pvcNamespace, err)
-	}
-
-	annotations := pvc.ObjectMeta.Annotations
-	return qosAnnotations{
-		RWIOPS: pvcAnnotation(annotations, annotationQoSRWIOPS, deprecatedAnnotationQoSRWIOPS),
-		RWMBps: pvcAnnotation(annotations, annotationQoSRWMBps, deprecatedAnnotationQoSRWMBps),
-		RMBps:  pvcAnnotation(annotations, annotationQoSRMBps, deprecatedAnnotationQoSRMBps),
-		WMBps:  pvcAnnotation(annotations, annotationQoSWMBps, deprecatedAnnotationQoSWMBps),
-	}, nil
-}
