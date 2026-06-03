@@ -116,7 +116,7 @@ csiConfig:
 # Configuration for the csiSecret
 csiSecret:
   simplybk:
-    secret: 
+    secret:
 
 logicalVolume:
   pool_name: testing1
