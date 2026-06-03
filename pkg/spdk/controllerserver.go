@@ -451,6 +451,10 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	csiSnapshotID := req.GetSnapshotId()
+
+	unlock := cs.volumeLocks.Lock(csiSnapshotID)
+	defer unlock()
+
 	sbSnapshot, err := getSnapshot(csiSnapshotID)
 	if err != nil {
 		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
@@ -461,9 +465,6 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	unlock := cs.volumeLocks.Lock(csiSnapshotID)
-	defer unlock()
 
 	klog.Infof("Deleting Snapshot : csiSnapshotID=%s sbSnapshotID=%s", csiSnapshotID, sbSnapshot.snapshotID)
 
@@ -709,6 +710,9 @@ func (cs *controllerServer) unpublishVolume(ctx context.Context, volumeID string
 
 func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
+	unlock := cs.volumeLocks.Lock(volumeID)
+	defer unlock()
+
 	updatedSize := req.GetCapacityRange().GetRequiredBytes()
 
 	// Simplyblock backends are GiB aligned, so we round up to GiB.
