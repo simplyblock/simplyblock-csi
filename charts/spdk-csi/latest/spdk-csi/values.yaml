@@ -81,7 +81,7 @@ controller:
 
 storageclass:
   create: true
-  volumeBindingMode: Immediate
+  volumeBindingMode: WaitForFirstConsumer
   zoneClusterMap: {}
   allowedTopologyZones: []
   annotations: {}
@@ -110,16 +110,16 @@ spdkdev:
 # Configuration for the CSI to connect to the cluster
 csiConfig:
   simplybk:
-    uuid: 66c78848-633b-45de-a8a4-8557241157e3
-    ip: http://192.168.10.91
+    uuid:
+    ip:
 
 # Configuration for the csiSecret
 csiSecret:
   simplybk:
-    secret: iwy5UzBSsppxu3EyGlKG
+    secret: 
 
 logicalVolume:
-  pool_name: pool1
+  pool_name: testing1
   qos_rw_iops: "0"
   qos_rw_mbytes: "0"
   qos_r_mbytes: "0"
@@ -131,7 +131,7 @@ logicalVolume:
   numDataChunks: "1"
   numParityChunks: "1"
   lvol_priority_class: "0"
-  max_namespace_per_subsys: "50"
+  max_namespace_per_subsys: "1"
   tune2fs_reserved_blocks: "0"
   fabric: tcp
 
