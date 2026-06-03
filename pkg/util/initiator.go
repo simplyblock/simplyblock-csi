@@ -686,8 +686,9 @@ func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*
 	return &info, nil
 }
 
-func isTCPReachable(ip string, port int) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), 2*time.Second)
+func isTCPReachable(ctx context.Context, ip string, port int) bool {
+	d := net.Dialer{Timeout: 2 * time.Second}
+	conn, err := d.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", ip, port))
 	if err != nil {
 		return false
 	}
@@ -705,7 +706,7 @@ func isNodeOnline(ctx context.Context, client *ClusterClient, nodeID, ip string,
 		return false
 	}
 	if ip != "" && port != 0 {
-		if !isTCPReachable(ip, port) {
+		if !isTCPReachable(ctx, ip, port) {
 			klog.Infof("isNodeOnline: node %s API online but %s:%d not TCP-reachable", nodeID, ip, port)
 			return false
 		}
@@ -974,7 +975,7 @@ func reconcileNonOptimizedPaths(
 
 	tcpReachable := 0
 	for _, conn := range conns {
-		if isTCPReachable(conn.IP, conn.Port) {
+		if isTCPReachable(context.Background(), conn.IP, conn.Port) {
 			tcpReachable++
 		}
 	}
@@ -987,7 +988,7 @@ func reconcileNonOptimizedPaths(
 		if _, exists := activeIPMap[conn.IP]; exists {
 			continue
 		}
-		if !isTCPReachable(conn.IP, conn.Port) {
+		if !isTCPReachable(context.Background(), conn.IP, conn.Port) {
 			klog.Infof("reconcileNonOptimizedPaths: %s:%d not TCP-reachable, skipping", conn.IP, conn.Port)
 			continue
 		}
