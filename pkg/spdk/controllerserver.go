@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -621,9 +620,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	vol.VolumeContext["qos_r_mbytes"] = createVolReq.MaxRmBytes
 	vol.VolumeContext["qos_w_mbytes"] = createVolReq.MaxWmBytes
 
-	createCtx, createCancel := context.WithTimeout(ctx, 300*time.Millisecond)
-	defer createCancel()
-	volumeID, err := sbclient.CreateVolume(createCtx, createVolReq)
+	volumeID, err := sbclient.CreateVolume(ctx, createVolReq)
 	if err != nil {
 		if errors.Is(err, util.ErrJSONVolumeExists) {
 			klog.Infof("createVolume: volume %q already exists, searching for online match", req.GetName())
