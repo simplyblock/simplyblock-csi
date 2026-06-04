@@ -627,16 +627,17 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 			volumes, listErr := sbclient.ListVolumes(ctx)
 			if listErr != nil {
 				klog.Errorf("createVolume: failed to list volumes during exists fallback: %v", listErr)
-				return nil, err
+				return nil, listErr
 			}
 			for _, v := range volumes {
-				if v.Name == req.GetName() && v.Status == "online" {
+				if v.Name == req.GetName() && strings.EqualFold(v.Status, "online") {
 					klog.Infof("createVolume: found online existing volume %q id=%s", req.GetName(), v.UUID)
 					vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), v.UUID)
 					return &vol, nil
 				}
 			}
-			klog.Errorf("createVolume: volume %q exists but is not online", req.GetName())
+			klog.Errorf("createVolume: volume %q exists but is not online yet", req.GetName())
+			return nil, status.Errorf(codes.AlreadyExists, "volume %q exists but is not online yet", req.GetName())
 		}
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
