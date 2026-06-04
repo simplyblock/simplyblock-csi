@@ -225,7 +225,7 @@ func (client APIClient) createVolume(ctx context.Context, poolID string, params 
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
-		} else if strings.Contains(strings.ToLower(err.Error()), "exists") || strings.Contains(strings.ToLower(err.Error()), "conflict") {
+		} else if lower := strings.ToLower(err.Error()); (strings.Contains(lower, "volume") && strings.Contains(lower, "exists")) || strings.Contains(lower, "conflict") {
 			err = ErrJSONVolumeExists
 		}
 		return "", err
