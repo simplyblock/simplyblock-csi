@@ -107,7 +107,6 @@ var (
 	// without querying the API on every cycle.
 	maxSeenPathsMap = make(map[string]int)
 	maxSeenMu       sync.Mutex
-
 )
 
 // clusterConfig represents the Kubernetes secret structure
@@ -689,7 +688,7 @@ func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*
 }
 
 func isTCPReachable(ctx context.Context, ip string, port int) bool {
-	d := net.Dialer{Timeout: 2 * time.Second}
+	d := net.Dialer{Timeout: 1 * time.Second}
 	conn, err := d.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", ip, port))
 	if err != nil {
 		return false
