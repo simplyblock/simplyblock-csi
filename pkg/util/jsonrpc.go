@@ -35,6 +35,7 @@ import (
 var (
 	ErrJSONNoSpaceLeft  = errors.New("json: No space left")
 	ErrJSONNoSuchDevice = errors.New("json: No such device")
+	ErrJSONVolumeExists = errors.New("json: Volume exists")
 
 	// internal errors
 	ErrVolumeDeleted     = errors.New("volume deleted")
@@ -224,6 +225,8 @@ func (client APIClient) createVolume(ctx context.Context, poolID string, params 
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
+		} else if errorMatches(err, ErrJSONVolumeExists) || strings.Contains(strings.ToLower(err.Error()), "conflict") {
+			err = ErrJSONVolumeExists
 		}
 		return "", err
 	}
