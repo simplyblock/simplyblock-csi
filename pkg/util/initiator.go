@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
+
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -40,6 +42,9 @@ const (
 	// TargetTypeNVMf is the target type for NVMe over Fabrics
 	TargetTypeTCP  = "tcp"
 	TargetTypeRDMA = "rdma"
+
+	// DefaultCtrlLossTmo is the NVMe-oF controller loss timeout in seconds.
+	DefaultCtrlLossTmo = 60
 )
 
 // SpdkCsiInitiator defines interface for NVMeoF/iSCSI initiator
@@ -105,7 +110,6 @@ var (
 	// without querying the API on every cycle.
 	maxSeenPathsMap = make(map[string]int)
 	maxSeenMu       sync.Mutex
-
 )
 
 // clusterConfig represents the Kubernetes secret structure
@@ -257,7 +261,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 			return "", err
 		}
 
-		ctrlLossTmo := connections[0].CtrlLossTmo
+		ctrlLossTmo := DefaultCtrlLossTmo
 
 		connected := 0
 		var lastErr error
@@ -686,13 +690,41 @@ func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*
 	return &info, nil
 }
 
-func isNodeOnline(ctx context.Context, client *ClusterClient, nodeID string) bool {
+func isAnyConnReachable(ctx context.Context, conns []*LvolConnectResp) bool {
+	for _, conn := range conns {
+		if isTCPReachable(ctx, conn.IP, conn.Port) {
+			return true
+		}
+	}
+	return false
+}
+
+func isTCPReachable(ctx context.Context, ip string, port int) bool {
+	d := net.Dialer{Timeout: 1 * time.Second}
+	conn, err := d.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", ip, port))
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+func isNodeOnline(ctx context.Context, client *ClusterClient, nodeID, ip string, port int) bool {
 	status, err := client.API.getStorageNodeStatus(ctx, nodeID)
 	if err != nil {
 		klog.Errorf("failed to fetch node status for node %s: %v", nodeID, err)
 		return false
 	}
-	return status == "online"
+	if status != "online" {
+		return false
+	}
+	if ip != "" && port != 0 {
+		if !isTCPReachable(ctx, ip, port) {
+			klog.Infof("isNodeOnline: node %s API online but %s:%d not TCP-reachable", nodeID, ip, port)
+			return false
+		}
+	}
+	return true
 }
 
 func fetchLvolConnection(ctx context.Context, client *ClusterClient, lvolID string, hostNQN string) ([]*LvolConnectResp, error) {
@@ -726,24 +758,6 @@ func connectViaNVMe(ctx context.Context, conn *LvolConnectResp, ctrlLossTmo int,
 		klog.Errorf("nvme connect failed: %v", err)
 		return err
 	}
-	return nil
-}
-
-func disconnectViaNVMe(ctx context.Context, devicePath string, path path) error {
-	cmd := []string{
-		"nvme", "disconnect", "-d", path.Name,
-	}
-
-	if err := execWithTimeoutRetry(ctx, cmd, 40, 1); err != nil {
-		klog.Errorf("nvme disconnect failed: %v", err)
-		return err
-	}
-
-	mu.Lock()
-	delete(devicePresentMap, devicePath)
-	delete(deviceToLvolIDMap, devicePath)
-	mu.Unlock()
-
 	return nil
 }
 
@@ -784,10 +798,10 @@ func confirmSubsystemNeedsRecovery(subsystem *subsystem, devicePath string, init
 // IP-changed paths. Supports 1-path, 2-path, and 3-path volumes
 // (1 optimized + up to 2 non-optimized).
 const (
-	monitorBaseInterval  = 3 * time.Second
-	monitorJitter        = 500 * time.Millisecond
-	monitorMaxBackoff    = 60 * time.Second
-	monitorCircuitAfter  = 5
+	monitorBaseInterval    = 3 * time.Second
+	monitorJitter          = 500 * time.Millisecond
+	monitorMaxBackoff      = 60 * time.Second
+	monitorCircuitAfter    = 5
 	monitorCircuitCooldown = 30 * time.Second
 )
 
@@ -900,7 +914,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 	}
 	maxSeenMu.Unlock()
 
-	ctrlLossTmo := expectedConns[0].CtrlLossTmo
+	ctrlLossTmo := DefaultCtrlLossTmo
 
 	optConn := expectedConns[0]
 	nonOptConns := expectedConns[1:]
@@ -929,7 +943,7 @@ func reconcileOptimizedPath(
 	ctrlLossTmo int,
 ) {
 	if len(active) == 0 {
-		if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID) {
+		if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
 			klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping", nodeInfo.NodeID)
 			return
 		}
@@ -945,13 +959,8 @@ func reconcileOptimizedPath(
 		return
 	}
 
-	if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID) {
+	if !isNodeOnline(context.Background(), sbcClient, nodeInfo.NodeID, conn.IP, conn.Port) {
 		klog.Infof("reconcileOptimizedPath: primary node %s not yet online, skipping IP change reconnect", nodeInfo.NodeID)
-		return
-	}
-	klog.Infof("reconcileOptimizedPath: IP changed old=%s new=%s, reconnecting", activeIP, conn.IP)
-	if err := disconnectViaNVMe(context.Background(), devicePath, active[0]); err != nil {
-		klog.Errorf("reconcileOptimizedPath: disconnect stale %s failed: %v", activeIP, err)
 		return
 	}
 	if err := connectViaNVMe(context.Background(), conn, ctrlLossTmo, 1); err != nil {
@@ -987,12 +996,8 @@ func reconcileNonOptimizedPaths(
 	}
 
 	// Step 1: disconnect stale paths (IP no longer expected → node IP changed).
-	for ip, p := range activeIPMap {
+	for ip, _ := range activeIPMap {
 		if !expectedIPSet[ip] {
-			klog.Infof("reconcileNonOptimizedPaths: stale IP %s disconnecting", ip)
-			if err := disconnectViaNVMe(context.Background(), devicePath, p); err != nil {
-				klog.Errorf("reconcileNonOptimizedPaths: disconnect stale %s failed: %v", ip, err)
-			}
 			delete(activeIPMap, ip)
 		}
 	}
@@ -1004,7 +1009,7 @@ func reconcileNonOptimizedPaths(
 			continue // skip primary
 		}
 		totalSecondaries++
-		if isNodeOnline(context.Background(), sbcClient, nodeID) {
+		if isNodeOnline(context.Background(), sbcClient, nodeID, "", 0) {
 			onlineSecondaries++
 		}
 	}
@@ -1013,8 +1018,17 @@ func reconcileNonOptimizedPaths(
 		return
 	}
 
+	if len(conns) > 0 && !isAnyConnReachable(context.Background(), conns) {
+		klog.Infof("reconcileNonOptimizedPaths: no secondary NVMe-oF endpoints TCP-reachable, skipping")
+		return
+	}
+
 	for _, conn := range conns {
 		if _, exists := activeIPMap[conn.IP]; exists {
+			continue
+		}
+		if !isTCPReachable(context.Background(), conn.IP, conn.Port) {
+			klog.Infof("reconcileNonOptimizedPaths: %s:%d not TCP-reachable, skipping", conn.IP, conn.Port)
 			continue
 		}
 		klog.Infof("reconcileNonOptimizedPaths: connecting missing path ip=%s", conn.IP)
