@@ -690,6 +690,15 @@ func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*
 	return &info, nil
 }
 
+func isAnyConnReachable(ctx context.Context, conns []*LvolConnectResp) bool {
+	for _, conn := range conns {
+		if isTCPReachable(ctx, conn.IP, conn.Port) {
+			return true
+		}
+	}
+	return false
+}
+
 func isTCPReachable(ctx context.Context, ip string, port int) bool {
 	d := net.Dialer{Timeout: 1 * time.Second}
 	conn, err := d.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", ip, port))
@@ -1009,14 +1018,7 @@ func reconcileNonOptimizedPaths(
 		return
 	}
 
-	anyReachable := false
-	for _, conn := range conns {
-		if isTCPReachable(context.Background(), conn.IP, conn.Port) {
-			anyReachable = true
-			break
-		}
-	}
-	if len(conns) > 0 && !anyReachable {
+	if len(conns) > 0 && !isAnyConnReachable(context.Background(), conns) {
 		klog.Infof("reconcileNonOptimizedPaths: no secondary NVMe-oF endpoints TCP-reachable, skipping")
 		return
 	}
