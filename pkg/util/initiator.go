@@ -1009,13 +1009,14 @@ func reconcileNonOptimizedPaths(
 		return
 	}
 
-	tcpReachable := 0
+	anyReachable := false
 	for _, conn := range conns {
 		if isTCPReachable(context.Background(), conn.IP, conn.Port) {
-			tcpReachable++
+			anyReachable = true
+			break
 		}
 	}
-	if len(conns) > 0 && tcpReachable == 0 {
+	if len(conns) > 0 && !anyReachable {
 		klog.Infof("reconcileNonOptimizedPaths: no secondary NVMe-oF endpoints TCP-reachable, skipping")
 		return
 	}
