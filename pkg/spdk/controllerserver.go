@@ -621,7 +621,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	vol.VolumeContext["qos_r_mbytes"] = createVolReq.MaxRmBytes
 	vol.VolumeContext["qos_w_mbytes"] = createVolReq.MaxWmBytes
 
-	createCtx, createCancel := context.WithTimeout(ctx, 1*time.Second)
+	createCtx, createCancel := context.WithTimeout(ctx, 300*time.Millisecond)
 	defer createCancel()
 	volumeID, err := sbclient.CreateVolume(createCtx, createVolReq)
 	if err != nil {
