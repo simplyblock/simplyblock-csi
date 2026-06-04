@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"math/rand"
+
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -784,12 +786,44 @@ func confirmSubsystemNeedsRecovery(subsystem *subsystem, devicePath string, init
 // MonitorConnection monitors NVMe-oF connections and reconnects missing or
 // IP-changed paths. Supports 1-path, 2-path, and 3-path volumes
 // (1 optimized + up to 2 non-optimized).
+const (
+	monitorBaseInterval  = 3 * time.Second
+	monitorJitter        = 500 * time.Millisecond
+	monitorMaxBackoff    = 60 * time.Second
+	monitorCircuitAfter  = 5
+	monitorCircuitCooldown = 30 * time.Second
+)
+
 func MonitorConnection(markBroken func(lvolID string)) {
+	var (
+		consecutiveErrors int
+		backoff           = monitorBaseInterval
+	)
+
 	for {
-		if err := reconnectSubsystems(markBroken); err != nil {
-			klog.Errorf("MonitorConnection error: %v", err)
+		err := reconnectSubsystems(markBroken)
+		if err != nil {
+			consecutiveErrors++
+			klog.Errorf("MonitorConnection error (%d consecutive): %v", consecutiveErrors, err)
+
+			if consecutiveErrors >= monitorCircuitAfter {
+				klog.Warningf("MonitorConnection: circuit open after %d failures, cooling down for %s", consecutiveErrors, monitorCircuitCooldown)
+				time.Sleep(monitorCircuitCooldown)
+				continue
+			}
+
+			// exponential backoff capped at monitorMaxBackoff
+			backoff *= 2
+			if backoff > monitorMaxBackoff {
+				backoff = monitorMaxBackoff
+			}
+		} else {
+			consecutiveErrors = 0
+			backoff = monitorBaseInterval
 		}
-		time.Sleep(3 * time.Second)
+
+		jitter := time.Duration(rand.Int63n(int64(monitorJitter)))
+		time.Sleep(backoff + jitter)
 	}
 }
 
