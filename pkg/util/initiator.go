@@ -21,8 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"math/rand"
+	"net"
 
 	"os/exec"
 	"path/filepath"
@@ -42,6 +42,9 @@ const (
 	// TargetTypeNVMf is the target type for NVMe over Fabrics
 	TargetTypeTCP  = "tcp"
 	TargetTypeRDMA = "rdma"
+
+	// DefaultCtrlLossTmo is the NVMe-oF controller loss timeout in seconds.
+	DefaultCtrlLossTmo = 60
 )
 
 // SpdkCsiInitiator defines interface for NVMeoF/iSCSI initiator
@@ -258,7 +261,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 			return "", err
 		}
 
-		ctrlLossTmo := 60
+		ctrlLossTmo := DefaultCtrlLossTmo
 
 		connected := 0
 		var lastErr error
@@ -786,10 +789,10 @@ func confirmSubsystemNeedsRecovery(subsystem *subsystem, devicePath string, init
 // IP-changed paths. Supports 1-path, 2-path, and 3-path volumes
 // (1 optimized + up to 2 non-optimized).
 const (
-	monitorBaseInterval  = 3 * time.Second
-	monitorJitter        = 500 * time.Millisecond
-	monitorMaxBackoff    = 60 * time.Second
-	monitorCircuitAfter  = 5
+	monitorBaseInterval    = 3 * time.Second
+	monitorJitter          = 500 * time.Millisecond
+	monitorMaxBackoff      = 60 * time.Second
+	monitorCircuitAfter    = 5
 	monitorCircuitCooldown = 30 * time.Second
 )
 
@@ -902,7 +905,7 @@ func recoverPathsWithANA(clusterID, lvolID, devicePath string, activePaths []pat
 	}
 	maxSeenMu.Unlock()
 
-	ctrlLossTmo := 60
+	ctrlLossTmo := DefaultCtrlLossTmo
 
 	optConn := expectedConns[0]
 	nonOptConns := expectedConns[1:]
