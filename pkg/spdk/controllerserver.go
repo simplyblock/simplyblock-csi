@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -620,7 +621,9 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	vol.VolumeContext["qos_r_mbytes"] = createVolReq.MaxRmBytes
 	vol.VolumeContext["qos_w_mbytes"] = createVolReq.MaxWmBytes
 
-	volumeID, err := sbclient.CreateVolume(ctx, createVolReq)
+	createCtx, createCancel := context.WithTimeout(ctx, 1*time.Second)
+	defer createCancel()
+	volumeID, err := sbclient.CreateVolume(createCtx, createVolReq)
 	if err != nil {
 		if errors.Is(err, util.ErrJSONVolumeExists) {
 			klog.Infof("createVolume: volume %q already exists, searching for online match", req.GetName())
@@ -1010,4 +1013,3 @@ func pvcAnnotation(annotations map[string]string, newKey, deprecatedKey string) 
 	}
 	return annotations[deprecatedKey]
 }
-
