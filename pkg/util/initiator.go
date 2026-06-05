@@ -69,6 +69,7 @@ type initiatorNVMf struct {
 	nsId           string
 	hostIface      string
 	hostNQN        string
+	poolID         string
 }
 
 type path struct {
@@ -223,6 +224,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			nsId:           volumeContext["nsId"],
 			hostIface:      volumeContext["hostIface"],
 			hostNQN:        volumeContext["hostNQN"],
+			poolID:         volumeContext["poolID"],
 		}, nil
 
 	default:
@@ -250,7 +252,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 
 	if !alreadyConnected {
 		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
-		sbcClient, err := NewsimplyBlockClient(ctx, clusterID, "")
+		sbcClient, err := NewsimplyBlockClient(ctx, clusterID, nvmf.poolID)
 		if err != nil {
 			klog.Errorf("failed to create SPDK client: %v", err)
 			return "", err
