@@ -60,6 +60,7 @@ type SpdkCsiInitiator interface {
 
 // initiatorNVMf is an implementation of NVMf tcp initiator
 type initiatorNVMf struct {
+	name           string // lvolID
 	targetType     string
 	nqn            string
 	reconnectDelay string
@@ -225,6 +226,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			hostIface:      volumeContext["hostIface"],
 			hostNQN:        volumeContext["hostNQN"],
 			poolID:         volumeContext["poolID"],
+			name:           volumeContext["name"],
 		}, nil
 
 	default:
@@ -289,14 +291,19 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 
 	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
 
-	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 20)
+	deviceGlobFallback := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.name, nvmf.nsId))
+
+	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 10)
 	if err != nil {
 		klog.Warningf("New device symlink not found (%s). Retrying legacy format: %s", deviceGlob, deviceGlobOld)
-
 		devicePath, err = waitForDeviceReady(ctx, deviceGlobOld, 10)
 		if err != nil {
-			return "", fmt.Errorf("device not found in both new (%s) and old (%s) formats: %w",
-				deviceGlob, deviceGlobOld, err)
+			klog.Warningf("Legacy format not found (%s). Retrying with fallback: %s", deviceGlobOld, deviceGlobFallback)
+			devicePath, err = waitForDeviceReady(ctx, deviceGlobFallback, 10)
+			if err != nil {
+				return "", fmt.Errorf("device not found in both new (%s), old (%s), and fallback (%s) formats: %w",
+					deviceGlob, deviceGlobOld, deviceGlobFallback, err)
+			}
 		}
 	}
 	return devicePath, nil
