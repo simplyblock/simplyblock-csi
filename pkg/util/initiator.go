@@ -303,24 +303,20 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 }
 
 func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
+	//deviceGlob := fmt.Sprintf(DevDiskByID, nvmf.model)
 	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
 	devicePath, err := filepath.Glob(deviceGlob)
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
 
-	seen := make(map[string]bool)
-	for _, dp := range devicePath {
-		realPath, err := filepath.EvalSymlinks(dp)
+	if len(devicePath) > 1 {
+		return nil
+
+	} else if len(devicePath) == 1 {
+		err = disconnectDevicePath(ctx, devicePath[0])
+
 		if err != nil {
-			klog.Warningf("failed to resolve symlink %s: %v, skipping", dp, err)
-			continue
-		}
-		if seen[realPath] {
-			continue
-		}
-		seen[realPath] = true
-		if err := disconnectDevicePath(ctx, dp); err != nil {
 			return err
 		}
 	}
@@ -328,14 +324,10 @@ func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 	return waitForDeviceGone(ctx, deviceGlob)
 }
 
-// wait for device file comes up or timeout (seconds).
+// when timeout is set as 0, try to find the device file immediately
+// otherwise, wait for device file comes up or timeout.
 func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (string, error) {
-	for i := 0; i < seconds; i++ {
-		select {
-		case <-time.After(time.Second):
-		case <-ctx.Done():
-			return "", ctx.Err()
-		}
+	for i := 0; i <= seconds; i++ {
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
 			return "", err
@@ -344,24 +336,29 @@ func waitForDeviceReady(ctx context.Context, deviceGlob string, seconds int) (st
 		if len(matches) >= 1 {
 			return matches[0], nil
 		}
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
 	return "", fmt.Errorf("timed out waiting device ready: %s", deviceGlob)
 }
 
 // wait for device file gone or timeout
 func waitForDeviceGone(ctx context.Context, deviceGlob string) error {
-	for i := 0; i < 20; i++ {
-		select {
-		case <-time.After(time.Second):
-		case <-ctx.Done():
-			return fmt.Errorf("context cancelled waiting for device gone %s: %w", deviceGlob, ctx.Err())
-		}
+	for i := 0; i <= 20; i++ {
 		matches, err := filepath.Glob(deviceGlob)
 		if err != nil {
 			return err
 		}
 		if len(matches) == 0 {
 			return nil
+		}
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled waiting for device gone %s: %w", deviceGlob, ctx.Err())
 		}
 	}
 	return fmt.Errorf("timed out waiting device gone: %s", deviceGlob)
