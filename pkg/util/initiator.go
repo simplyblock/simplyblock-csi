@@ -309,18 +309,12 @@ func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
 	}
 
-	seen := make(map[string]bool)
-	for _, dp := range devicePath {
-		realPath, err := filepath.EvalSymlinks(dp)
-		if err != nil {
-			klog.Warningf("failed to resolve symlink %s: %v, skipping", dp, err)
-			continue
-		}
-		if seen[realPath] {
-			continue
-		}
-		seen[realPath] = true
-		if err := disconnectDevicePath(ctx, dp); err != nil {
+	if len(devicePath) > 1 {
+		return nil
+	}
+
+	if len(devicePath) == 1 {
+		if err := disconnectDevicePath(ctx, devicePath[0]); err != nil {
 			return err
 		}
 	}
