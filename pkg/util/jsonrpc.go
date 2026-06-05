@@ -288,7 +288,6 @@ func (client APIClient) getVolumeInfo(ctx context.Context, poolID, lvolID, hostN
 	for _, r := range result {
 		connections = append(connections, connectionInfo{IP: r.IP, Port: r.Port})
 	}
-	_, model := getLvolIDFromNQN(result[0].Nqn)
 	connectionsData, err := json.Marshal(connections)
 	if err != nil {
 		return nil, err
@@ -301,7 +300,7 @@ func (client APIClient) getVolumeInfo(ctx context.Context, poolID, lvolID, hostN
 		"reconnectDelay": strconv.Itoa(result[0].ReconnectDelay),
 		"nrIoQueues":     strconv.Itoa(result[0].NrIoQueues),
 		"ctrlLossTmo":    strconv.Itoa(result[0].CtrlLossTmo),
-		"model":          model,
+		"model":          lvolID,
 		"targetType":     result[0].TargetType,
 		"connections":    string(connectionsData),
 		"nsId":           strconv.Itoa(result[0].NSID),
