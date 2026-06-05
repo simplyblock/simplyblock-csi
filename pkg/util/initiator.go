@@ -303,7 +303,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 }
 
 func (nvmf *initiatorNVMf) Disconnect(ctx context.Context) error {
-	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", nvmf.model))
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.model, nvmf.nsId))
 	devicePath, err := filepath.Glob(deviceGlob)
 	if err != nil {
 		return fmt.Errorf("failed to find device paths matching %s: %v", deviceGlob, err)
@@ -757,6 +757,10 @@ func connectViaNVMe(ctx context.Context, conn *LvolConnectResp, ctrlLossTmo int,
 		cmd = append(cmd, "-f", conn.HostIface)
 	}
 	if err := execWithTimeoutRetry(ctx, cmd, 40, retries); err != nil {
+		if strings.Contains(err.Error(), "already connected") {
+			klog.Infof("nvme path %s:%d already connected, treating as success", conn.IP, conn.Port)
+			return nil
+		}
 		klog.Errorf("nvme connect failed: %v", err)
 		return err
 	}
