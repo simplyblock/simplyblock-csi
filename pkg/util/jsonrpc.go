@@ -620,7 +620,7 @@ func (client APIClient) do(ctx context.Context, method, path string, body any) (
 		if msg == "" {
 			msg = http.StatusText(resp.StatusCode)
 		}
-		return nil, fmt.Errorf("%s: %s", method, msg)
+		return nil, fmt.Errorf("%s %d: %s", method, resp.StatusCode, msg)
 	}
 
 	return json.RawMessage(raw), nil
