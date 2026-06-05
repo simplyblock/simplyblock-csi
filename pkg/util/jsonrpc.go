@@ -517,6 +517,7 @@ func (client APIClient) findPoolForVolume(ctx context.Context, lvolID string) (s
 		if err == nil {
 			return pool.UUID, nil
 		}
+		// FIXME: instead of parsing error messages, use an HTTP error type with status code
 		if !errorMatches(err, ErrJSONNoSuchDevice) && !strings.Contains(err.Error(), "404") {
 			return "", fmt.Errorf("unexpected error searching for volume %s in pool %s: %w", lvolID, pool.UUID, err)
 		}
