@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -532,6 +532,7 @@ func getSubsystemsForDevice(devicePath string) ([]subsystemResponse, error) {
 // FindDeviceByLvolID returns the /dev/disk/by-id symlink path for the NVMe
 // block device associated with lvolID, or ("", nil) if not connected.
 // The lvolID is used as the device model name by the simplyblock storage layer.
+// For namespaced volumes use FindDeviceByModelAndNsID instead.
 func FindDeviceByLvolID(lvolID string) (string, error) {
 	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", lvolID))
 	matches, err := filepath.Glob(deviceGlob)
@@ -547,9 +548,48 @@ func FindDeviceByLvolID(lvolID string) (string, error) {
 	return matches[0], nil
 }
 
+// FindDeviceByModelAndNsID returns the /dev/disk/by-id symlink for a specific NVMe
+// namespace using its subsystem model number (= subsystem root lvolID) and namespace ID.
+// Use this for namespaced volumes where the model_number != the individual lvolID.
+func FindDeviceByModelAndNsID(model, nsID string) (string, error) {
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", model, nsID))
+	matches, err := filepath.Glob(deviceGlob)
+	if err != nil {
+		return "", fmt.Errorf("glob %s: %w", deviceGlob, err)
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	return matches[0], nil
+}
+
+// DisconnectNvmeDevice runs nvme disconnect for a known real device path (e.g.
+// /dev/nvme0n2) and waits for the kernel device node to disappear.  Use this
+// when NodeUnstageVolume has already resolved the device from the live mount
+// table instead of searching /dev/disk/by-id/ by lvolID.
+func DisconnectNvmeDevice(ctx context.Context, realDevPath string) error {
+	if err := disconnectDevicePath(ctx, realDevPath); err != nil {
+		return err
+	}
+	for i := 0; i < 20; i++ {
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return nil
+		}
+		if _, err := os.Stat(realDevPath); os.IsNotExist(err) {
+			return nil
+		}
+	}
+	return nil
+}
+
 // DisconnectByLvolID disconnects the NVMe device associated with lvolID via
 // OS-level discovery (/dev/disk/by-id).  It is idempotent: returns nil when
 // no matching device is found (already disconnected or never connected).
+// For namespaced volumes NodeUnstageVolume handles ref-counting via live kernel
+// state before calling this; this function is the fallback for block volumes
+// and non-namespaced volumes.
 func DisconnectByLvolID(ctx context.Context, lvolID string) error {
 	devicePath, err := FindDeviceByLvolID(lvolID)
 	if err != nil {
@@ -577,6 +617,69 @@ func getLvolIDFromNQN(nqn string) (clusterID, lvolID string) {
 	return "", ""
 }
 
+// nsIDFromDevicePath extracts the NVMe namespace ID from a kernel device path.
+// "/dev/nvme0n1" → "1", "/dev/nvme1n3" → "3", other paths → "".
+func nsIDFromDevicePath(devPath string) string {
+	base := filepath.Base(devPath)
+	i := strings.Index(base, "nvme")
+	if i < 0 {
+		return ""
+	}
+	rest := base[i+4:]
+	j := 0
+	for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+		j++
+	}
+	if j >= len(rest) || rest[j] != 'n' {
+		return ""
+	}
+	return rest[j+1:]
+}
+
+// NvmeDeviceForStagingPath finds the backing NVMe block device and its subsystem NQN
+// for a staged filesystem volume by querying the live kernel mount table.
+// Returns ("", "") when the path is not a mounted filesystem (e.g. block volume
+// staging dir, already unmounted, or path doesn't exist).
+func NvmeDeviceForStagingPath(stagingTargetPath string) (devicePath, nqn string) {
+	out, err := exec.Command("findmnt", "-n", "-o", "SOURCE", "--target", stagingTargetPath).Output()
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return "", ""
+	}
+	device := strings.TrimSpace(string(out))
+	if resolved, err := filepath.EvalSymlinks(device); err == nil {
+		device = resolved
+	}
+	subsystems, err := getSubsystemsForDevice(device)
+	if err != nil {
+		return device, ""
+	}
+	for _, host := range subsystems {
+		for _, sub := range host.Subsystems {
+			if sub.NQN != "" {
+				return device, sub.NQN
+			}
+		}
+	}
+	return device, ""
+}
+
+// CountConnectedNamespacesForNQN returns the number of NVMe namespace devices
+// currently connected under the given subsystem NQN.
+// The NQN encodes the subsystem model number (root lvolID); all namespace devices
+// in that subsystem share the same model prefix in /dev/disk/by-id/.
+func CountConnectedNamespacesForNQN(nqn string) int {
+	_, model := getLvolIDFromNQN(nqn)
+	if model == "" {
+		return 0
+	}
+	deviceGlob := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_[0-9]*", model))
+	matches, err := filepath.Glob(deviceGlob)
+	if err != nil {
+		return 0
+	}
+	return len(matches)
+}
+
 func parseAddress(address string) string {
 	parts := strings.Split(address, ",")
 	for _, part := range parts {
@@ -587,7 +690,14 @@ func parseAddress(address string) string {
 	return ""
 }
 
-func reconnectSubsystems(markBroken func(lvolID string)) error {
+// reconnectSubsystems scans connected NVMe devices, recovers degraded paths, and
+// detects devices that have disappeared.
+//
+// resolveLvolID maps (nqn, nsId) → the actual per-namespace lvolID.  For
+// namespaced volumes, getLvolIDFromNQN returns the subsystem root UUID for every
+// namespace; the guardian provides this closure so that markBroken receives the
+// correct per-pod lvolID.  Pass nil to fall back to the NQN-parsed root UUID.
+func reconnectSubsystems(markBroken func(lvolID string), resolveLvolID func(nqn, nsID string) string) error {
 	devices, err := getNVMeDeviceInfos()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
@@ -610,9 +720,24 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 
 		for _, host := range subsystems {
 			for _, subsystem := range host.Subsystems {
-				clusterID, lvolID := getLvolIDFromNQN(subsystem.NQN)
-				if lvolID == "" {
+				clusterID, rootLvolID := getLvolIDFromNQN(subsystem.NQN)
+				if rootLvolID == "" {
 					continue
+				}
+
+				// For namespaced volumes every namespace in the same subsystem shares
+				// the same NQN, so getLvolIDFromNQN returns the subsystem root UUID for
+				// all of them.  Use the guardian-provided resolver (which looks up the
+				// lvolID from its persisted RegisterPublish state) to get the actual
+				// per-namespace lvolID so markBroken targets the correct pods.
+				lvolID := rootLvolID
+				if resolveLvolID != nil {
+					nsID := nsIDFromDevicePath(device.devicePath)
+					if nsID != "" {
+						if actual := resolveLvolID(subsystem.NQN, nsID); actual != "" {
+							lvolID = actual
+						}
+					}
 				}
 
 				mu.Lock()
@@ -811,14 +936,18 @@ const (
 	monitorCircuitCooldown = 30 * time.Second
 )
 
-func MonitorConnection(markBroken func(lvolID string)) {
+// MonitorConnection polls NVMe subsystem health and calls markBroken for any
+// device that has disappeared.  resolveLvolID maps (nqn, nsID) to the actual
+// per-namespace lvolID; the guardian provides this so markBroken targets the
+// right pods for namespaced volumes.  Pass nil to fall back to the NQN root UUID.
+func MonitorConnection(markBroken func(lvolID string), resolveLvolID func(nqn, nsID string) string) {
 	var (
 		consecutiveErrors int
 		backoff           = monitorBaseInterval
 	)
 
 	for {
-		err := reconnectSubsystems(markBroken)
+		err := reconnectSubsystems(markBroken, resolveLvolID)
 		if err != nil {
 			consecutiveErrors++
 			klog.Errorf("MonitorConnection error (%d consecutive): %v", consecutiveErrors, err)

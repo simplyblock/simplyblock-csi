@@ -80,11 +80,19 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		ns.guardian = guardian
 	}
 
-	go util.MonitorConnection(func(lvolID string) {
-		if ns.guardian != nil {
-			ns.guardian.MarkBrokenLvol(lvolID)
-		}
-	})
+	go util.MonitorConnection(
+		func(lvolID string) {
+			if ns.guardian != nil {
+				ns.guardian.MarkBrokenLvol(lvolID)
+			}
+		},
+		func(nqn, nsID string) string {
+			if ns.guardian != nil {
+				return ns.guardian.ResolveLvolID(nqn, nsID)
+			}
+			return ""
+		},
+	)
 
 	return ns, nil
 }
@@ -311,20 +319,40 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 	stagingTargetPath := getStagingTargetPath(req)
 
+	// Query the live kernel mount table BEFORE unmounting to determine which NVMe
+	// device backs this volume and how many namespaces share its subsystem NQN.
+	// This is the ref-count for namespaced volumes (multiple lvols per subsystem):
+	// we only run nvme disconnect when this is the last staged namespace.
+	nvmeDevice, subsysNQN := util.NvmeDeviceForStagingPath(stagingTargetPath)
+	skipDisconnect := subsysNQN != "" && util.CountConnectedNamespacesForNQN(subsysNQN) > 1
+
 	err := ns.deleteMountPoint(stagingTargetPath) // idempotent
 	if err != nil {
 		klog.Errorf("failed to delete mount point, targetPath: %s err: %v", stagingTargetPath, err)
 		return nil, status.Errorf(codes.Internal, "unstage volume %s failed: %s", volumeID, err)
 	}
 
+	if skipDisconnect {
+		klog.Infof("NodeUnstageVolume: %s — subsystem %s has other active namespaces, skipping nvme disconnect", volumeID, subsysNQN)
+		return &csi.NodeUnstageVolumeResponse{}, nil
+	}
+
+	if nvmeDevice != "" {
+		// We found the device from the mount — use it directly for a precise disconnect.
+		if err := util.DisconnectNvmeDevice(ctx, nvmeDevice); err != nil {
+			klog.Errorf("failed to disconnect NVMe device %s for volumeID %s: %v", nvmeDevice, volumeID, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		return &csi.NodeUnstageVolumeResponse{}, nil
+	}
+
+	// Fallback: volume was not a filesystem mount (raw block) or staging path was
+	// already gone.  Disconnect via lvolID glob — works for non-namespaced volumes.
 	spdkVol, err := getSPDKVol(volumeID)
 	if err != nil {
 		klog.Errorf("failed to parse volumeID %s: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	// Disconnect by discovering the NVMe device directly from the OS
-	// (/dev/disk/by-id/*<lvolID>*). This is idempotent: returns nil when
-	// the device is already gone (never connected or already disconnected).
 	if err := util.DisconnectByLvolID(ctx, spdkVol.lvolID); err != nil {
 		klog.Errorf("failed to disconnect NVMe device for volumeID %s: %v", volumeID, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -344,7 +372,15 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	if ns.guardian != nil {
-		ns.guardian.RegisterPublish(req.VolumeContext["nqn"], req.TargetPath)
+		if spdkVol, parseErr := getSPDKVol(volumeID); parseErr == nil {
+			ns.guardian.RegisterPublish(
+				spdkVol.lvolID,
+				spdkVol.clusterID,
+				req.VolumeContext["nqn"],
+				req.VolumeContext["nsId"],
+				req.TargetPath,
+			)
+		}
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -416,9 +452,14 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to parse volumeID %s: %v", volumeID, err)
 	}
-	devicePath, err := util.FindDeviceByLvolID(spdkVol.lvolID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to find NVMe device for volume %s: %v", volumeID, err)
+	// For filesystem mounts find the device from the live kernel mount table.
+	// This is correct for namespaced volumes where lvolID != model_number.
+	devicePath, _ := util.NvmeDeviceForStagingPath(volumeMountPath)
+	if devicePath == "" {
+		devicePath, err = util.FindDeviceByLvolID(spdkVol.lvolID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to find NVMe device for volume %s: %v", volumeID, err)
+		}
 	}
 	if devicePath == "" {
 		return nil, status.Errorf(codes.Internal, "NVMe device not found for volume %s (not connected?)", volumeID)
@@ -561,7 +602,15 @@ func (ns *nodeServer) publishVolume(stagingPath string, req *csi.NodePublishVolu
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to parse volumeID %s: %v", req.GetVolumeId(), err)
 		}
-		devicePath, err := util.FindDeviceByLvolID(spdkVol.lvolID)
+		// Use model+nsId from VolumeContext for namespaced volumes (model != lvolID).
+		// Fall back to lvolID glob for non-namespaced volumes.
+		vc := req.GetVolumeContext()
+		var devicePath string
+		if vc["model"] != "" && vc["nsId"] != "" {
+			devicePath, err = util.FindDeviceByModelAndNsID(vc["model"], vc["nsId"])
+		} else {
+			devicePath, err = util.FindDeviceByLvolID(spdkVol.lvolID)
+		}
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to find NVMe device for volume %s: %v", req.GetVolumeId(), err)
 		}

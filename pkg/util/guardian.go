@@ -63,6 +63,11 @@ type persistedLvolState struct {
 	PodUIDs   []string  `json:"podUIDs,omitempty"`
 	ClusterID string    `json:"clusterID,omitempty"`
 	BrokenAt  time.Time `json:"brokenAt,omitempty"`
+	// NQN and NsID are stored for namespaced volumes so that reconnectSubsystems
+	// can map a kernel device path back to the correct per-namespace lvolID after
+	// a CSI pod restart.
+	NQN  string `json:"nqn,omitempty"`
+	NsID string `json:"nsId,omitempty"`
 }
 
 type guardianState struct {
@@ -75,11 +80,15 @@ type LvolState struct {
 	// podUID -> present
 	PodUIDs map[string]struct{} `json:"-"` // persisted as []string
 
-	// derived from NQN
 	ClusterID string `json:"clusterID"`
 
 	// zero value means "not broken"
 	BrokenAt time.Time `json:"brokenAt,omitempty"`
+
+	// NQN and NsID are set for namespaced volumes at RegisterPublish time and
+	// used by ResolveLvolID to map device paths back to per-namespace lvolIDs.
+	NQN  string `json:"nqn,omitempty"`
+	NsID string `json:"nsId,omitempty"`
 }
 
 // Guardian tracks which pod uses which lvol and restarts affected pods
@@ -139,6 +148,8 @@ func (g *Guardian) loadState() {
 				PodUIDs:   set,
 				ClusterID: pls.ClusterID,
 				BrokenAt:  pls.BrokenAt,
+				NQN:       pls.NQN,
+				NsID:      pls.NsID,
 			}
 		}
 	}
@@ -206,10 +217,12 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 	return g, nil
 }
 
-// RegisterPublish records that a volume (identified by NQN) is published to a pod via targetPath.
+// RegisterPublish records that a volume is published to a pod via targetPath.
+// lvolID is the per-namespace lvol UUID (VolumeContext["uuid"]).
+// nqn and nsId are stored so ResolveLvolID can reverse-map kernel device paths
+// to the correct per-namespace lvolID after a CSI pod restart.
 // Call this from NodePublishVolume.
-func (g *Guardian) RegisterPublish(nqn string, targetPath string) {
-	clusterID, lvolID := getLvolIDFromNQN(nqn)
+func (g *Guardian) RegisterPublish(lvolID, clusterID, nqn, nsId, targetPath string) {
 	podUID := podUIDFromTargetPath(targetPath)
 	if lvolID == "" || podUID == "" || clusterID == "" {
 		return
@@ -228,12 +241,36 @@ func (g *Guardian) RegisterPublish(nqn string, targetPath string) {
 	}
 	st.PodUIDs[podUID] = struct{}{}
 	st.ClusterID = clusterID
+	if nqn != "" {
+		st.NQN = nqn
+	}
+	if nsId != "" {
+		st.NsID = nsId
+	}
 
 	if _, exists := g.clusterWasInactive[clusterID]; !exists {
 		g.clusterWasInactive[clusterID] = true
 	}
 
 	g.persistLocked()
+}
+
+// ResolveLvolID returns the lvolID whose published NQN and NsID match the given
+// values.  Used by MonitorConnection to translate a kernel device path (from
+// which nqn and nsId are derived) to the correct per-namespace lvolID.
+// Returns "" if not found.
+func (g *Guardian) ResolveLvolID(nqn, nsID string) string {
+	if nqn == "" || nsID == "" {
+		return ""
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for lvolID, st := range g.lvols {
+		if st != nil && st.NQN == nqn && st.NsID == nsID {
+			return lvolID
+		}
+	}
+	return ""
 }
 
 // RegisterUnpublish removes mapping. Call from NodeUnpublishVolume.
@@ -570,6 +607,8 @@ func (g *Guardian) persistLocked() {
 		pls := persistedLvolState{
 			ClusterID: lvs.ClusterID,
 			BrokenAt:  lvs.BrokenAt,
+			NQN:       lvs.NQN,
+			NsID:      lvs.NsID,
 		}
 		for uid := range lvs.PodUIDs {
 			pls.PodUIDs = append(pls.PodUIDs, uid)
