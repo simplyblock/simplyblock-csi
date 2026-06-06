@@ -330,6 +330,9 @@ func (c *ClusterClient) PublishVolume(ctx context.Context, lvolID string) error 
 func (c *ClusterClient) UnpublishVolume(ctx context.Context, lvolID string) error {
 	_, err := c.API.do(ctx, "GET", c.API.v2volume(c.poolID, lvolID), nil)
 	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			return ErrVolumeUnpublished
+		}
 		return err
 	}
 	klog.V(5).Infof("volume unpublished: %s", lvolID)
