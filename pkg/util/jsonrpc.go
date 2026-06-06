@@ -312,7 +312,7 @@ func (client APIClient) getVolumeInfo(ctx context.Context, poolID, lvolID, hostN
 // deleteVolume deletes a volume by UUID
 func (client APIClient) deleteVolume(ctx context.Context, poolID, lvolID string) error {
 	_, err := client.do(ctx, "DELETE", client.v2volume(poolID, lvolID), nil)
-	if errorMatches(err, ErrJSONNoSuchDevice) {
+	if err != nil && (errorMatches(err, ErrJSONNoSuchDevice) || strings.Contains(err.Error(), "404")) {
 		err = ErrJSONNoSuchDevice
 	}
 	return err
