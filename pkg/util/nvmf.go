@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -309,7 +310,7 @@ func (c *ClusterClient) DeleteVolume(ctx context.Context, lvolID string) error {
 // DeleteSnapshot deletes a snapshot
 func (c *ClusterClient) DeleteSnapshot(ctx context.Context, snapshotID string) error {
 	err := c.API.deleteSnapshot(ctx, c.poolID, snapshotID)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrJSONNoSuchDevice) {
 		return err
 	}
 	klog.V(5).Infof("snapshot deleted: %s", snapshotID)

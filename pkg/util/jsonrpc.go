@@ -480,7 +480,7 @@ func (client APIClient) deleteSnapshot(ctx context.Context, poolID, snapshotID s
 		return client.deleteSnapshotScanPools(ctx, snapshotID)
 	}
 	_, err := client.do(ctx, "DELETE", client.v2snapshot(poolID, snapshotID), nil)
-	if errorMatches(err, ErrJSONNoSuchDevice) {
+	if err != nil && (errorMatches(err, ErrJSONNoSuchDevice) || strings.Contains(err.Error(), "404")) {
 		err = ErrJSONNoSuchDevice
 	}
 	return err
