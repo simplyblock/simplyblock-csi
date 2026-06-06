@@ -28,6 +28,7 @@ import (
 
 type DefaultIdentityServer struct {
 	Driver *CSIDriver
+	csi.UnimplementedIdentityServer
 }
 
 func (ids *DefaultIdentityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
