@@ -60,7 +60,7 @@ type SpdkCsiInitiator interface {
 
 // initiatorNVMf is an implementation of NVMf tcp initiator
 type initiatorNVMf struct {
-	name           string // lvolID
+	lvolID         string
 	targetType     string
 	nqn            string
 	reconnectDelay string
@@ -226,7 +226,7 @@ func NewSpdkCsiInitiator(volumeContext map[string]string) (SpdkCsiInitiator, err
 			hostIface:      volumeContext["hostIface"],
 			hostNQN:        volumeContext["hostNQN"],
 			poolID:         volumeContext["poolID"],
-			name:           volumeContext["name"],
+			lvolID:         volumeContext["uuid"],
 		}, nil
 
 	default:
@@ -253,7 +253,8 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	}
 
 	if !alreadyConnected {
-		clusterID, lvolID := getLvolIDFromNQN(nvmf.nqn)
+		clusterID, _ := getLvolIDFromNQN(nvmf.nqn)
+		lvolID := nvmf.lvolID
 		sbcClient, err := NewsimplyBlockClient(ctx, clusterID, nvmf.poolID)
 		if err != nil {
 			klog.Errorf("failed to create SPDK client: %v", err)
@@ -291,7 +292,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 
 	deviceGlobOld := fmt.Sprintf(DevDiskByID, nvmf.model)
 
-	deviceGlobFallback := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.name, nvmf.nsId))
+	deviceGlobFallback := fmt.Sprintf(DevDiskByID, fmt.Sprintf("%s*_%s", nvmf.lvolID, nvmf.nsId))
 
 	devicePath, err := waitForDeviceReady(ctx, deviceGlob, 10)
 	if err != nil {
