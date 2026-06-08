@@ -588,10 +588,6 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 
 		currentDevices[device.devicePath] = true
 
-		mu.Lock()
-		devicePresentMap[device.devicePath] = true
-		mu.Unlock()
-
 		for _, host := range subsystems {
 			for _, subsystem := range host.Subsystems {
 				clusterID, nqnLvolID := getLvolIDFromNQN(subsystem.NQN)
@@ -605,7 +601,10 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 					lvolID = device.lvolID
 				}
 
+				// Only mark the device present once we have a confirmed lvolID,
+				// so the cleanup loop never sees a device without a mapping.
 				mu.Lock()
+				devicePresentMap[device.devicePath] = true
 				deviceToLvolIDMap[device.devicePath] = lvolID
 				mu.Unlock()
 
