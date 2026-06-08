@@ -24,6 +24,7 @@ import (
 	"math/rand"
 	"net"
 
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -100,6 +101,7 @@ type NodeInfo struct {
 type nvmeDeviceInfo struct {
 	devicePath   string
 	serialNumber string
+	lvolID       string // UUID from /sys/block/<dev>/uuid — set for namespaced LVols
 }
 
 var (
@@ -442,6 +444,17 @@ func disconnectDevicePath(ctx context.Context, devicePath string) error {
 	return nil
 }
 
+// nvmeDeviceUUID reads /sys/block/<dev>/uuid for a device path like /dev/nvme0n2.
+// Returns an empty string if the file is absent or unreadable.
+func nvmeDeviceUUID(devicePath string) string {
+	name := filepath.Base(devicePath)
+	data, err := os.ReadFile(filepath.Join("/sys/block", name, "uuid"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 	cmd := exec.Command("nvme", "list", "-o", "json")
 	output, err := cmd.Output()
@@ -466,8 +479,10 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 					if ns.NameSpace == "" {
 						continue
 					}
+					dp := "/dev/" + ns.NameSpace
 					devices = append(devices, nvmeDeviceInfo{
-						devicePath: "/dev/" + ns.NameSpace,
+						devicePath: dp,
+						lvolID:     nvmeDeviceUUID(dp),
 					})
 				}
 			}
@@ -495,6 +510,7 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 		devices = append(devices, nvmeDeviceInfo{
 			devicePath:   dev.DevicePath,
 			serialNumber: dev.SerialNumber,
+			lvolID:       nvmeDeviceUUID(dev.DevicePath),
 		})
 	}
 	return devices, nil
@@ -578,9 +594,15 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 
 		for _, host := range subsystems {
 			for _, subsystem := range host.Subsystems {
-				clusterID, lvolID := getLvolIDFromNQN(subsystem.NQN)
-				if lvolID == "" {
+				clusterID, nqnLvolID := getLvolIDFromNQN(subsystem.NQN)
+				if nqnLvolID == "" {
 					continue
+				}
+				// Prefer the sysfs UUID for namespaced LVols — it identifies the
+				// exact tenant LVol rather than the hub LVol embedded in the NQN.
+				lvolID := nqnLvolID
+				if device.lvolID != "" {
+					lvolID = device.lvolID
 				}
 
 				mu.Lock()
