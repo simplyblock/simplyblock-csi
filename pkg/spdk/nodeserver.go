@@ -84,7 +84,7 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		if ns.guardian != nil {
 			ns.guardian.MarkBrokenLvol(lvolID)
 		}
-	})
+	}, ns.kubeClient)
 
 	return ns, nil
 }

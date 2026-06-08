@@ -33,6 +33,8 @@ import (
 	"sync"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 )
 
@@ -46,6 +48,8 @@ const (
 
 	// DefaultCtrlLossTmo is the NVMe-oF controller loss timeout in seconds.
 	DefaultCtrlLossTmo = 60
+
+	simplyblockCSIDriver = "csi.simplyblock.io"
 )
 
 // SpdkCsiInitiator defines interface for NVMeoF/iSCSI initiator
@@ -593,12 +597,37 @@ func parseAddress(address string) string {
 	return ""
 }
 
-func reconnectSubsystems(markBroken func(lvolID string)) error {
+// simplyblockLvolSet returns the set of lvolIDs whose PersistentVolumes are
+// provisioned by the simplyblock CSI driver. Returns nil when cs is nil so
+// callers can treat a nil map as "allow all" (degraded / no kube client).
+func simplyblockLvolSet(ctx context.Context, cs kubernetes.Interface) map[string]struct{} {
+	if cs == nil {
+		return nil
+	}
+	pvList, err := cs.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		klog.Warningf("reconnect: failed to list PersistentVolumes, skipping PV ownership check: %v", err)
+		return nil
+	}
+	set := make(map[string]struct{}, len(pvList.Items))
+	for _, pv := range pvList.Items {
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != simplyblockCSIDriver {
+			continue
+		}
+		if h := strings.TrimSpace(pv.Spec.CSI.VolumeHandle); h != "" {
+			set[h] = struct{}{}
+		}
+	}
+	return set
+}
+
+func reconnectSubsystems(markBroken func(lvolID string), cs kubernetes.Interface) error {
 	devices, err := getNVMeDeviceInfos()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
 
+	managedLvols := simplyblockLvolSet(context.Background(), cs)
 	currentDevices := make(map[string]bool)
 
 	for _, device := range devices {
@@ -621,6 +650,14 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 				lvolID := device.lvolID
 				if lvolID == "" {
 					lvolID = nqnLvolID
+				}
+
+				// Only act on CSI driver managed PVs
+				if managedLvols != nil {
+					if _, ok := managedLvols[lvolID]; !ok {
+						klog.Infof("reconnect: skipping NQN %s — lvolID %s not found in simplyblock PVs", subsystem.NQN, lvolID)
+						continue
+					}
 				}
 
 				// Only mark the device present once we have a confirmed lvolID,
@@ -818,14 +855,14 @@ const (
 	monitorCircuitCooldown = 30 * time.Second
 )
 
-func MonitorConnection(markBroken func(lvolID string)) {
+func MonitorConnection(markBroken func(lvolID string), cs kubernetes.Interface) {
 	var (
 		consecutiveErrors int
 		backoff           = monitorBaseInterval
 	)
 
 	for {
-		err := reconnectSubsystems(markBroken)
+		err := reconnectSubsystems(markBroken, cs)
 		if err != nil {
 			consecutiveErrors++
 			klog.Errorf("MonitorConnection error (%d consecutive): %v", consecutiveErrors, err)
