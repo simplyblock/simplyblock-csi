@@ -255,7 +255,7 @@ func (nvmf *initiatorNVMf) Connect(ctx context.Context) (string, error) {
 	if !alreadyConnected {
 		clusterID, _ := getLvolIDFromNQN(nvmf.nqn)
 		// the lvolID from NQN gives the master LvolID of the subsystem
-		// Athough the connection string is same for all the lvols in the subsystem,
+		// Although the connection string is same for all the lvols in the subsystem,
 		// volume/<lvol-id>/connect/ connect API return 404 if master lvol is deleted
 		// so using the actual lvolID instead instead of master lvol ID
 		lvolID := nvmf.lvolID
