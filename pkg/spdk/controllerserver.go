@@ -64,10 +64,10 @@ const (
 	paramClusterID          = "cluster_id"
 	paramZoneClusterMap     = "zone_cluster_map"
 	paramRegionClusterMap   = "region_cluster_map"
-	topologyKeyZoneStable   = "topology.kubernetes.io/zone"
-	topologyKeyZoneBeta     = "failure-domain.beta.kubernetes.io/zone"
-	topologyKeyRegionStable = "topology.kubernetes.io/region"
-	topologyKeyStorageNode  = "simplyblock.io/storage-node-uuid"
+	topologyKeyZoneStable       = "topology.kubernetes.io/zone"
+	topologyKeyZoneBeta         = "failure-domain.beta.kubernetes.io/zone"
+	topologyKeyRegionStable     = "topology.kubernetes.io/region"
+	topologyKeyStorageNodePrefix = "simplyblock.io/storage-node-uuid."
 )
 
 type controllerServer struct {
@@ -619,7 +619,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	// node advertised a co-located storage node UUID and the cluster has node
 	// affinity enabled, pass it as host_id so the volume lands on the same node.
 	if createVolReq.HostID == "" {
-		if nodeUUID := storageNodeFromTopology(req.GetAccessibilityRequirements()); nodeUUID != "" {
+		if nodeUUID := storageNodeFromTopology(req.GetAccessibilityRequirements(), sbclient.ClusterID()); nodeUUID != "" {
 			clusterInfo, infoErr := sbclient.GetClusterInfo(ctx)
 			if infoErr != nil {
 				klog.Warningf("createVolume: failed to fetch cluster info for node affinity check: %v", infoErr)
@@ -665,21 +665,28 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	return &vol, nil
 }
 
-// storageNodeFromTopology extracts the co-located storage node UUID from the
-// topology requirements supplied by the external-provisioner when
-// WaitForFirstConsumer binding mode is in use. Preferred is checked first;
-// requisite is used as a fallback, matching the cluster-selection logic.
-func storageNodeFromTopology(topoReq *csi.TopologyRequirement) string {
+// storageNodeTopologyKey returns the per-cluster topology segment key used to
+// advertise the co-located storage node UUID for a specific cluster.
+func storageNodeTopologyKey(clusterID string) string {
+	return topologyKeyStorageNodePrefix + clusterID
+}
+
+// storageNodeFromTopology extracts the co-located storage node UUID for the
+// given cluster from the topology requirements supplied by the
+// external-provisioner when WaitForFirstConsumer binding mode is in use.
+// Preferred is checked first; requisite is used as a fallback.
+func storageNodeFromTopology(topoReq *csi.TopologyRequirement, clusterID string) string {
 	if topoReq == nil {
 		return ""
 	}
+	key := storageNodeTopologyKey(clusterID)
 	for _, topo := range topoReq.GetPreferred() {
-		if id := topo.GetSegments()[topologyKeyStorageNode]; id != "" {
+		if id := topo.GetSegments()[key]; id != "" {
 			return id
 		}
 	}
 	for _, topo := range topoReq.GetRequisite() {
-		if id := topo.GetSegments()[topologyKeyStorageNode]; id != "" {
+		if id := topo.GetSegments()[key]; id != "" {
 			return id
 		}
 	}
