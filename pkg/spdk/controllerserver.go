@@ -619,24 +619,29 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	// node advertised a co-located storage node UUID and the cluster has node
 	// affinity enabled, pass it as host_id so the volume lands on the same node.
 	if createVolReq.HostID == "" {
-		if pvcName := req.GetParameters()[CSIStorageNameKey]; pvcName != "" {
-			pvcNS := req.GetParameters()[CSIStorageNamespaceKey]
-			if annotations, annErr := fetchPVCAnnotations(ctx, pvcName, pvcNS); annErr == nil {
-				if selectedNode := annotations["volume.kubernetes.io/selected-node"]; selectedNode != "" {
-					klog.Infof("createVolume: WaitForFirstConsumer selected node=%s for PVC %s/%s", selectedNode, pvcNS, pvcName)
-					storageNodes, snErr := sbclient.ListStorageNodes(ctx)
-					if snErr != nil {
-						klog.Warningf("createVolume: failed to list storage nodes for host affinity: %v", snErr)
-					} else {
-						for _, sn := range storageNodes {
-							host := sn.Hostname
-							if i := strings.LastIndex(host, "_"); i != -1 {
-								host = host[:i]
-							}
-							if host == selectedNode {
-								createVolReq.HostID = sn.UUID
-								klog.Infof("createVolume: matched storage node hostname=%s uuid=%s for node=%s", sn.Hostname, sn.UUID, selectedNode)
-								break
+		clusterInfo, infoErr := sbclient.GetClusterInfo(ctx)
+		if infoErr != nil {
+			klog.Warningf("createVolume: failed to fetch cluster info for node affinity check: %v", infoErr)
+		} else if clusterInfo.NodeAffinity {
+			if pvcName := req.GetParameters()[CSIStorageNameKey]; pvcName != "" {
+				pvcNS := req.GetParameters()[CSIStorageNamespaceKey]
+				if annotations, annErr := fetchPVCAnnotations(ctx, pvcName, pvcNS); annErr == nil {
+					if selectedNode := annotations["volume.kubernetes.io/selected-node"]; selectedNode != "" {
+						klog.Infof("createVolume: WaitForFirstConsumer selected node=%s for PVC %s/%s", selectedNode, pvcNS, pvcName)
+						storageNodes, snErr := sbclient.ListStorageNodes(ctx)
+						if snErr != nil {
+							klog.Warningf("createVolume: failed to list storage nodes for host affinity: %v", snErr)
+						} else {
+							for _, sn := range storageNodes {
+								host := sn.Hostname
+								if i := strings.LastIndex(host, "_"); i != -1 {
+									host = host[:i]
+								}
+								if host == selectedNode {
+									createVolReq.HostID = sn.UUID
+									klog.Infof("createVolume: matched storage node hostname=%s uuid=%s for node=%s", sn.Hostname, sn.UUID, selectedNode)
+									break
+								}
 							}
 						}
 					}

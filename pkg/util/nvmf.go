@@ -37,6 +37,10 @@ import (
 // expected to change while the CSI driver is running.
 var clusterInfoCache sync.Map
 
+// storageNodeCache holds the list of storage nodes keyed by cluster ID.
+// Populated on first call and reused for the process lifetime.
+var storageNodeCache sync.Map
+
 const (
 	envTLSConnect = "SB_TLS_CONNECT"
 	envTLSCAFile  = "SB_TLS_CERTIFICATE_AUTHORITY"
@@ -202,7 +206,15 @@ func (c *ClusterClient) GetClusterInfo(ctx context.Context) (*ClusterInfo, error
 }
 
 func (c *ClusterClient) ListStorageNodes(ctx context.Context) ([]StorageNode, error) {
-	return c.API.listStorageNodes(ctx)
+	if v, ok := storageNodeCache.Load(c.API.ClusterID); ok {
+		return v.([]StorageNode), nil
+	}
+	nodes, err := c.API.listStorageNodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	storageNodeCache.Store(c.API.ClusterID, nodes)
+	return nodes, nil
 }
 
 func (c *ClusterClient) ListStoragePools(ctx context.Context) ([]StoragePool, error) {
