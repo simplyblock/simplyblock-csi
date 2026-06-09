@@ -666,13 +666,19 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 }
 
 // storageNodeFromTopology extracts the co-located storage node UUID from the
-// preferred topology segments supplied by the external-provisioner when
-// WaitForFirstConsumer binding mode is in use.
+// topology requirements supplied by the external-provisioner when
+// WaitForFirstConsumer binding mode is in use. Preferred is checked first;
+// requisite is used as a fallback, matching the cluster-selection logic.
 func storageNodeFromTopology(topoReq *csi.TopologyRequirement) string {
 	if topoReq == nil {
 		return ""
 	}
 	for _, topo := range topoReq.GetPreferred() {
+		if id := topo.GetSegments()[topologyKeyStorageNode]; id != "" {
+			return id
+		}
+	}
+	for _, topo := range topoReq.GetRequisite() {
 		if id := topo.GetSegments()[topologyKeyStorageNode]; id != "" {
 			return id
 		}
