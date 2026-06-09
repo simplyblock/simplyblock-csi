@@ -47,10 +47,11 @@ import (
 
 type nodeServer struct {
 	*csicommon.DefaultNodeServer
-	mounter     mount.Interface
-	volumeLocks *util.VolumeLocks
-	kubeClient  kubernetes.Interface
-	guardian    *util.Guardian
+	mounter         mount.Interface
+	volumeLocks     *util.VolumeLocks
+	kubeClient      kubernetes.Interface
+	guardian        *util.Guardian
+	storageNodeUUID string // UUID of the co-located Simplyblock storage node; empty if not discovered
 }
 
 func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
@@ -87,7 +88,45 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		}
 	})
 
+	discoverCtx, discoverCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer discoverCancel()
+	ns.storageNodeUUID = discoverStorageNodeUUID(discoverCtx, nodeName)
+	if ns.storageNodeUUID != "" {
+		klog.Infof("discovered co-located storage node UUID %s for node %s", ns.storageNodeUUID, nodeName)
+	} else {
+		klog.Warningf("could not discover co-located storage node for node %s; node affinity unavailable", nodeName)
+	}
+
 	return ns, nil
+}
+
+// discoverStorageNodeUUID queries every configured SimplyBlock cluster for a
+// storage node whose hostname matches nodeName, returning its UUID.
+// Returns empty string if no match is found or on any API error.
+func discoverStorageNodeUUID(ctx context.Context, nodeName string) string {
+	clusterIDs, err := ListClusters()
+	if err != nil {
+		klog.Warningf("discoverStorageNodeUUID: failed to list clusters: %v", err)
+		return ""
+	}
+	for _, clusterID := range clusterIDs {
+		client, err := util.NewsimplyBlockClient(ctx, clusterID, "")
+		if err != nil {
+			klog.Warningf("discoverStorageNodeUUID: failed to create client for cluster %s: %v", clusterID, err)
+			continue
+		}
+		nodes, err := client.ListStorageNodes(ctx)
+		if err != nil {
+			klog.Warningf("discoverStorageNodeUUID: failed to list storage nodes for cluster %s: %v", clusterID, err)
+			continue
+		}
+		for _, n := range nodes {
+			if n.Hostname == nodeName {
+				return n.UUID
+			}
+		}
+	}
+	return ""
 }
 
 func (ns *nodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
@@ -130,6 +169,14 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 
 	if region, ok := node.Labels[topologyKeyRegionStable]; ok && region != "" {
 		segments[topologyKeyRegionStable] = region
+	}
+
+	// Prefer an explicit operator-set annotation; fall back to the UUID
+	// discovered at startup via the SimplyBlock API.
+	if annotated, ok := node.Annotations[topologyKeyStorageNode]; ok && annotated != "" {
+		segments[topologyKeyStorageNode] = annotated
+	} else if ns.storageNodeUUID != "" {
+		segments[topologyKeyStorageNode] = ns.storageNodeUUID
 	}
 
 	for key, val := range node.Labels {
