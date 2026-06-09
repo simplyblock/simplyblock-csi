@@ -61,12 +61,12 @@ const (
 	deprecatedAnnotationQoSRMBps    = "simplybk/qos-r-mbytes"
 	deprecatedAnnotationQoSWMBps    = "simplybk/qos-w-mbytes"
 
-	paramClusterID          = "cluster_id"
-	paramZoneClusterMap     = "zone_cluster_map"
-	paramRegionClusterMap   = "region_cluster_map"
-	topologyKeyZoneStable       = "topology.kubernetes.io/zone"
-	topologyKeyZoneBeta         = "failure-domain.beta.kubernetes.io/zone"
-	topologyKeyRegionStable     = "topology.kubernetes.io/region"
+	paramClusterID               = "cluster_id"
+	paramZoneClusterMap          = "zone_cluster_map"
+	paramRegionClusterMap        = "region_cluster_map"
+	topologyKeyZoneStable        = "topology.kubernetes.io/zone"
+	topologyKeyZoneBeta          = "failure-domain.beta.kubernetes.io/zone"
+	topologyKeyRegionStable      = "topology.kubernetes.io/region"
 	topologyKeyStorageNodePrefix = "simplyblock.io/storage-node-uuid."
 )
 
@@ -619,6 +619,9 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	// node advertised a co-located storage node UUID and the cluster has node
 	// affinity enabled, pass it as host_id so the volume lands on the same node.
 	if createVolReq.HostID == "" {
+		if selectedNode := req.GetParameters()["csi.storage.k8s.io/node"]; selectedNode != "" {
+			klog.Infof("createVolume: WaitForFirstConsumer selected node=%s for volume %s", selectedNode, req.GetName())
+		}
 		if nodeUUID := storageNodeFromTopology(req.GetAccessibilityRequirements(), sbclient.ClusterID()); nodeUUID != "" {
 			clusterInfo, infoErr := sbclient.GetClusterInfo(ctx)
 			if infoErr != nil {
