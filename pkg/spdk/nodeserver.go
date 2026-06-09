@@ -215,6 +215,10 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 		}
 	}
 
+	if nodeType, ok := node.Labels["io.simplyblock.node-type"]; ok && nodeType != "" {
+		segments["io.simplyblock.node-type"] = nodeType
+	}
+
 	if len(segments) == 0 {
 		return nil
 	}
