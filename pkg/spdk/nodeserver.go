@@ -121,7 +121,14 @@ func discoverStorageNodeUUID(ctx context.Context, nodeName string) string {
 			continue
 		}
 		for _, n := range nodes {
-			if n.Hostname == nodeName {
+			// StorageNodeDTO.hostname is formatted as "<hostname>_<port>"
+			// (e.g. "israel-storage-node-1_4420"), so strip the port suffix
+			// before comparing to the k8s node name.
+			host := n.Hostname
+			if i := strings.LastIndex(host, "_"); i != -1 {
+				host = host[:i]
+			}
+			if host == nodeName {
 				return n.UUID
 			}
 		}
