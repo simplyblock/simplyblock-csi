@@ -627,7 +627,6 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 				pvcNS := req.GetParameters()[CSIStorageNamespaceKey]
 				if annotations, annErr := fetchPVCAnnotations(ctx, pvcName, pvcNS); annErr == nil {
 					if selectedNode := annotations["volume.kubernetes.io/selected-node"]; selectedNode != "" {
-						klog.Infof("createVolume: WaitForFirstConsumer selected node=%s for PVC %s/%s", selectedNode, pvcNS, pvcName)
 						storageNodes, snErr := sbclient.ListStorageNodes(ctx)
 						if snErr != nil {
 							klog.Warningf("createVolume: failed to list storage nodes for host affinity: %v", snErr)
