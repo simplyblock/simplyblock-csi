@@ -154,18 +154,18 @@ func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (
 		return nil, fmt.Errorf("invalid cluster configuration for clusterID %s: missing endpoint", clusterID)
 	}
 
-	// Use SA token when SPDKCSI_SA_TOKEN is explicitly set; otherwise fall back to cluster_secret.
+	// Use API token when SPDKCSI_API_TOKEN_PATH is explicitly set; otherwise fall back to cluster_secret.
 	credential := clusterConfig.ClusterSecret
-	if tokenPath := os.Getenv("SPDKCSI_SA_TOKEN"); tokenPath != "" {
+	if tokenPath := os.Getenv("SPDKCSI_API_TOKEN_PATH"); tokenPath != "" {
 		if tokenBytes, err := os.ReadFile(tokenPath); err == nil {
 			if token := strings.TrimSpace(string(tokenBytes)); token != "" {
 				credential = token
-				klog.Infof("Using Kubernetes service account JWT for cluster %s", clusterID)
+				klog.Infof("Using API token from file for cluster %s", clusterID)
 			}
 		}
 	}
 	if credential == "" {
-		return nil, fmt.Errorf("invalid cluster configuration for clusterID %s: no cluster_secret and no SA token available", clusterID)
+		return nil, fmt.Errorf("invalid cluster configuration for clusterID %s: no cluster_secret and no API token available", clusterID)
 	}
 
 	klog.Infof("Simplyblock client created for ClusterID:%s, Endpoint:%s",

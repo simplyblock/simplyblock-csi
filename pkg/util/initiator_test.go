@@ -80,30 +80,30 @@ func writeTempFile(t *testing.T, content string) string {
 const testSecretJSON = `{"clusters":[{"cluster_id":"test-cluster","cluster_endpoint":"http://localhost","cluster_secret":"static-secret"}]}`
 const testSecretNoCredJSON = `{"clusters":[{"cluster_id":"test-cluster","cluster_endpoint":"http://localhost","cluster_secret":""}]}`
 
-// TestCredentialSATokenUsed verifies that when SPDKCSI_SA_TOKEN points to a
+// TestCredentialAPITokenUsed verifies that when SPDKCSI_API_TOKEN_PATH points to a
 // file containing a valid token, that token is used as the credential instead
 // of the cluster_secret from the secret file.
-func TestCredentialSATokenUsed(t *testing.T) {
+func TestCredentialAPITokenUsed(t *testing.T) {
 	secretFile := writeTempFile(t, testSecretJSON)
 	tokenFile := writeTempFile(t, "sa-jwt-token")
 	t.Setenv("SPDKCSI_SECRET", secretFile)
-	t.Setenv("SPDKCSI_SA_TOKEN", tokenFile)
+	t.Setenv("SPDKCSI_API_TOKEN_PATH", tokenFile)
 
 	node, err := NewsimplyBlockClient(context.Background(), "test-cluster", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if node.API.Credential != "sa-jwt-token" {
-		t.Errorf("expected SA token %q as credential, got %q", "sa-jwt-token", node.API.Credential)
+		t.Errorf("expected API token %q as credential, got %q", "sa-jwt-token", node.API.Credential)
 	}
 }
 
-// TestCredentialClusterSecretFallback verifies that when SPDKCSI_SA_TOKEN is
+// TestCredentialClusterSecretFallback verifies that when SPDKCSI_API_TOKEN_PATH is
 // not set, the cluster_secret from the secret file is used unchanged.
 func TestCredentialClusterSecretFallback(t *testing.T) {
 	secretFile := writeTempFile(t, testSecretJSON)
 	t.Setenv("SPDKCSI_SECRET", secretFile)
-	t.Setenv("SPDKCSI_SA_TOKEN", "")
+	t.Setenv("SPDKCSI_API_TOKEN_PATH", "")
 
 	node, err := NewsimplyBlockClient(context.Background(), "test-cluster", "")
 	if err != nil {
@@ -114,13 +114,13 @@ func TestCredentialClusterSecretFallback(t *testing.T) {
 	}
 }
 
-// TestCredentialSATokenWhitespaceTrimmed verifies that leading/trailing
-// whitespace in the SA token file is stripped before use.
-func TestCredentialSATokenWhitespaceTrimmed(t *testing.T) {
+// TestCredentialAPITokenWhitespaceTrimmed verifies that leading/trailing
+// whitespace in the API token file is stripped before use.
+func TestCredentialAPITokenWhitespaceTrimmed(t *testing.T) {
 	secretFile := writeTempFile(t, testSecretJSON)
 	tokenFile := writeTempFile(t, " tok \n")
 	t.Setenv("SPDKCSI_SECRET", secretFile)
-	t.Setenv("SPDKCSI_SA_TOKEN", tokenFile)
+	t.Setenv("SPDKCSI_API_TOKEN_PATH", tokenFile)
 
 	node, err := NewsimplyBlockClient(context.Background(), "test-cluster", "")
 	if err != nil {
@@ -131,35 +131,35 @@ func TestCredentialSATokenWhitespaceTrimmed(t *testing.T) {
 	}
 }
 
-// TestCredentialSATokenWithEmptyClusterSecret verifies that SA token auth
+// TestCredentialAPITokenWithEmptyClusterSecret verifies that API token auth
 // succeeds even when cluster_secret is empty in the secret file.
-func TestCredentialSATokenWithEmptyClusterSecret(t *testing.T) {
+func TestCredentialAPITokenWithEmptyClusterSecret(t *testing.T) {
 	secretFile := writeTempFile(t, testSecretNoCredJSON)
 	tokenFile := writeTempFile(t, "sa-jwt-token")
 	t.Setenv("SPDKCSI_SECRET", secretFile)
-	t.Setenv("SPDKCSI_SA_TOKEN", tokenFile)
+	t.Setenv("SPDKCSI_API_TOKEN_PATH", tokenFile)
 
 	node, err := NewsimplyBlockClient(context.Background(), "test-cluster", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if node.API.Credential != "sa-jwt-token" {
-		t.Errorf("expected SA token %q, got %q", "sa-jwt-token", node.API.Credential)
+		t.Errorf("expected API token %q, got %q", "sa-jwt-token", node.API.Credential)
 	}
 }
 
-// TestCredentialBothMissingReturnsError verifies that when SPDKCSI_SA_TOKEN is
+// TestCredentialBothMissingReturnsError verifies that when SPDKCSI_API_TOKEN_PATH is
 // unset and cluster_secret is empty, NewsimplyBlockClient returns an error.
 func TestCredentialBothMissingReturnsError(t *testing.T) {
 	secretFile := writeTempFile(t, testSecretNoCredJSON)
 	t.Setenv("SPDKCSI_SECRET", secretFile)
-	t.Setenv("SPDKCSI_SA_TOKEN", "")
+	t.Setenv("SPDKCSI_API_TOKEN_PATH", "")
 
 	_, err := NewsimplyBlockClient(context.Background(), "test-cluster", "")
 	if err == nil {
-		t.Fatal("expected error when both cluster_secret and SA token are missing, got nil")
+		t.Fatal("expected error when both cluster_secret and API token are missing, got nil")
 	}
-	const want = "no cluster_secret and no SA token available"
+	const want = "no cluster_secret and no API token available"
 	if !strings.Contains(err.Error(), want) {
 		t.Errorf("error %q does not contain %q", err.Error(), want)
 	}
