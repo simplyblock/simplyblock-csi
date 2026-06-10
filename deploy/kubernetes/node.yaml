@@ -60,6 +60,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: SPDKCSI_API_TOKEN_PATH
+          value: /var/run/secrets/kubernetes.io/serviceaccount/token
         lifecycle:
           postStart:
             exec:
