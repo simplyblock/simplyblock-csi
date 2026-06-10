@@ -444,15 +444,19 @@ func disconnectDevicePath(ctx context.Context, devicePath string) error {
 	return nil
 }
 
-// nvmeDeviceUUID reads /sys/block/<dev>/uuid for a device path like /dev/nvme0n2.
-// Returns an empty string if the file is absent or unreadable.
-func nvmeDeviceUUID(devicePath string) string {
+// logicalVolumeIdByDevicePath reads /sys/block/<dev>/uuid for a device path like /dev/nvme0n2.
+// Returns an empty string if the file is absent, unreadable, or not a valid UUID.
+func logicalVolumeIdByDevicePath(devicePath string) string {
 	name := filepath.Base(devicePath)
 	data, err := os.ReadFile(filepath.Join("/sys/block", name, "uuid"))
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(data))
+	uuid := strings.TrimSpace(string(data))
+	if !isUUID(uuid) {
+		return ""
+	}
+	return uuid
 }
 
 func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
@@ -482,7 +486,7 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 					dp := "/dev/" + ns.NameSpace
 					devices = append(devices, nvmeDeviceInfo{
 						devicePath: dp,
-						lvolID:     nvmeDeviceUUID(dp),
+						lvolID:     logicalVolumeIdByDevicePath(dp),
 					})
 				}
 			}
@@ -510,7 +514,7 @@ func getNVMeDeviceInfos() ([]nvmeDeviceInfo, error) {
 		devices = append(devices, nvmeDeviceInfo{
 			devicePath:   dev.DevicePath,
 			serialNumber: dev.SerialNumber,
-			lvolID:       nvmeDeviceUUID(dev.DevicePath),
+			lvolID:       logicalVolumeIdByDevicePath(dev.DevicePath),
 		})
 	}
 	return devices, nil
