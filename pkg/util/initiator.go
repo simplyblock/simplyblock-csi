@@ -598,11 +598,11 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 				if nqnLvolID == "" {
 					continue
 				}
-				// Prefer the sysfs UUID for namespaced LVols — it identifies the
-				// exact tenant LVol rather than the hub LVol embedded in the NQN.
-				lvolID := nqnLvolID
-				if device.lvolID != "" {
-					lvolID = device.lvolID
+				// Prefer the sysfs UUID when available — it always identifies the
+				// exact namespace LVol. Falls back to the NQN-derived ID.
+				lvolID := device.lvolID
+				if lvolID == "" {
+					lvolID = nqnLvolID
 				}
 
 				// Only mark the device present once we have a confirmed lvolID,
