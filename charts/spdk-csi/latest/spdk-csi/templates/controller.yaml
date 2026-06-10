@@ -129,7 +129,7 @@ spec:
             fieldRef:
               fieldPath: spec.nodeName
         {{- include "simplyblock.tlsEnv" . | nindent 8 }}
-        {{- if .Values.controller.saAuth.enabled }}
+        {{- if .Values.controller.serviceAccountAuth.enabled }}
         - name: SPDKCSI_API_TOKEN_PATH
           value: /var/run/secrets/kubernetes.io/serviceaccount/token
         {{- end }}
