@@ -522,11 +522,9 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	pvcName, pvcNameSelected := params[CSIStorageNameKey]
 	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
 
-	var pvcFullName string
+	pvcFullName := pvcName
 	if pvcNameSelected && pvcNamespaceSelected {
 		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
-	} else {
-		pvcFullName = pvcName
 	}
 
 	pvcAnns, err := fetchPVCAnnotations(ctx, pvcName, pvcNamespace)
@@ -930,11 +928,9 @@ func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *
 	pvcName, pvcNameSelected := params[CSIStorageNameKey]
 	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
 
-	var pvcFullName string
+	pvcFullName := pvcName
 	if pvcNameSelected && pvcNamespaceSelected {
 		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
-	} else {
-		pvcFullName = pvcName
 	}
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
@@ -961,11 +957,9 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 	params := req.GetParameters()
 	pvcName, pvcNameSelected := params[CSIStorageNameKey]
 	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
-	var pvcFullName string
+	pvcFullName := pvcName
 	if pvcNameSelected && pvcNamespaceSelected {
 		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
-	} else {
-		pvcFullName = pvcName
 	}
 
 	spdkVol, err := getSPDKVol(srcVolumeID)
