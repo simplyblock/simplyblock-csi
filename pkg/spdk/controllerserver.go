@@ -927,10 +927,18 @@ func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *
 	klog.Infof("CreateSnapshot : snapshotID=%s", sbSnapshot.snapshotID)
 	snapshotName := req.GetName()
 	params := req.GetParameters()
-	pvcName, _ := params[CSIStorageNameKey]
+	pvcName, pvcNameSelected := params[CSIStorageNameKey]
+	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
+
+	var pvcFullName string
+	if pvcNameSelected && pvcNamespaceSelected {
+		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
+	} else {
+		pvcFullName = pvcName
+	}
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
-	volumeID, err := sbclient.CloneSnapshot(ctx, sbSnapshot.snapshotID, snapshotName, newSize, pvcName)
+	volumeID, err := sbclient.CloneSnapshot(ctx, sbSnapshot.snapshotID, snapshotName, newSize, pvcFullName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -951,7 +959,14 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 
 	cloneName := req.GetName()
 	params := req.GetParameters()
-	pvcName, _ := params[CSIStorageNameKey]
+	pvcName, pvcNameSelected := params[CSIStorageNameKey]
+	pvcNamespace, pvcNamespaceSelected := params[CSIStorageNamespaceKey]
+	var pvcFullName string
+	if pvcNameSelected && pvcNamespaceSelected {
+		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
+	} else {
+		pvcFullName = pvcName
+	}
 
 	spdkVol, err := getSPDKVol(srcVolumeID)
 	if err != nil {
@@ -967,7 +982,7 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 	// Use raw bytes to avoid decimal/binary unit ambiguity in clone sizing.
 	newSize := strconv.FormatInt(sizeBytes, 10)
 	klog.Infof("CloneVolume : cloneName=%s", cloneName)
-	volumeID, err := sbclient.CloneVolume(ctx, spdkVol.lvolID, cloneName, newSize, pvcName)
+	volumeID, err := sbclient.CloneVolume(ctx, spdkVol.lvolID, cloneName, newSize, pvcFullName)
 	if err != nil {
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
