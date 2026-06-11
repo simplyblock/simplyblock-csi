@@ -228,7 +228,7 @@ func (c *ClusterClient) CreateVolume(ctx context.Context, params *CreateLVolData
 
 // GetVolumeSize returns the size of the volume
 func (c *ClusterClient) GetVolumeSize(ctx context.Context, lvolID string) (string, error) {
-	lvol, err := c.API.getVolume(ctx, c.poolID, lvolID)
+	lvol, err := c.API.getVolumeByUUID(ctx, c.poolID, lvolID)
 	if err != nil {
 		return "", err
 	}
@@ -253,7 +253,7 @@ func (c *ClusterClient) GetPoolUUIDByName(ctx context.Context, poolName string) 
 }
 
 // ResizeVolume resizes a volume
-func (c *ClusterClient) ResizeVolume(ctx context.Context, lvolID string, newSize int64) (bool, error) {
+func (c *ClusterClient) ResizeVolume(ctx context.Context, lvolID string, newSize int64) error {
 	return c.API.resizeVolume(ctx, c.poolID, lvolID, newSize)
 }
 
@@ -319,7 +319,7 @@ func (c *ClusterClient) DeleteSnapshot(ctx context.Context, snapshotID string) e
 
 // PublishVolume exports a volume through NVMf target
 func (c *ClusterClient) PublishVolume(ctx context.Context, lvolID string) error {
-	_, err := c.API.do(ctx, "GET", c.API.v2volume(c.poolID, lvolID), nil)
+	_, err := c.API.do(ctx, http.MethodGet, c.API.v2volume(c.poolID, lvolID), nil)
 	if err != nil {
 		return err
 	}
@@ -329,7 +329,7 @@ func (c *ClusterClient) PublishVolume(ctx context.Context, lvolID string) error 
 
 // UnpublishVolume unexports a volume through NVMf target
 func (c *ClusterClient) UnpublishVolume(ctx context.Context, lvolID string) error {
-	_, err := c.API.do(ctx, "GET", c.API.v2volume(c.poolID, lvolID), nil)
+	_, err := c.API.do(ctx, http.MethodGet, c.API.v2volume(c.poolID, lvolID), nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "404") {
 			return ErrVolumeUnpublished

@@ -24,6 +24,7 @@ import (
 	"math/rand"
 	"net"
 
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -670,7 +671,7 @@ func fetchNodeInfo(ctx context.Context, client *ClusterClient, lvolID string) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve pool for volume %s: %w", lvolID, err)
 	}
-	raw, err := client.API.do(ctx, "GET", client.API.v2volume(poolID, lvolID), nil)
+	raw, err := client.API.do(ctx, http.MethodGet, client.API.v2volume(poolID, lvolID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch node info: %w", err)
 	}

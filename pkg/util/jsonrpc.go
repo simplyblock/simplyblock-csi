@@ -66,7 +66,7 @@ type ClusterAPI interface {
 	CreateVolume(ctx context.Context, params *CreateLVolData) (string, error)
 	GetVolumeSize(ctx context.Context, lvolID string) (string, error)
 	ListVolumes(ctx context.Context) ([]*LvolResp, error)
-	ResizeVolume(ctx context.Context, lvolID string, newSize int64) (bool, error)
+	ResizeVolume(ctx context.Context, lvolID string, newSize int64) error
 	DeleteVolume(ctx context.Context, lvolID string) error
 	PublishVolume(ctx context.Context, lvolID string) error
 	UnpublishVolume(ctx context.Context, lvolID string) error
@@ -180,10 +180,6 @@ func (client APIClient) v2pools() string {
 	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/", client.ClusterID)
 }
 
-func (client APIClient) v2pool(poolID string) string {
-	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s", client.ClusterID, poolID)
-}
-
 func (client APIClient) v2volumes(poolID string) string {
 	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes/", client.ClusterID, poolID)
 }
@@ -200,6 +196,26 @@ func (client APIClient) v2snapshot(poolID, snapshotID string) string {
 	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/snapshots/%s/", client.ClusterID, poolID, snapshotID)
 }
 
+func (client APIClient) v2volumeClone(poolID, volumeID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes/%s/clone", client.ClusterID, poolID, volumeID)
+}
+
+func (client APIClient) v2volumeConnect(poolID, volumeID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes/%s/connect", client.ClusterID, poolID, volumeID)
+}
+
+func (client APIClient) v2volumeSnapshots(poolID, volumeID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/volumes/%s/snapshots", client.ClusterID, poolID, volumeID)
+}
+
+func (client APIClient) v2poolMasterLvols(poolID string) string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/master-lvols", client.ClusterID, poolID)
+}
+
+func (client APIClient) v2cluster() string {
+	return fmt.Sprintf("api/v2/clusters/%s/", client.ClusterID)
+}
+
 func (client APIClient) v2storageNode(nodeID string) string {
 	return fmt.Sprintf("api/v2/clusters/%s/storage-nodes/%s/", client.ClusterID, nodeID)
 }
@@ -208,7 +224,7 @@ func (client APIClient) v2storageNode(nodeID string) string {
 
 // listStoragePools returns all available storage pools
 func (client APIClient) listStoragePools(ctx context.Context) ([]StoragePool, error) {
-	raw, err := client.do(ctx, "GET", client.v2pools(), nil)
+	raw, err := client.do(ctx, http.MethodGet, client.v2pools(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +237,7 @@ func (client APIClient) listStoragePools(ctx context.Context) ([]StoragePool, er
 
 // createVolume creates a logical volume and returns its UUID
 func (client APIClient) createVolume(ctx context.Context, poolID string, params *CreateLVolData) (string, error) {
-	raw, err := client.do(ctx, "POST", client.v2volumes(poolID), params)
+	raw, err := client.do(ctx, http.MethodPost, client.v2volumes(poolID), params)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
@@ -239,7 +255,7 @@ func (client APIClient) createVolume(ctx context.Context, poolID string, params 
 
 // getVolumeByUUID fetches a single volume by its UUID
 func (client APIClient) getVolumeByUUID(ctx context.Context, poolID, lvolID string) (*LvolResp, error) {
-	raw, err := client.do(ctx, "GET", client.v2volume(poolID, lvolID), nil)
+	raw, err := client.do(ctx, http.MethodGet, client.v2volume(poolID, lvolID), nil)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSuchDevice) {
 			err = ErrJSONNoSuchDevice
@@ -253,14 +269,9 @@ func (client APIClient) getVolumeByUUID(ctx context.Context, poolID, lvolID stri
 	return &result, nil
 }
 
-// getVolume accepts either a UUID or a "poolName/volName" path (legacy callers)
-func (client APIClient) getVolume(ctx context.Context, poolID, lvolID string) (*LvolResp, error) {
-	return client.getVolumeByUUID(ctx, poolID, lvolID)
-}
-
 // listVolumes returns all volumes in the pool
 func (client APIClient) listVolumes(ctx context.Context, poolID string) ([]*LvolResp, error) {
-	raw, err := client.do(ctx, "GET", client.v2volumes(poolID), nil)
+	raw, err := client.do(ctx, http.MethodGet, client.v2volumes(poolID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +322,7 @@ func (client APIClient) getVolumeInfo(ctx context.Context, poolID, lvolID, hostN
 
 // deleteVolume deletes a volume by UUID
 func (client APIClient) deleteVolume(ctx context.Context, poolID, lvolID string) error {
-	_, err := client.do(ctx, "DELETE", client.v2volume(poolID, lvolID), nil)
+	_, err := client.do(ctx, http.MethodDelete, client.v2volume(poolID, lvolID), nil)
 	if err != nil && (errorMatches(err, ErrJSONNoSuchDevice) || strings.Contains(err.Error(), "404")) {
 		err = ErrJSONNoSuchDevice
 	}
@@ -334,8 +345,8 @@ func (client APIClient) getPoolUUIDByName(ctx context.Context, poolName string) 
 
 // getMasterLvols returns master lvols for a pool
 func (client APIClient) getMasterLvols(ctx context.Context, poolUUID string) ([]MasterLvol, error) {
-	path := client.v2pool(poolUUID) + "/master-lvols"
-	raw, err := client.do(ctx, "GET", path, nil)
+	path := client.v2poolMasterLvols(poolUUID)
+	raw, err := client.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -353,27 +364,24 @@ func (client APIClient) getMasterLvols(ctx context.Context, poolUUID string) ([]
 }
 
 // resizeVolume resizes a volume
-func (client APIClient) resizeVolume(ctx context.Context, poolID, lvolID string, size int64) (bool, error) {
-	_, err := client.do(ctx, "PUT", client.v2volume(poolID, lvolID), &ResizeVolReq{Size: size})
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+func (client APIClient) resizeVolume(ctx context.Context, poolID, lvolID string, size int64) error {
+	_, err := client.do(ctx, http.MethodPut, client.v2volume(poolID, lvolID), &ResizeVolReq{Size: size})
+	return err
 }
 
 // cloneVolume clones a volume by UUID, returning the new volume's UUID
 func (client APIClient) cloneVolume(ctx context.Context, poolID, lvolID, cloneName, newSize, pvcName string) (string, error) {
-	path := client.v2volume(poolID, lvolID) + "clone?clone_name=" + url.QueryEscape(cloneName)
+	q := url.Values{"clone_name": {cloneName}}
 	if newSize != "" {
-		path += "&new_size=" + url.QueryEscape(newSize)
+		q.Set("new_size", newSize)
 	}
 	if pvcName != "" {
-		path += "&pvc_name=" + url.QueryEscape(pvcName)
+		q.Set("pvc_name", pvcName)
 	}
 
 	klog.V(5).Infof("cloneVolume size: %s", newSize)
 
-	raw, err := client.do(ctx, "POST", path, nil)
+	raw, err := client.do(ctx, http.MethodPost, client.v2volumeClone(poolID, lvolID)+"?"+q.Encode(), nil)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
@@ -403,7 +411,7 @@ func (client APIClient) cloneSnapshot(ctx context.Context, poolID, snapshotID, c
 
 	klog.V(5).Infof("cloneSnapshot size: %s", newSize)
 
-	raw, err := client.do(ctx, "POST", client.v2volumes(poolID), &params)
+	raw, err := client.do(ctx, http.MethodPost, client.v2volumes(poolID), &params)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
@@ -419,7 +427,7 @@ func (client APIClient) cloneSnapshot(ctx context.Context, poolID, snapshotID, c
 
 // listSnapshots returns all snapshots in the pool
 func (client APIClient) listSnapshots(ctx context.Context, poolID string) ([]*SnapshotResp, error) {
-	raw, err := client.do(ctx, "GET", client.v2snapshots(poolID), nil)
+	raw, err := client.do(ctx, http.MethodGet, client.v2snapshots(poolID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -458,8 +466,8 @@ func (client APIClient) snapshot(ctx context.Context, poolID, lvolID, snapShotNa
 		Name string `json:"name"`
 	}{Name: snapShotName}
 
-	path := client.v2volume(poolID, lvolID) + "snapshots"
-	raw, err := client.do(ctx, "POST", path, &params)
+	path := client.v2volumeSnapshots(poolID, lvolID)
+	raw, err := client.do(ctx, http.MethodPost, path, &params)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
@@ -479,7 +487,7 @@ func (client APIClient) deleteSnapshot(ctx context.Context, poolID, snapshotID s
 	if poolID == "" {
 		return client.deleteSnapshotScanPools(ctx, snapshotID)
 	}
-	_, err := client.do(ctx, "DELETE", client.v2snapshot(poolID, snapshotID), nil)
+	_, err := client.do(ctx, http.MethodDelete, client.v2snapshot(poolID, snapshotID), nil)
 	if err != nil && (errorMatches(err, ErrJSONNoSuchDevice) || strings.Contains(err.Error(), "404")) {
 		err = ErrJSONNoSuchDevice
 	}
@@ -494,7 +502,7 @@ func (client APIClient) deleteSnapshotScanPools(ctx context.Context, snapshotID 
 		return fmt.Errorf("failed to list pools while deleting snapshot %s: %w", snapshotID, err)
 	}
 	for _, pool := range pools {
-		_, err := client.do(ctx, "DELETE", client.v2snapshot(pool.UUID, snapshotID), nil)
+		_, err := client.do(ctx, http.MethodDelete, client.v2snapshot(pool.UUID, snapshotID), nil)
 		if err == nil {
 			return nil
 		}
@@ -527,11 +535,11 @@ func (client APIClient) findPoolForVolume(ctx context.Context, lvolID string) (s
 
 // getLvolConnections returns the raw NVMe-oF connection list for a volume.
 func (client APIClient) getLvolConnections(ctx context.Context, poolID, lvolID, hostNQN string) ([]*LvolConnectResp, error) {
-	path := client.v2volume(poolID, lvolID) + "connect"
+	path := client.v2volumeConnect(poolID, lvolID)
 	if hostNQN != "" {
-		path += "?host_nqn=" + url.QueryEscape(hostNQN)
+		path += "?" + url.Values{"host_nqn": {hostNQN}}.Encode()
 	}
-	raw, err := client.do(ctx, "GET", path, nil)
+	raw, err := client.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +552,7 @@ func (client APIClient) getLvolConnections(ctx context.Context, poolID, lvolID, 
 
 // getStorageNodeStatus returns the status string for a storage node by UUID.
 func (client APIClient) getStorageNodeStatus(ctx context.Context, nodeID string) (string, error) {
-	raw, err := client.do(ctx, "GET", client.v2storageNode(nodeID), nil)
+	raw, err := client.do(ctx, http.MethodGet, client.v2storageNode(nodeID), nil)
 	if err != nil {
 		return "", err
 	}
@@ -566,7 +574,8 @@ func (client APIClient) getStorageNodeStatus(ctx context.Context, nodeID string)
 //   - 2xx            → raw JSON body
 //   - 4xx/5xx        → error with extracted message
 func (client APIClient) do(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
-	path = strings.TrimLeft(path, "/")
+	rawPath, rawQuery, _ := strings.Cut(path, "?")
+	rawPath = strings.TrimLeft(rawPath, "/")
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -577,7 +586,13 @@ func (client APIClient) do(ctx context.Context, method, path string, body any) (
 		bodyReader = bytes.NewReader(data)
 	}
 
-	requestURL := fmt.Sprintf("%s/%s", client.conn.Endpoint, path)
+	requestURL, err := url.JoinPath(client.conn.Endpoint, rawPath)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", method, err)
+	}
+	if rawQuery != "" {
+		requestURL += "?" + rawQuery
+	}
 	klog.Infof("Calling Simplyblock API v2: %s %s", method, requestURL)
 
 	req, err := http.NewRequestWithContext(ctx, method, requestURL, bodyReader)
@@ -585,7 +600,7 @@ func (client APIClient) do(ctx context.Context, method, path string, body any) (
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
 
-	req.Header.Set("Authorization", client.authorizationHeader(path))
+	req.Header.Set("Authorization", client.authorizationHeader(rawPath))
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
