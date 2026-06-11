@@ -75,6 +75,7 @@ spec:
           - "--csi-address=unix:///csi/csi-provisioner.sock"
           #- "--leader-election"
           - "--http-endpoint=:8080"
+          - "--monitor-interval=3m"
         volumeMounts:
           - name: socket-dir
             mountPath:  /csi

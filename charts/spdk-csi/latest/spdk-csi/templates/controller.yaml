@@ -107,6 +107,7 @@ spec:
           - "--v=5"
           - "--csi-address=unix:///csi/csi-provisioner.sock"
           - "--leader-election=false"
+          - "--monitor-interval=3m"
          # - "--http-endpoint=:8081"
         volumeMounts:
           - name: socket-dir
