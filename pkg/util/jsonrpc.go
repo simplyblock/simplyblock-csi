@@ -574,7 +574,8 @@ func (client APIClient) getStorageNodeStatus(ctx context.Context, nodeID string)
 //   - 2xx            → raw JSON body
 //   - 4xx/5xx        → error with extracted message
 func (client APIClient) do(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
-	path = strings.TrimLeft(path, "/")
+	rawPath, rawQuery, _ := strings.Cut(path, "?")
+	rawPath = strings.TrimLeft(rawPath, "/")
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -585,9 +586,12 @@ func (client APIClient) do(ctx context.Context, method, path string, body any) (
 		bodyReader = bytes.NewReader(data)
 	}
 
-	requestURL, err := url.JoinPath(client.conn.Endpoint, path)
+	requestURL, err := url.JoinPath(client.conn.Endpoint, rawPath)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
+	}
+	if rawQuery != "" {
+		requestURL += "?" + rawQuery
 	}
 	klog.Infof("Calling Simplyblock API v2: %s %s", method, requestURL)
 
@@ -596,7 +600,7 @@ func (client APIClient) do(ctx context.Context, method, path string, body any) (
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
 
-	req.Header.Set("Authorization", client.authorizationHeader(path))
+	req.Header.Set("Authorization", client.authorizationHeader(rawPath))
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
