@@ -381,7 +381,7 @@ func (client APIClient) cloneVolume(ctx context.Context, poolID, lvolID, cloneNa
 
 	klog.V(5).Infof("cloneVolume size: %s", newSize)
 
-	raw, err := client.do(ctx, http.MethodPost, client.v2volumeClone(poolID, lvolID), nil, q)
+	raw, err := client.do(ctx, http.MethodPost, client.v2volumeClone(poolID, lvolID)+"?"+q.Encode(), nil)
 	if err != nil {
 		if errorMatches(err, ErrJSONNoSpaceLeft) {
 			err = ErrJSONNoSpaceLeft
@@ -535,11 +535,11 @@ func (client APIClient) findPoolForVolume(ctx context.Context, lvolID string) (s
 
 // getLvolConnections returns the raw NVMe-oF connection list for a volume.
 func (client APIClient) getLvolConnections(ctx context.Context, poolID, lvolID, hostNQN string) ([]*LvolConnectResp, error) {
-	var q url.Values
+	path := client.v2volumeConnect(poolID, lvolID)
 	if hostNQN != "" {
-		q = url.Values{"host_nqn": {hostNQN}}
+		path += "?" + url.Values{"host_nqn": {hostNQN}}.Encode()
 	}
-	raw, err := client.do(ctx, http.MethodGet, client.v2volumeConnect(poolID, lvolID), nil, q)
+	raw, err := client.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +573,7 @@ func (client APIClient) getStorageNodeStatus(ctx context.Context, nodeID string)
 //   - 201 Created    → UUID extracted from Location header, encoded as a JSON string
 //   - 2xx            → raw JSON body
 //   - 4xx/5xx        → error with extracted message
-func (client APIClient) do(ctx context.Context, method, path string, body any, query ...url.Values) (json.RawMessage, error) {
+func (client APIClient) do(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
 	path = strings.TrimLeft(path, "/")
 
 	var bodyReader io.Reader
@@ -588,9 +588,6 @@ func (client APIClient) do(ctx context.Context, method, path string, body any, q
 	requestURL, err := url.JoinPath(client.conn.Endpoint, path)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
-	}
-	if len(query) > 0 && len(query[0]) > 0 {
-		requestURL += "?" + query[0].Encode()
 	}
 	klog.Infof("Calling Simplyblock API v2: %s %s", method, requestURL)
 
