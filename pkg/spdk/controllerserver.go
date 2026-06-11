@@ -739,7 +739,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		return nil, err
 	}
 
-	_, err = sbclient.ResizeVolume(ctx, spdkVol.lvolID, capacityBytes)
+	err = sbclient.ResizeVolume(ctx, spdkVol.lvolID, capacityBytes)
 	if err != nil {
 		klog.Errorf("failed to resize lvol, LVolID: %s err: %v", spdkVol.lvolID, err)
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -489,8 +490,7 @@ func (g *Guardian) isClusterActiveByID(clusterID string) (ok bool, realStatus st
 		return false, "", err
 	}
 
-	clusterPath := fmt.Sprintf("api/v2/clusters/%s/", clusterID)
-	raw, err := client.API.do(context.Background(), "GET", clusterPath, nil)
+	raw, err := client.API.do(context.Background(), http.MethodGet, client.API.v2cluster(), nil)
 	if err != nil {
 		return false, "", err
 	}
