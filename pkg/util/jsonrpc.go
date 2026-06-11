@@ -42,6 +42,11 @@ var (
 	ErrVolumeUnpublished = errors.New("volume not published")
 )
 
+// ClusterInfo is a partial view of GET /api/v2/clusters/{id}/
+type ClusterInfo struct {
+	NodeAffinity bool `json:"node_affinity"`
+}
+
 // ClusterAPI is the interface through which the CSI driver manages volumes,
 // snapshots, and storage pools on a SimplyBlock cluster.
 //
@@ -56,6 +61,12 @@ type ClusterAPI interface {
 	Info() string
 	ClusterID() string
 	PoolID() string
+
+	// Cluster metadata (cached)
+	GetClusterInfo(ctx context.Context) (*ClusterInfo, error)
+
+	// Storage nodes
+	ListStorageNodes(ctx context.Context) ([]StorageNode, error)
 
 	// Storage pools
 	ListStoragePools(ctx context.Context) ([]StoragePool, error)
@@ -84,6 +95,13 @@ type ClusterAPI interface {
 type StoragePool struct {
 	Name string `json:"name"`
 	UUID string `json:"id"`
+}
+
+// StorageNode represents a SimplyBlock storage node returned by the cluster API.
+type StorageNode struct {
+	UUID     string `json:"id"`
+	Hostname string `json:"hostname"`
+	Status   string `json:"status"`
 }
 
 type LvolConnectResp struct {
@@ -198,6 +216,14 @@ func (client APIClient) v2snapshots(poolID string) string {
 
 func (client APIClient) v2snapshot(poolID, snapshotID string) string {
 	return fmt.Sprintf("api/v2/clusters/%s/storage-pools/%s/snapshots/%s/", client.ClusterID, poolID, snapshotID)
+}
+
+func (client APIClient) v2cluster() string {
+	return fmt.Sprintf("api/v2/clusters/%s/", client.ClusterID)
+}
+
+func (client APIClient) v2storageNodes() string {
+	return fmt.Sprintf("api/v2/clusters/%s/storage-nodes/", client.ClusterID)
 }
 
 func (client APIClient) v2storageNode(nodeID string) string {
@@ -540,6 +566,32 @@ func (client APIClient) getLvolConnections(ctx context.Context, poolID, lvolID, 
 		return nil, fmt.Errorf("failed to unmarshal connections response: %w", err)
 	}
 	return result, nil
+}
+
+// listStorageNodes returns all storage nodes in the cluster.
+func (client APIClient) listStorageNodes(ctx context.Context) ([]StorageNode, error) {
+	raw, err := client.do(ctx, "GET", client.v2storageNodes(), nil)
+	if err != nil {
+		return nil, err
+	}
+	var result []StorageNode
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storage nodes response: %w", err)
+	}
+	return result, nil
+}
+
+// getClusterInfo fetches cluster metadata from the SimplyBlock API.
+func (client APIClient) getClusterInfo(ctx context.Context) (*ClusterInfo, error) {
+	raw, err := client.do(ctx, "GET", client.v2cluster(), nil)
+	if err != nil {
+		return nil, err
+	}
+	var info ClusterInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal cluster info: %w", err)
+	}
+	return &info, nil
 }
 
 // getStorageNodeStatus returns the status string for a storage node by UUID.

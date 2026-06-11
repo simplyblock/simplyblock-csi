@@ -61,12 +61,13 @@ const (
 	deprecatedAnnotationQoSRMBps    = "simplybk/qos-r-mbytes"
 	deprecatedAnnotationQoSWMBps    = "simplybk/qos-w-mbytes"
 
-	paramClusterID          = "cluster_id"
-	paramZoneClusterMap     = "zone_cluster_map"
-	paramRegionClusterMap   = "region_cluster_map"
-	topologyKeyZoneStable   = "topology.kubernetes.io/zone"
-	topologyKeyZoneBeta     = "failure-domain.beta.kubernetes.io/zone"
-	topologyKeyRegionStable = "topology.kubernetes.io/region"
+	paramClusterID               = "cluster_id"
+	paramZoneClusterMap          = "zone_cluster_map"
+	paramRegionClusterMap        = "region_cluster_map"
+	topologyKeyZoneStable        = "topology.kubernetes.io/zone"
+	topologyKeyZoneBeta          = "failure-domain.beta.kubernetes.io/zone"
+	topologyKeyRegionStable      = "topology.kubernetes.io/region"
+	topologyKeyStorageNodePrefix = "simplyblock.io/storage-node-uuid."
 )
 
 type controllerServer struct {
@@ -611,6 +612,41 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	}
 
+	// When WaitForFirstConsumer is used, the external-provisioner injects the
+	// scheduled node's topology into AccessibilityRequirements.preferred. If the
+	// node advertised a co-located storage node UUID and the cluster has node
+	// affinity enabled, pass it as host_id so the volume lands on the same node.
+	if createVolReq.HostID == "" {
+		clusterInfo, infoErr := sbclient.GetClusterInfo(ctx)
+		if infoErr != nil {
+			klog.Warningf("createVolume: failed to fetch cluster info for node affinity check: %v", infoErr)
+		} else if clusterInfo.NodeAffinity {
+			if pvcName := req.GetParameters()[CSIStorageNameKey]; pvcName != "" {
+				pvcNS := req.GetParameters()[CSIStorageNamespaceKey]
+				if annotations, annErr := fetchPVCAnnotations(ctx, pvcName, pvcNS); annErr == nil {
+					if selectedNode := annotations["volume.kubernetes.io/selected-node"]; selectedNode != "" {
+						storageNodes, snErr := sbclient.ListStorageNodes(ctx)
+						if snErr != nil {
+							klog.Warningf("createVolume: failed to list storage nodes for host affinity: %v", snErr)
+						} else {
+							for _, sn := range storageNodes {
+								host := sn.Hostname
+								if i := strings.LastIndex(host, "_"); i != -1 {
+									host = host[:i]
+								}
+								if host == selectedNode {
+									createVolReq.HostID = sn.UUID
+									klog.Infof("createVolume: matched storage node hostname=%s uuid=%s for node=%s", sn.Hostname, sn.UUID, selectedNode)
+									break
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Store the effective QoS values into VolumeContext so the PV spec records
 	// what was actually applied.
 	vol.VolumeContext["qos_rw_iops"] = createVolReq.MaxRWIOPS
@@ -644,6 +680,34 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	klog.V(5).Info("successfully created volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
 
 	return &vol, nil
+}
+
+// storageNodeTopologyKey returns the per-cluster topology segment key used to
+// advertise the co-located storage node UUID for a specific cluster.
+func storageNodeTopologyKey(clusterID string) string {
+	return topologyKeyStorageNodePrefix + clusterID
+}
+
+// storageNodeFromTopology extracts the co-located storage node UUID for the
+// given cluster from the topology requirements supplied by the
+// external-provisioner when WaitForFirstConsumer binding mode is in use.
+// Preferred is checked first; requisite is used as a fallback.
+func storageNodeFromTopology(topoReq *csi.TopologyRequirement, clusterID string) string {
+	if topoReq == nil {
+		return ""
+	}
+	key := storageNodeTopologyKey(clusterID)
+	for _, topo := range topoReq.GetPreferred() {
+		if id := topo.GetSegments()[key]; id != "" {
+			return id
+		}
+	}
+	for _, topo := range topoReq.GetRequisite() {
+		if id := topo.GetSegments()[key]; id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 func getSPDKVol(csiVolumeID string) (*spdkVolume, error) {

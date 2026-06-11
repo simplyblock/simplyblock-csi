@@ -26,10 +26,20 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/klog"
 )
+
+// clusterInfoCache holds fetched ClusterInfo keyed by cluster ID.
+// Entries are permanent for the process lifetime; node_affinity is not
+// expected to change while the CSI driver is running.
+var clusterInfoCache sync.Map
+
+// storageNodeCache holds the list of storage nodes keyed by cluster ID.
+// Populated on first call and reused for the process lifetime.
+var storageNodeCache sync.Map
 
 const (
 	envTLSConnect = "SB_TLS_CONNECT"
@@ -179,6 +189,32 @@ func NewClusterClient(clusterID, endpoint, clusterSecret string) (*ClusterClient
 
 func (c *ClusterClient) Info() string {
 	return c.API.info()
+}
+
+// GetClusterInfo returns cluster metadata, fetching from the API on first call
+// per cluster ID and returning the cached result on subsequent calls.
+func (c *ClusterClient) GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
+	if v, ok := clusterInfoCache.Load(c.API.ClusterID); ok {
+		return v.(*ClusterInfo), nil
+	}
+	info, err := c.API.getClusterInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	clusterInfoCache.Store(c.API.ClusterID, info)
+	return info, nil
+}
+
+func (c *ClusterClient) ListStorageNodes(ctx context.Context) ([]StorageNode, error) {
+	if v, ok := storageNodeCache.Load(c.API.ClusterID); ok {
+		return v.([]StorageNode), nil
+	}
+	nodes, err := c.API.listStorageNodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	storageNodeCache.Store(c.API.ClusterID, nodes)
+	return nodes, nil
 }
 
 func (c *ClusterClient) ListStoragePools(ctx context.Context) ([]StoragePool, error) {
