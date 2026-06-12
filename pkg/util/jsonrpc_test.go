@@ -21,8 +21,8 @@ const (
 
 func newTestClient(transport roundTripFunc) *APIClient {
 	return &APIClient{
-		ClusterID:     "cluster-id",
-		ClusterSecret: "cluster-secret",
+		ClusterID:  "cluster-id",
+		Credential: "cluster-secret",
 		conn: &Connection{
 			Endpoint: "http://api.example.com",
 			HTTP:     &http.Client{Transport: transport},

@@ -67,16 +67,22 @@ rbac:
 
 controller:
   replicas: 1
+  serviceAccountAuth:
+    # When enabled, the CSI driver authenticates with the simplyblock API using
+    # the pod's Kubernetes service account JWT instead of the static cluster_secret.
+    # The service account must be added to SB_K8S_ADMIN_SERVICE_ACCOUNTS on the
+    # simplyblock control plane: system:serviceaccount:<namespace>:simplyblock-csi-controller-sa
+    enabled: false
   tolerations:
     create: false
     list:
     - operator: Exists
       effect:
-      key: 
+      key:
       value:
   nodeSelector:
     create: false
-    key: 
+    key:
     value:
 
 storageclass:
@@ -152,16 +158,22 @@ benchmarks: 0
 autoClusterActivate: false 
 
 node:
+  serviceAccountAuth:
+    # When enabled, the CSI node DaemonSet authenticates with the simplyblock API using
+    # the pod's Kubernetes service account JWT instead of the static cluster_secret.
+    # The service account must be added to SB_K8S_ADMIN_SERVICE_ACCOUNTS on the
+    # simplyblock control plane: system:serviceaccount:<namespace>:simplyblock-csi-node-sa
+    enabled: false
   tolerations:
     create: false
     list:
     - operator: Exists
       effect:
-      key: 
+      key:
       value:
   nodeSelector:
     create: false
-    key: 
+    key:
     value:
 
 storagenode:
