@@ -181,6 +181,10 @@ func (c *ClusterClient) Info() string {
 	return c.API.info()
 }
 
+func (c *ClusterClient) GetClusterInfo(ctx context.Context) (*ClusterStatus, error) {
+	return c.API.getClusterInfo(ctx)
+}
+
 func (c *ClusterClient) ListStoragePools(ctx context.Context) ([]StoragePool, error) {
 	return c.API.listStoragePools(ctx)
 }

@@ -75,6 +75,9 @@ type ClusterAPI interface {
 	ClusterID() string
 	PoolID() string
 
+	// Cluster info
+	GetClusterInfo(ctx context.Context) (*ClusterStatus, error)
+
 	// Storage pools
 	ListStoragePools(ctx context.Context) ([]StoragePool, error)
 	GetPoolUUIDByName(ctx context.Context, poolName string) (string, error)
@@ -148,7 +151,10 @@ type APIClient struct {
 
 // ClusterStatus is a partial view of the GET /clusters/{id}/ response in v2.
 type ClusterStatus struct {
-	Status string `json:"status"`
+	Status       string `json:"status"`
+	DistrNdcs    int    `json:"distr_ndcs"`
+	DistrNpcs    int    `json:"distr_npcs"`
+	DistrChunkBS int    `json:"distr_chunk_bs"`
 }
 
 // SnapshotResp is the response of GET /snapshots/ — field tags match v2 SnapshotDTO
@@ -239,6 +245,19 @@ func (client APIClient) v2storageNode(nodeID string) string {
 }
 
 // --- API methods ---
+
+// getClusterInfo fetches cluster-level distribution parameters.
+func (client APIClient) getClusterInfo(ctx context.Context) (*ClusterStatus, error) {
+	raw, err := client.do(ctx, http.MethodGet, client.v2cluster(), nil)
+	if err != nil {
+		return nil, err
+	}
+	var info ClusterStatus
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal cluster info: %w", err)
+	}
+	return &info, nil
+}
 
 // listStoragePools returns all available storage pools
 func (client APIClient) listStoragePools(ctx context.Context) ([]StoragePool, error) {
