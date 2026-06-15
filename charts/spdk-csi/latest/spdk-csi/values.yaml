@@ -135,6 +135,10 @@ logicalVolume:
   lvol_priority_class: "0"
   max_namespace_per_subsys: "1"
   tune2fs_reserved_blocks: "0"
+  # xfs_su and xfs_sw set the XFS stripe unit/width (mkfs.xfs -d su=,sw=).
+  # Both must be set together; if unset here, the CSI driver defaults to su=16k, sw=1.
+  xfs_su: ""
+  xfs_sw: ""
   fabric: tcp
 
 podAnnotations: {}
