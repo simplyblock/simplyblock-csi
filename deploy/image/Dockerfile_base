@@ -1,3 +1,14 @@
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS e2fsprogs-builder
+RUN dnf install -y gcc make gzip tar wget --nogpgcheck && \
+    wget -q https://www.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.0/e2fsprogs-1.47.0.tar.gz \
+        -O /tmp/e2fsprogs.tar.gz && \
+    echo "0b4fe723d779b0927fb83c9ae709bc7b40f66d7df36433bef143e41c54257084  /tmp/e2fsprogs.tar.gz" | sha256sum -c - && \
+    tar -xzf /tmp/e2fsprogs.tar.gz -C /tmp && \
+    cd /tmp/e2fsprogs-1.47.0 && \
+    ./configure --prefix=/usr --sbindir=/usr/sbin --disable-elf-shlibs && \
+    make -j$(nproc) && \
+    make install DESTDIR=/e2fsprogs-dist
+
 FROM registry.access.redhat.com/ubi9/ubi:9.8
 LABEL name="simplyblock"
 LABEL vendor="Simplyblock"
@@ -21,6 +32,13 @@ RUN dnf update -y  --nogpgcheck
 RUN dnf install -y nvme-cli iscsi-initiator-utils e2fsprogs xfsprogs util-linux kmod wget sudo rpm --nogpgcheck && \
     dnf remove -y python3-urllib3 python3-requests python3-idna --nogpgcheck && \
     dnf clean all
+
+# overwrite e2fsprogs 1.47.0 binaries (statically linked) over the OL9-packaged 1.46.5 version.
+# --disable-elf-shlibs builds against static internal libs so no .so files need copying.
+COPY --from=e2fsprogs-builder /e2fsprogs-dist/usr/sbin/tune2fs /usr/sbin/tune2fs
+COPY --from=e2fsprogs-builder /e2fsprogs-dist/usr/sbin/mke2fs  /usr/sbin/mke2fs
+COPY --from=e2fsprogs-builder /e2fsprogs-dist/usr/sbin/e2fsck  /usr/sbin/e2fsck
+
 RUN useradd -ms /bin/bash simplyblock
 RUN echo "simplyblock  ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 USER simplyblock
