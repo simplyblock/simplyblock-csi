@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -492,17 +491,6 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	formatOptions := []string{}
 
 	if fsType == "xfs" {
-		if rawNdcs := volumeContext["distr_ndcs"]; rawNdcs != "" {
-			distrNdcs, err := strconv.Atoi(rawNdcs)
-			if err != nil {
-				return fmt.Errorf("invalid distr_ndcs %q: %w", rawNdcs, err)
-			}
-			if distrNdcs <= 0 {
-				return fmt.Errorf("invalid distr_ndcs %d: must be greater than 0", distrNdcs)
-			}
-			formatOptions = append(formatOptions, "-d", fmt.Sprintf("sunit=%d,swidth=%d", 8*distrNdcs, 8*distrNdcs), "-l", fmt.Sprintf("sunit=%d", 8*distrNdcs))
-		}
-
 		// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
 		// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
 		mntFlags = append(mntFlags, "nouuid")
