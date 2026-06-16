@@ -156,18 +156,50 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		return nil, status.Error(codes.InvalidArgument, "volume_path is required")
 	}
 
+	// Check the backing NVMe device is still present using the stashed VolumeContext.
+	// IsMountPoint and os.Stat on the mount directory both succeed for silently stale
+	// NVMe mounts (kernel has the inode cached), so we must verify the by-id device
+	// path independently.
+	if stagingPath := req.GetStagingTargetPath(); stagingPath != "" {
+		if vc, err := util.LookupVolumeContext(stagingPath); err == nil {
+			if devicePath, ok := vc["devicePath"]; ok && devicePath != "" {
+				if _, statErr := os.Stat(devicePath); os.IsNotExist(statErr) {
+					return &csi.NodeGetVolumeStatsResponse{
+						VolumeCondition: &csi.VolumeCondition{
+							Abnormal: true,
+							Message:  fmt.Sprintf("NVMe device %s not found; volume has disconnected", devicePath),
+						},
+					}, nil
+				}
+			}
+		}
+	}
+
 	st, err := os.Stat(volumePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, status.Error(codes.NotFound, "volume_path not found")
 		}
-		return nil, status.Errorf(codes.Internal, "stat volume_path %q: %v", volumePath, err)
+		// Any other stat error (EIO, ENOTCONN) means the mount is unhealthy.
+		return &csi.NodeGetVolumeStatsResponse{
+			VolumeCondition: &csi.VolumeCondition{
+				Abnormal: true,
+				Message:  fmt.Sprintf("stat %q failed: %v", volumePath, err),
+			},
+		}, nil
 	}
 
 	if st.IsDir() {
 		var s unix.Statfs_t
 		if err := unix.Statfs(volumePath, &s); err != nil {
-			return nil, status.Errorf(codes.Internal, "statfs %q: %v", volumePath, err)
+			// statfs failing on a mounted directory means the backing device has
+			// gone away (stale NVMe/TCP mount surfaces as EIO or ENOTCONN here).
+			return &csi.NodeGetVolumeStatsResponse{
+				VolumeCondition: &csi.VolumeCondition{
+					Abnormal: true,
+					Message:  fmt.Sprintf("statfs %q failed: %v", volumePath, err),
+				},
+			}, nil
 		}
 
 		totalBytes := int64(s.Blocks) * int64(s.Bsize)
@@ -199,12 +231,18 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 					Available: availInodes,
 				},
 			},
+			VolumeCondition: &csi.VolumeCondition{Abnormal: false},
 		}, nil
 	}
 
 	sizeBytes, err := getBlockSizeBytes(volumePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "get block size for %q: %v", volumePath, err)
+		return &csi.NodeGetVolumeStatsResponse{
+			VolumeCondition: &csi.VolumeCondition{
+				Abnormal: true,
+				Message:  fmt.Sprintf("get block size for %q failed: %v", volumePath, err),
+			},
+		}, nil
 	}
 
 	return &csi.NodeGetVolumeStatsResponse{
@@ -216,6 +254,7 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 				Available: int64(sizeBytes),
 			},
 		},
+		VolumeCondition: &csi.VolumeCondition{Abnormal: false},
 	}, nil
 }
 
@@ -233,8 +272,36 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if isStaged {
-		klog.Warning("volume already staged")
-		return &csi.NodeStageVolumeResponse{}, nil
+		// A mount point exists, but we must verify staging actually completed and
+		// the backing NVMe device is still alive.
+		//
+		// Two failure modes that IsMountPoint cannot distinguish:
+		//   1. Stash file absent: staging was interrupted after FormatAndMount but
+		//      before StashVolumeContext (e.g. tune2fs failure).  The mount exists
+		//      but is orphaned — the NVMe device has since been disconnected.
+		//   2. Stash file present, device gone: staging completed successfully, but
+		//      the NVMe/TCP connection dropped later.  IsMountPoint still returns
+		//      true because the kernel has the directory inode cached.
+		// In both cases, unmount and fall through to a fresh connect + mount.
+		if vc, ctxErr := util.LookupVolumeContext(stagingParentPath); ctxErr != nil {
+			klog.Warningf("mount exists at %s but no stash found (%v); unmounting for re-stage", stagingTargetPath, ctxErr)
+			if umountErr := ns.mounter.Unmount(stagingTargetPath); umountErr != nil {
+				klog.Warningf("failed to unmount orphaned staging path %s: %v", stagingTargetPath, umountErr)
+			}
+			isStaged = false
+		} else if devicePath, ok := vc["devicePath"]; ok && devicePath != "" {
+			if _, statErr := os.Stat(devicePath); os.IsNotExist(statErr) {
+				klog.Warningf("stale NVMe mount at %s: device %s is gone; unmounting for re-stage", stagingTargetPath, devicePath)
+				if umountErr := ns.mounter.Unmount(stagingTargetPath); umountErr != nil {
+					klog.Warningf("failed to unmount stale staging path %s: %v", stagingTargetPath, umountErr)
+				}
+				isStaged = false
+			}
+		}
+		if isStaged {
+			klog.Warning("volume already staged")
+			return &csi.NodeStageVolumeResponse{}, nil
+		}
 	}
 
 	var initiator util.SpdkCsiInitiator
@@ -553,7 +620,13 @@ func (ns *nodeServer) isStaged(stagingPath string) (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		} else if mount.IsCorruptedMnt(err) {
-			return true, nil
+			// Corrupted mount — clean it up so NodeStageVolume performs a fresh
+			// mount rather than falsely declaring the volume staged.
+			klog.Warningf("corrupted mount at %s; unmounting for re-stage", stagingPath)
+			if umountErr := ns.mounter.Unmount(stagingPath); umountErr != nil {
+				klog.Warningf("failed to unmount corrupted staging path %s: %v", stagingPath, umountErr)
+			}
+			return false, nil
 		}
 		klog.Warningf("check is stage error: %v", err)
 		return false, err
