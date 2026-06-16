@@ -13,7 +13,7 @@ COPY cmd/ cmd/
 COPY pkg/ pkg/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -buildvcs=false -o spdkcsi ./cmd/
 
-FROM simplyblock/spdkcsi:base_image
+FROM simplyblock/spdkcsi:base_image_e2fsprogs
 
 USER root
 WORKDIR /app
