@@ -1,0 +1,9 @@
+# 2026/06/16 22:06:43.267189 [TestSpec_RestartBackoff_HoldsAcrossAllLvols] [rapid] draw n_lvols: 2
+# 2026/06/16 22:06:43.267191 [TestSpec_RestartBackoff_HoldsAcrossAllLvols] spec violation: RestartBackoff lost for "pod-A" after processing "lvol-0"
+# pod still tracked by 1 lvol(s) — backoff must prevent re-restart in same tick
+# spec: RestartBackoff=10m0s must hold for the entire tick duration
+# 
+v0.4.8#14091359715898753455
+0x0
+0x0
+0x0

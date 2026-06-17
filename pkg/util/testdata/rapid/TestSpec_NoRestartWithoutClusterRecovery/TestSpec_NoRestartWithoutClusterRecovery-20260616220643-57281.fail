@@ -1,0 +1,11 @@
+# 2026/06/16 22:06:43.266660 [TestSpec_NoRestartWithoutClusterRecovery] [rapid] draw extra: 1
+# 2026/06/16 22:06:43.266675 [TestSpec_NoRestartWithoutClusterRecovery] [rapid] draw was_inactive: false
+# 2026/06/16 22:06:43.266676 [TestSpec_NoRestartWithoutClusterRecovery] spec violation: restart triggered without a cluster recovery transition
+# spec: 'restarts pods ONLY after cluster becomes active again'
+# wasInactive=false  brokenFor=30.000000001s  minBrokenFor=30s
+# 
+v0.4.8#816235491779770853
+0x0
+0x0
+0x0
+0x0

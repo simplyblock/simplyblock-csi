@@ -1,0 +1,14 @@
+# 2026/06/16 21:54:18.719602 [TestBug_MissingWasInactiveGate] [rapid] draw extra_ns: 1
+# 2026/06/16 21:54:18.719617 [TestBug_MissingWasInactiveGate] [rapid] draw was_inactive: false
+# 2026/06/16 21:54:18.719617 [TestBug_MissingWasInactiveGate] BUG – actual(true) != intended(false)
+#   clusterWasInactive=false  brokenFor=30.000000001s  minBrokenFor=30s
+#   Pod restarted even though the cluster was never inactive.
+#   justBecameActive is computed in tick() at line 351 but
+#   is never consulted in the actionableByCluster filter (lines 392-404).
+#   Fix: gate on justBecameActive[cid] instead of activeNow[cid].
+# 
+v0.4.8#14507603360532051770
+0x0
+0x0
+0x0
+0x0

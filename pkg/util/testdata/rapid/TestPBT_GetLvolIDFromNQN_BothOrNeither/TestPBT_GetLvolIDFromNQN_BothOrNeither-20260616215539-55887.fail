@@ -1,0 +1,16 @@
+# 2026/06/16 21:55:39.760761 [TestPBT_GetLvolIDFromNQN_BothOrNeither] [rapid] draw inject_delimiter: true
+# 2026/06/16 21:55:39.760777 [TestPBT_GetLvolIDFromNQN_BothOrNeither] [rapid] draw prefix: ""
+# 2026/06/16 21:55:39.760779 [TestPBT_GetLvolIDFromNQN_BothOrNeither] [rapid] draw suffix: "A"
+# 2026/06/16 21:55:39.760780 [TestPBT_GetLvolIDFromNQN_BothOrNeither] BUG – inconsistent result: clusterID="" lvolID="A"
+# nqn=":lvol:A"
+# Trigger: NQN ending with ':lvol:' (empty lvolID segment).
+# Fix: return ("","") when parts[1] (lvolID) is empty.
+# 
+v0.4.8#15266898277442980872
+0x1
+0x0
+0x5555555555555
+0x0
+0x0
+0x0
+0x0
