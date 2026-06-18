@@ -496,15 +496,6 @@ func getBoolParameter(params map[string]string, key string) bool {
 func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, capacityBytes int64) (*util.CreateLVolData, error) {
 	params := req.GetParameters()
 
-	distrNdcs, err := getIntParameter(params, "distr_ndcs", 1)
-	if err != nil {
-		return nil, err
-	}
-	distrNpcs, err := getIntParameter(params, "distr_npcs", 1)
-	if err != nil {
-		return nil, err
-	}
-
 	priorClass, err := getIntParameter(params, "lvol_priority_class", 0)
 	if err != nil {
 		return nil, err
@@ -570,8 +561,6 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		Compression:  compression,
 		Encryption:   encryption,
 		Replicate:    replicate,
-		DistNdcs:     distrNdcs,
-		DistNpcs:     distrNpcs,
 		HostID:       hostID,
 		LvolID:       lvolID,
 		Namespaced:   maxNamespace > 1,
