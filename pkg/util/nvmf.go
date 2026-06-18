@@ -308,7 +308,7 @@ func (c *ClusterClient) DeleteVolume(ctx context.Context, lvolID string) error {
 // DeleteSnapshot deletes a snapshot
 func (c *ClusterClient) DeleteSnapshot(ctx context.Context, snapshotID string) error {
 	err := c.API.deleteSnapshot(ctx, c.poolID, snapshotID)
-	if err != nil && !errors.Is(err, ErrJSONNoSuchDevice) {
+	if err != nil && !errors.Is(err, ErrSnapshotNotFound) {
 		return err
 	}
 	klog.V(5).Infof("snapshot deleted: %s", snapshotID)
@@ -317,8 +317,7 @@ func (c *ClusterClient) DeleteSnapshot(ctx context.Context, snapshotID string) e
 
 // PublishVolume exports a volume through NVMf target
 func (c *ClusterClient) PublishVolume(ctx context.Context, lvolID string) error {
-	_, err := c.API.do(ctx, http.MethodGet, c.API.v2volume(c.poolID, lvolID), nil)
-	if err != nil {
+	if err := c.API.publishVolume(ctx, c.poolID, lvolID); err != nil {
 		return err
 	}
 	klog.V(5).Infof("volume published: %s", lvolID)
@@ -327,11 +326,7 @@ func (c *ClusterClient) PublishVolume(ctx context.Context, lvolID string) error 
 
 // UnpublishVolume unexports a volume through NVMf target
 func (c *ClusterClient) UnpublishVolume(ctx context.Context, lvolID string) error {
-	_, err := c.API.do(ctx, http.MethodGet, c.API.v2volume(c.poolID, lvolID), nil)
-	if err != nil {
-		if strings.Contains(err.Error(), "404") {
-			return ErrVolumeUnpublished
-		}
+	if err := c.API.unpublishVolume(ctx, c.poolID, lvolID); err != nil {
 		return err
 	}
 	klog.V(5).Infof("volume unpublished: %s", lvolID)

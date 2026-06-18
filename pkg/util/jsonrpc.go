@@ -33,14 +33,32 @@ import (
 
 // errors deserve special care
 var (
-	ErrJSONNoSpaceLeft  = errors.New("json: No space left")
-	ErrJSONNoSuchDevice = errors.New("json: No such device")
-	ErrJSONVolumeExists = errors.New("json: Volume exists")
+	ErrVolumeNotFound   = errors.New("volume not found")
+	ErrVolumeExists     = errors.New("volume already exists")
+	ErrSnapshotNotFound = errors.New("snapshot not found")
+	ErrSnapshotExists   = errors.New("snapshot already exists")
 
 	// internal errors
-	ErrVolumeDeleted     = errors.New("volume deleted")
 	ErrVolumeUnpublished = errors.New("volume not published")
 )
+
+// HTTPError implements error 
+type HTTPError struct {
+	Method     string
+	StatusCode int
+	Message    string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("%s %d: %s", e.Method, e.StatusCode, e.Message)
+}
+
+// isHTTPStatus reports whether err is an HTTPError
+// with the given status code.
+func isHTTPStatus(err error, code int) bool {
+	var e *HTTPError
+	return errors.As(err, &e) && e.StatusCode == code
+}
 
 // ClusterAPI is the interface through which the CSI driver manages volumes,
 // snapshots, and storage pools on a SimplyBlock cluster.
@@ -239,10 +257,8 @@ func (client APIClient) listStoragePools(ctx context.Context) ([]StoragePool, er
 func (client APIClient) createVolume(ctx context.Context, poolID string, params *CreateLVolData) (string, error) {
 	raw, err := client.do(ctx, http.MethodPost, client.v2volumes(poolID), params)
 	if err != nil {
-		if errorMatches(err, ErrJSONNoSpaceLeft) {
-			err = ErrJSONNoSpaceLeft
-		} else if strings.Contains(strings.ToLower(err.Error()), "exists") || strings.Contains(strings.ToLower(err.Error()), "conflict") {
-			err = ErrJSONVolumeExists
+		if isHTTPStatus(err, http.StatusConflict) {
+			err = ErrVolumeExists
 		}
 		return "", err
 	}
@@ -257,9 +273,6 @@ func (client APIClient) createVolume(ctx context.Context, poolID string, params 
 func (client APIClient) getVolumeByUUID(ctx context.Context, poolID, lvolID string) (*LvolResp, error) {
 	raw, err := client.do(ctx, http.MethodGet, client.v2volume(poolID, lvolID), nil)
 	if err != nil {
-		if errorMatches(err, ErrJSONNoSuchDevice) {
-			err = ErrJSONNoSuchDevice
-		}
 		return nil, err
 	}
 	var result LvolResp
@@ -286,9 +299,6 @@ func (client APIClient) listVolumes(ctx context.Context, poolID string) ([]*Lvol
 func (client APIClient) getVolumeInfo(ctx context.Context, poolID, lvolID, hostNQN string) (map[string]string, error) {
 	result, err := client.getLvolConnections(ctx, poolID, lvolID, hostNQN)
 	if err != nil {
-		if errorMatches(err, ErrJSONNoSuchDevice) {
-			err = ErrJSONNoSuchDevice
-		}
 		return nil, err
 	}
 	if len(result) == 0 {
@@ -323,8 +333,8 @@ func (client APIClient) getVolumeInfo(ctx context.Context, poolID, lvolID, hostN
 // deleteVolume deletes a volume by UUID
 func (client APIClient) deleteVolume(ctx context.Context, poolID, lvolID string) error {
 	_, err := client.do(ctx, http.MethodDelete, client.v2volume(poolID, lvolID), nil)
-	if err != nil && (errorMatches(err, ErrJSONNoSuchDevice) || strings.Contains(err.Error(), "404")) {
-		err = ErrJSONNoSuchDevice
+	if err != nil && isHTTPStatus(err, http.StatusNotFound) {
+		err = ErrVolumeNotFound
 	}
 	return err
 }
@@ -369,6 +379,21 @@ func (client APIClient) resizeVolume(ctx context.Context, poolID, lvolID string,
 	return err
 }
 
+// publishVolume checks that a volume exists and is reachable.
+func (client APIClient) publishVolume(ctx context.Context, poolID, lvolID string) error {
+	_, err := client.do(ctx, http.MethodGet, client.v2volume(poolID, lvolID), nil)
+	return err
+}
+
+// unpublishVolume checks that a volume is gone (404 → ErrVolumeUnpublished).
+func (client APIClient) unpublishVolume(ctx context.Context, poolID, lvolID string) error {
+	_, err := client.do(ctx, http.MethodGet, client.v2volume(poolID, lvolID), nil)
+	if err != nil && isHTTPStatus(err, http.StatusNotFound) {
+		return ErrVolumeUnpublished
+	}
+	return err
+}
+
 // cloneVolume clones a volume by UUID, returning the new volume's UUID
 func (client APIClient) cloneVolume(ctx context.Context, poolID, lvolID, cloneName, newSize, pvcName string) (string, error) {
 	q := url.Values{"clone_name": {cloneName}}
@@ -383,9 +408,6 @@ func (client APIClient) cloneVolume(ctx context.Context, poolID, lvolID, cloneNa
 
 	raw, err := client.do(ctx, http.MethodPost, client.v2volumeClone(poolID, lvolID)+"?"+q.Encode(), nil)
 	if err != nil {
-		if errorMatches(err, ErrJSONNoSpaceLeft) {
-			err = ErrJSONNoSpaceLeft
-		}
 		return "", err
 	}
 	var lvID string
@@ -413,9 +435,6 @@ func (client APIClient) cloneSnapshot(ctx context.Context, poolID, snapshotID, c
 
 	raw, err := client.do(ctx, http.MethodPost, client.v2volumes(poolID), &params)
 	if err != nil {
-		if errorMatches(err, ErrJSONNoSpaceLeft) {
-			err = ErrJSONNoSpaceLeft
-		}
 		return "", err
 	}
 	var lvolID string
@@ -469,8 +488,8 @@ func (client APIClient) snapshot(ctx context.Context, poolID, lvolID, snapShotNa
 	path := client.v2volumeSnapshots(poolID, lvolID)
 	raw, err := client.do(ctx, http.MethodPost, path, &params)
 	if err != nil {
-		if errorMatches(err, ErrJSONNoSpaceLeft) {
-			err = ErrJSONNoSpaceLeft
+		if isHTTPStatus(err, http.StatusConflict) {
+			err = ErrSnapshotExists
 		}
 		return "", err
 	}
@@ -488,8 +507,8 @@ func (client APIClient) deleteSnapshot(ctx context.Context, poolID, snapshotID s
 		return client.deleteSnapshotScanPools(ctx, snapshotID)
 	}
 	_, err := client.do(ctx, http.MethodDelete, client.v2snapshot(poolID, snapshotID), nil)
-	if err != nil && (errorMatches(err, ErrJSONNoSuchDevice) || strings.Contains(err.Error(), "404")) {
-		err = ErrJSONNoSuchDevice
+	if err != nil && isHTTPStatus(err, http.StatusNotFound) {
+		err = ErrSnapshotNotFound
 	}
 	return err
 }
@@ -506,11 +525,11 @@ func (client APIClient) deleteSnapshotScanPools(ctx context.Context, snapshotID 
 		if err == nil {
 			return nil
 		}
-		if !strings.Contains(err.Error(), "404") && !strings.Contains(err.Error(), "Not Found") {
+		if !isHTTPStatus(err, http.StatusNotFound) {
 			return err
 		}
 	}
-	return fmt.Errorf("snapshot %s not found in any pool", snapshotID)
+	return ErrSnapshotNotFound
 }
 
 // findPoolForVolume scans all storage pools to find which one contains the given
@@ -525,8 +544,7 @@ func (client APIClient) findPoolForVolume(ctx context.Context, lvolID string) (s
 		if err == nil {
 			return pool.UUID, nil
 		}
-		// FIXME: instead of parsing error messages, use an HTTP error type with status code
-		if !errorMatches(err, ErrJSONNoSuchDevice) && !strings.Contains(err.Error(), "404") {
+		if !isHTTPStatus(err, http.StatusNotFound) {
 			return "", fmt.Errorf("unexpected error searching for volume %s in pool %s: %w", lvolID, pool.UUID, err)
 		}
 	}
@@ -636,7 +654,7 @@ func (client APIClient) do(ctx context.Context, method, path string, body any) (
 		if msg == "" {
 			msg = http.StatusText(resp.StatusCode)
 		}
-		return nil, fmt.Errorf("%s %d: %s", method, resp.StatusCode, msg)
+		return nil, &HTTPError{Method: method, StatusCode: resp.StatusCode, Message: msg}
 	}
 
 	return json.RawMessage(raw), nil
@@ -684,14 +702,3 @@ func extractErrorMessage(body []byte) string {
 	return string(body)
 }
 
-// errorMatches checks if the error message from the full error
-func errorMatches(errFull, errJSON error) bool {
-	if errFull == nil {
-		return false
-	}
-	strFull := strings.ToLower(errFull.Error())
-	strJSON := strings.ToLower(errJSON.Error())
-	strJSON = strings.TrimPrefix(strJSON, "json:")
-	strJSON = strings.TrimSpace(strJSON)
-	return strings.Contains(strFull, strJSON)
-}
