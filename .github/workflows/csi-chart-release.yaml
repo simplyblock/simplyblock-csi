@@ -50,9 +50,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           BRANCH="${{ steps.release_meta.outputs.branch }}"
-          git checkout -b "$BRANCH"
+          git fetch origin master
+          git checkout -b "$BRANCH" origin/master
 
-          git add charts/spdk-csi/index.yaml charts/spdk-csi/${{ env.VERSION }}/
+          git checkout ${{ github.sha }} -- charts/spdk-csi/index.yaml charts/spdk-csi/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
           git push origin "$BRANCH"
 
