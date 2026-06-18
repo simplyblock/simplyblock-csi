@@ -18,7 +18,6 @@ keywords:
 home: https://github.com/simplyblock-io/spdk-csi
 sources:
 - https://github.com/simplyblock-io/spdk-csi/tree/master/charts/spdk-csi
-
 dependencies:
   - name: mongodb-kubernetes
     version: 1.4.0 
