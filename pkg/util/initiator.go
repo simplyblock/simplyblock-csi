@@ -157,11 +157,13 @@ func NewsimplyBlockClient(ctx context.Context, clusterID, poolIDOrName string) (
 	// Use API token when SPDKCSI_API_TOKEN_PATH is explicitly set; otherwise fall back to cluster_secret.
 	credential := clusterConfig.ClusterSecret
 	if tokenPath := os.Getenv("SPDKCSI_API_TOKEN_PATH"); tokenPath != "" {
-		if tokenBytes, err := os.ReadFile(tokenPath); err == nil {
-			if token := strings.TrimSpace(string(tokenBytes)); token != "" {
-				credential = token
-				klog.Infof("Using API token from file for cluster %s", clusterID)
-			}
+		if tokenBytes, err := os.ReadFile(tokenPath); err != nil {
+			klog.Warningf("SPDKCSI_API_TOKEN_PATH is set but token file %q could not be read for cluster %s: %v; falling back to cluster_secret", tokenPath, clusterID, err)
+		} else if token := strings.TrimSpace(string(tokenBytes)); token == "" {
+			klog.Warningf("SPDKCSI_API_TOKEN_PATH is set but token file %q is empty for cluster %s; falling back to cluster_secret", tokenPath, clusterID)
+		} else {
+			credential = token
+			klog.Infof("Using API token from file for cluster %s", clusterID)
 		}
 	}
 	if credential == "" {

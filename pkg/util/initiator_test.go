@@ -164,3 +164,38 @@ func TestCredentialBothMissingReturnsError(t *testing.T) {
 		t.Errorf("error %q does not contain %q", err.Error(), want)
 	}
 }
+
+// TestCredentialAPITokenFileUnreadableFallsBackToClusterSecret verifies that when
+// SPDKCSI_API_TOKEN_PATH points to a nonexistent file, the driver falls back to
+// cluster_secret rather than failing silently or crashing.
+func TestCredentialAPITokenFileUnreadableFallsBackToClusterSecret(t *testing.T) {
+	secretFile := writeTempFile(t, testSecretJSON)
+	t.Setenv("SPDKCSI_SECRET", secretFile)
+	t.Setenv("SPDKCSI_API_TOKEN_PATH", "/nonexistent/path/to/token")
+
+	node, err := NewsimplyBlockClient(context.Background(), "test-cluster", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.API.Credential != "static-secret" {
+		t.Errorf("expected fallback to cluster_secret %q, got %q", "static-secret", node.API.Credential)
+	}
+}
+
+// TestCredentialAPITokenFileEmptyFallsBackToClusterSecret verifies that when
+// SPDKCSI_API_TOKEN_PATH points to a file that is empty (or whitespace-only),
+// the driver falls back to cluster_secret.
+func TestCredentialAPITokenFileEmptyFallsBackToClusterSecret(t *testing.T) {
+	secretFile := writeTempFile(t, testSecretJSON)
+	tokenFile := writeTempFile(t, "   \n")
+	t.Setenv("SPDKCSI_SECRET", secretFile)
+	t.Setenv("SPDKCSI_API_TOKEN_PATH", tokenFile)
+
+	node, err := NewsimplyBlockClient(context.Background(), "test-cluster", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.API.Credential != "static-secret" {
+		t.Errorf("expected fallback to cluster_secret %q, got %q", "static-secret", node.API.Credential)
+	}
+}
