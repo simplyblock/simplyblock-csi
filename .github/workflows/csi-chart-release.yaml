@@ -53,7 +53,7 @@ jobs:
           git fetch origin master
           git checkout -b "$BRANCH" origin/master
 
-          git checkout ${{ github.sha }} -- charts/spdk-csi/index.yaml charts/spdk-csi/${{ env.VERSION }}/
+          git add charts/spdk-csi/index.yaml charts/spdk-csi/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
           git push origin "$BRANCH"
 
