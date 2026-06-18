@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - 'R[0-9]*'
     paths:
       - 'charts/spdk-csi/latest/spdk-csi/Chart.yaml'
   
