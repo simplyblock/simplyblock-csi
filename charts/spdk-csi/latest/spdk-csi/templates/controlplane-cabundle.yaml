@@ -1,8 +1,0 @@
-{{- if and .Values.tls.enabled (eq .Values.tls.provider "openshift") }}
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: simplyblock-certificate-authority
-  annotations:
-    service.beta.openshift.io/inject-cabundle: "true"
-{{- end }}
