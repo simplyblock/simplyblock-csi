@@ -362,6 +362,12 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, status.Error(codes.InvalidArgument, "volume ID is required")
 	}
 
+	// Invalid format means the volume was never created by this driver - treat as already deleted.
+	if _, err := parseVolumeID(volumeID); err != nil {
+		klog.Warningf("invalid volume ID format, treating as already deleted: %s", volumeID)
+		return &csi.DeleteVolumeResponse{}, nil
+	}
+
 	unlock := cs.volumeLocks.Lock(volumeID)
 	defer unlock()
 	// no harm if volume already unpublished
@@ -396,7 +402,7 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, "volume capabilities are required")
 	}
 
-	spdkVol, err := getSPDKVol(volumeID)
+	spdkVol, err := parseVolumeID(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "volume %q not found: %v", volumeID, err)
 	}
@@ -443,7 +449,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 	snapshotName := req.GetName()
 	klog.Infof("CreateSnapshot : snapshotName=%s", snapshotName)
-	spdkVol, err := getSPDKVol(volumeID)
+	spdkVol, err := parseVolumeID(volumeID)
 	if err != nil {
 		klog.Errorf("failed to get spdk volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Errorf(codes.InvalidArgument, "invalid source volume ID %q: %v", volumeID, err)
@@ -498,10 +504,11 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	unlock := cs.volumeLocks.Lock(csiSnapshotID)
 	defer unlock()
 
-	sbSnapshot, err := getSnapshot(csiSnapshotID)
+	sbSnapshot, err := parseSnapshotID(csiSnapshotID)
 	if err != nil {
-		klog.Errorf("failed to get spdk snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
-		return nil, err
+		// Invalid format means the snapshot was never created by this driver — treat as already deleted.
+		klog.Warningf("invalid snapshot ID format, treating as already deleted: %s", csiSnapshotID)
+		return &csi.DeleteSnapshotResponse{}, nil
 	}
 	sbclient, err := util.NewsimplyBlockClient(ctx, sbSnapshot.clusterID, sbSnapshot.poolID)
 	if err != nil {
@@ -687,7 +694,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	return &vol, nil
 }
 
-func getSPDKVol(csiVolumeID string) (*spdkVolume, error) {
+func parseVolumeID(csiVolumeID string) (*spdkVolume, error) {
 	// csiVolumeID format: {clusterUUID}:{poolUUID}:{lvolUUID}
 	// e.g. 8ffac363-0c46-4714-a71b-f9c0b58a1269:df34f16c-...:8e2dcb9d-...
 	ids := strings.Split(csiVolumeID, ":")
@@ -701,7 +708,7 @@ func getSPDKVol(csiVolumeID string) (*spdkVolume, error) {
 	return nil, fmt.Errorf("missing clusterID or poolID in volume: %s", csiVolumeID)
 }
 
-func getSnapshot(csiSnapshotID string) (*spdkSnapshot, error) {
+func parseSnapshotID(csiSnapshotID string) (*spdkSnapshot, error) {
 	ids := strings.Split(csiSnapshotID, ":")
 	switch len(ids) {
 	case 3:
@@ -716,7 +723,7 @@ func getSnapshot(csiSnapshotID string) (*spdkSnapshot, error) {
 }
 
 func (cs *controllerServer) publishVolume(ctx context.Context, volumeID string, sbclient util.ClusterAPI) (map[string]string, error) {
-	spdkVol, err := getSPDKVol(volumeID)
+	spdkVol, err := parseVolumeID(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -737,7 +744,7 @@ func (cs *controllerServer) publishVolume(ctx context.Context, volumeID string, 
 }
 
 func (cs *controllerServer) deleteVolume(ctx context.Context, volumeID string) error {
-	spdkVol, err := getSPDKVol(volumeID)
+	spdkVol, err := parseVolumeID(volumeID)
 	if err != nil {
 		return err
 	}
@@ -749,7 +756,7 @@ func (cs *controllerServer) deleteVolume(ctx context.Context, volumeID string) e
 }
 
 func (cs *controllerServer) unpublishVolume(ctx context.Context, volumeID string) error {
-	spdkVol, err := getSPDKVol(volumeID)
+	spdkVol, err := parseVolumeID(volumeID)
 	if err != nil {
 		return err
 	}
@@ -777,7 +784,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	// Simplyblock backends are GiB aligned, so we round up to GiB.
 	capacityBytes := util.AlignToGiBBytes(updatedSize)
 
-	spdkVol, err := getSPDKVol(volumeID)
+	spdkVol, err := parseVolumeID(volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID %q: %v", volumeID, err)
 	}
@@ -889,7 +896,7 @@ func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.Co
 	unlock := cs.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	spdkVol, err := getSPDKVol(volumeID)
+	spdkVol, err := parseVolumeID(volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -958,7 +965,7 @@ func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *
 		return nil, nil
 	}
 	csiSnapshotID := snapshot.GetSnapshotId()
-	sbSnapshot, err := getSnapshot(csiSnapshotID)
+	sbSnapshot, err := parseSnapshotID(csiSnapshotID)
 	if err != nil {
 		klog.Errorf("failed to get spdk snapshot, csiSnapshotID: %s err: %v", csiSnapshotID, err)
 		return nil, status.Errorf(codes.NotFound, "snapshot %q not found: %v", csiSnapshotID, err)
@@ -1010,7 +1017,7 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
 	}
 
-	spdkVol, err := getSPDKVol(srcVolumeID)
+	spdkVol, err := parseVolumeID(srcVolumeID)
 	if err != nil {
 		klog.Errorf("failed to get spdk volume, srcVolumeID: %s err: %v", srcVolumeID, err)
 		return nil, status.Errorf(codes.NotFound, "source volume %q not found: %v", srcVolumeID, err)

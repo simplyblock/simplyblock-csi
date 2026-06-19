@@ -13,8 +13,6 @@ labels:
 {{- define "simplyblock.controlPlaneAddr" -}}
 {{- if .Values.csiConfig.simplybk.ip -}}
 {{ .Values.csiConfig.simplybk.ip }}
-{{- else if .Values.operator.enabled -}}
-http://simplyblock-webappapi.{{ .Release.Namespace }}.svc.cluster.local:5000
 {{- end -}}
 {{- end -}}
 
@@ -149,26 +147,3 @@ to land them at the right column inside an `env:` list.
 {{- end }}
 {{- end -}}
 
-{{- define "simplyblock.commonContainer" }}
-env:
-  - name: SIMPLYBLOCK_LOG_LEVEL
-    valueFrom:
-      configMapKeyRef:
-        name: simplyblock-config
-        key: LOG_LEVEL
-  {{- include "simplyblock.tlsEnv" . | nindent 2 }}
-
-volumeMounts:
-  - name: fdb-cluster-file
-    mountPath: /etc/foundationdb/fdb.cluster
-    subPath: fdb.cluster
-  {{- include "simplyblock.tlsVolumeMount" . | nindent 2 }}
-
-resources:
-  requests:
-    cpu: "50m"
-    memory: "100Mi"
-  limits:
-    cpu: "300m"
-    memory: "1Gi"
-{{- end }}
