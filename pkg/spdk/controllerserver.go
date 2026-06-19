@@ -368,11 +368,7 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	err := cs.unpublishVolume(ctx, volumeID)
 	switch {
 	case errors.Is(err, util.ErrVolumeUnpublished):
-		// unpublished but not deleted in last request?
 		klog.Warningf("volume not published: %s", volumeID)
-	case errors.Is(err, util.ErrVolumeDeleted):
-		// deleted in previous request?
-		klog.Warningf("volume already deleted: %s", volumeID)
 	case err != nil:
 		klog.Errorf("failed to unpublish volume, volumeID: %s err: %v", volumeID, err)
 		return nil, status.Error(codes.Unavailable, err.Error())
@@ -380,7 +376,7 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 
 	// no harm if volume already deleted
 	err = cs.deleteVolume(ctx, volumeID)
-	if errors.Is(err, util.ErrJSONNoSuchDevice) {
+	if errors.Is(err, util.ErrVolumeNotFound) {
 		// deleted in previous request?
 		klog.Warningf("volume not exists: %s", volumeID)
 	} else if err != nil {
@@ -462,6 +458,9 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	klog.Infof("CreateSnapshot : snapshotID=%s", snapshotID)
 	if err != nil {
 		klog.Errorf("failed to create snapshot, volumeID: %s snapshotName: %s err: %v", volumeID, snapshotName, err)
+		if errors.Is(err, util.ErrSnapshotExists) {
+			return nil, status.Errorf(codes.AlreadyExists, "snapshot %q already exists with a different source volume", snapshotName)
+		}
 		return nil, status.Error(codes.Unavailable, err.Error())
 	}
 
@@ -653,7 +652,7 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 
 	volumeID, err := sbclient.CreateVolume(ctx, createVolReq)
 	if err != nil {
-		if errors.Is(err, util.ErrJSONVolumeExists) {
+		if errors.Is(err, util.ErrVolumeExists) {
 			klog.Infof("createVolume: volume %q already exists, searching for online match", req.GetName())
 			volumes, listErr := sbclient.ListVolumes(ctx)
 			if listErr != nil {
