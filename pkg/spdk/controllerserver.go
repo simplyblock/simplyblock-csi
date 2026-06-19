@@ -568,9 +568,12 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 		pvcFullName = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
 	}
 
-	pvcAnns, err := fetchPVCAnnotations(ctx, pvcName, pvcNamespace)
-	if err != nil {
-		return nil, err
+	var pvcAnns map[string]string
+	if pvcNameSelected && pvcNamespaceSelected {
+		pvcAnns, err = fetchPVCAnnotations(ctx, pvcName, pvcNamespace)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	hostID := pvcAnnotation(pvcAnns, annotationHostID, deprecatedAnnotationHostID)
