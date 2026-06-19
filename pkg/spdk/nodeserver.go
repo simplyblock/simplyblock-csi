@@ -251,7 +251,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		}
 	}
 
-	if spdkVol, err := getSPDKVol(volumeID); err == nil {
+	if spdkVol, err := parseVolumeID(volumeID); err == nil {
 		vc["poolID"] = spdkVol.poolID
 
 		// When the volume was provisioned against a pool with allowed_hosts, the controller
