@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -806,7 +807,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 }
 
 // ListSnapshots lists all snapshots across all clusters
-func (cs *controllerServer) ListSnapshots(ctx context.Context, _ *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 
 	var entries []*util.SnapshotResp
 	clusters, err := ListClusters()
@@ -828,19 +829,43 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, _ *csi.ListSnapsh
 		entries = append(entries, snapshotEntries...)
 	}
 
-	var vca []*csi.ListSnapshotsResponse_Entry
+	var all []*csi.ListSnapshotsResponse_Entry
 	for _, entry := range entries {
-		snapshotData := &csi.Snapshot{
-			SizeBytes:  entry.Size,
-			SnapshotId: fmt.Sprintf("%s:%s:%s", entry.ClusterID, entry.PoolID, entry.UUID),
-			ReadyToUse: true,
+		snapshotID := fmt.Sprintf("%s:%s:%s", entry.ClusterID, entry.PoolID, entry.UUID)
+		sourceVolumeID := lvolIDFromURL(entry.LvolURL)
+
+		if req.GetSnapshotId() != "" && req.GetSnapshotId() != snapshotID {
+			continue
 		}
-		vca = append(vca, &csi.ListSnapshotsResponse_Entry{Snapshot: snapshotData})
+		if req.GetSourceVolumeId() != "" && req.GetSourceVolumeId() != sourceVolumeID {
+			continue
+		}
+
+		createdAt, _ := time.Parse(time.RFC3339Nano, entry.CreatedAt)
+		all = append(all, &csi.ListSnapshotsResponse_Entry{
+			Snapshot: &csi.Snapshot{
+				SizeBytes:      entry.Size,
+				SnapshotId:     snapshotID,
+				SourceVolumeId: sourceVolumeID,
+				CreationTime:   timestamppb.New(createdAt),
+				ReadyToUse:     true,
+			},
+		})
 	}
 
 	return &csi.ListSnapshotsResponse{
-		Entries: vca,
+		Entries: all,
 	}, nil
+}
+
+// lvolIDFromURL extracts the volume UUID from a URL path like
+// /api/v2/clusters/{id}/storage-pools/{id}/volumes/{volume_id}
+func lvolIDFromURL(lvolURL string) string {
+	u := strings.TrimRight(lvolURL, "/")
+	if idx := strings.LastIndex(u, "/"); idx >= 0 {
+		return u[idx+1:]
+	}
+	return lvolURL
 }
 
 func ListClusters() (clusterIds []string, err error) {
