@@ -853,8 +853,28 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 		})
 	}
 
+	start := 0
+	if tok := req.GetStartingToken(); tok != "" {
+		var parseErr error
+		start, parseErr = strconv.Atoi(tok)
+		if parseErr != nil || start < 0 {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token: %q", tok)
+		}
+	}
+	if start > len(all) {
+		start = len(all)
+	}
+	all = all[start:]
+
+	var nextToken string
+	if max := int(req.GetMaxEntries()); max > 0 && len(all) > max {
+		nextToken = strconv.Itoa(start + max)
+		all = all[:max]
+	}
+
 	return &csi.ListSnapshotsResponse{
-		Entries: all,
+		Entries:   all,
+		NextToken: nextToken,
 	}, nil
 }
 
