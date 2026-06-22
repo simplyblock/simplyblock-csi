@@ -21,6 +21,9 @@ import (
 	"k8s.io/klog"
 )
 
+// defaultBrokenLvolGracePeriod is the default value for BrokenLvolGracePeriod.
+const defaultBrokenLvolGracePeriod = 90 * time.Second
+
 type GuardianConfig struct {
 	NodeName         string
 	PollInterval     time.Duration
@@ -34,6 +37,12 @@ type GuardianConfig struct {
 
 	// Minimum time a lvol must remain "broken" before we restart pods after cluster is active.
 	MinBrokenFor time.Duration
+
+	// BrokenLvolGracePeriod is how long to wait after the first broken lvol
+	// is detected before checking cluster status. This gives the cluster time
+	// to transition from active to suspended before the guardian evaluates
+	// whether to restart pods.
+	BrokenLvolGracePeriod time.Duration
 
 	StatePath     string
 	CSIDriverName string
@@ -54,6 +63,10 @@ func NewDefaultGuardianConfig(nodeName string) GuardianConfig {
 		MinBrokenFor: parseDurationFromEnv(
 			"GUARDIAN_MIN_BROKEN_FOR",
 			30*time.Second,
+		),
+		BrokenLvolGracePeriod: parseDurationFromEnv(
+			"GUARDIAN_BROKEN_LVOL_GRACE_PERIOD",
+			defaultBrokenLvolGracePeriod,
 		),
 		StatePath:     "/var/run/simplyblock/guardian/state.json",
 		CSIDriverName: "csi.simplyblock.io",
@@ -170,6 +183,9 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 	}
 	if cfg.MinBrokenFor <= 0 {
 		cfg.MinBrokenFor = 30 * time.Second
+	}
+	if cfg.BrokenLvolGracePeriod <= 0 {
+		cfg.BrokenLvolGracePeriod = 90 * time.Second
 	}
 	if cfg.OptInLabelKey == "" {
 		cfg.OptInLabelKey = "simplyblock.io/auto-restart-on-pathloss"
@@ -345,6 +361,19 @@ func (g *Guardian) tick(ctx context.Context) {
 	}
 	g.mu.Unlock()
 
+	// Build the earliest broken-lvol timestamp per cluster so we can enforce
+	// BrokenLvolGracePeriod before evaluating cluster status.
+	earliestLvolBrokenAt := map[string]time.Time{}
+	for lvolID, ts := range lvolBrokenAt {
+		cid := lvolCluster[lvolID]
+		if cid == "" {
+			continue
+		}
+		if t, ok := earliestLvolBrokenAt[cid]; !ok || ts.Before(t) {
+			earliestLvolBrokenAt[cid] = ts
+		}
+	}
+
 	activeNow := map[string]bool{}
 
 	justBecameActive := map[string]bool{} // clusterID -> true
@@ -353,6 +382,16 @@ func (g *Guardian) tick(ctx context.Context) {
 		cid := c.ClusterID
 		if cid == "" {
 			continue
+		}
+
+		// If any lvol on this cluster broke recently, wait for the grace period
+		// before checking status — the cluster may still be transitioning to suspended.
+		if firstBroken, hasBroken := earliestLvolBrokenAt[cid]; hasBroken {
+			if time.Since(firstBroken) < g.cfg.BrokenLvolGracePeriod {
+				klog.Infof("Guardian: cluster=%s has broken lvols detected %.0fs ago, waiting for grace period (%.0fs) before status check",
+					cid, time.Since(firstBroken).Seconds(), g.cfg.BrokenLvolGracePeriod.Seconds())
+				continue
+			}
 		}
 
 		active, realStatus, err := g.isClusterActiveByID(cid)
