@@ -42,7 +42,7 @@ var (
 	ErrVolumeUnpublished = errors.New("volume not published")
 )
 
-// HTTPError implements error 
+// HTTPError implements error
 type HTTPError struct {
 	Method     string
 	StatusCode int
@@ -157,8 +157,9 @@ type SnapshotResp struct {
 	UUID      string `json:"id"`
 	Size      int64  `json:"size"`
 	LvolURL   string `json:"lvol"` // URL path to source volume (may be empty in list responses)
-	PoolID    string `json:"-"`    // populated after fetch, not from JSON
-	ClusterID string `json:"-"`    // populated after fetch, not from JSON
+	CreatedAt string `json:"created_at"`
+	PoolID    string `json:"-"` // populated after fetch, not from JSON
+	ClusterID string `json:"-"` // populated after fetch, not from JSON
 }
 
 // CreateVolResp is the response for volume create (legacy, kept for compat)
@@ -701,4 +702,3 @@ func extractErrorMessage(body []byte) string {
 	}
 	return string(body)
 }
-
