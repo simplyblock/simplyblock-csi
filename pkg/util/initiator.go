@@ -33,6 +33,7 @@ import (
 	"sync"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog"
 
 	sbkube "github.com/spdk/spdk-csi/pkg/kubernetes"
@@ -595,41 +596,12 @@ func parseAddress(address string) string {
 	return ""
 }
 
-// simplyblockLvolSet returns the set of lvolIDs whose PersistentVolumes are
- // provisioned by the given CSI driver, read through the Kubernetes cache
-// manager (cache when synced, API otherwise). Returns nil when manager is nil
-// or the read fails, so callers can treat a nil map as "allow all" (degraded);
-// a non-nil but empty map means the read succeeded and no matching PVs exist.
-func simplyblockLvolSet(manager *sbkube.Manager, driver string) map[string]struct{} {
-	if manager == nil {
-		return nil
-	}
-	pvs, err := manager.PersistentVolumesByDriver(context.Background(), driver)
-	if err != nil {
-		klog.Warningf("reconnect: failed to read PersistentVolumes, skipping PV ownership check: %v", err)
-		return nil
-	}
-	set := make(map[string]struct{}, len(pvs))
-	for _, pv := range pvs {
-		if pv.Spec.CSI == nil {
-			continue
-		}
-		// The reconnect loop matches against the lvol ID alone, so store only
-		// the trailing lvol ID rather than the whole handle.
-		if _, _, lvolID, err := ParseVolumeHandle(pv.Spec.CSI.VolumeHandle); err == nil {
-			set[lvolID] = struct{}{}
-		}
-	}
-	return set
-}
-
 func reconnectSubsystems(markBroken func(lvolID string), manager *sbkube.Manager, driver string) error {
 	devices, err := getNVMeDeviceInfos()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
 
-	managedLvols := simplyblockLvolSet(manager, driver)
 	currentDevices := make(map[string]bool)
 
 	for _, device := range devices {
@@ -654,12 +626,14 @@ func reconnectSubsystems(markBroken func(lvolID string), manager *sbkube.Manager
 					lvolID = nqnLvolID
 				}
 
-				// Only act on CSI driver managed PVs
-				if managedLvols != nil {
-					if _, ok := managedLvols[lvolID]; !ok {
-						klog.Infof("reconnect: skipping NQN %s — lvolID %s not found in simplyblock PVs", subsystem.NQN, lvolID)
-						continue
-					}
+				managedLvol, err := manager.PersistentVolumeByLogicalVolumeID(context.Background(), lvolID)
+				if !apierrors.IsNotFound(err) {
+					klog.Errorf("reconnect: failed to read PersistentVolume for lvolID %s: %v", lvolID, err)
+					continue
+				}
+				if managedLvol == nil {
+					// Only act on CSI driver managed PVs
+					continue
 				}
 
 				// Only mark the device present once we have a confirmed lvolID,

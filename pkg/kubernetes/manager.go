@@ -17,6 +17,10 @@ import (
 // PersistentVolumes by their CSI driver.
 const csiDriverIndex = "csiDriver"
 
+// lvolIndex is the name of the informer index that maps PersistentVolumes by
+// the lvol (logical volume) ID encoded in their CSI volume handle.
+const lvolIndex = "lvol"
+
 // Manager owns the shared informer caches for the resources the CSI driver
 // reads on hot paths (PersistentVolumes, PersistentVolumeClaims). Every read
 // goes through the cache when it is synced and falls back to a direct API read
@@ -47,12 +51,13 @@ func NewManager(client k8sclient.Interface) *Manager {
 
 	if err := pvInformer.AddIndexers(cache.Indexers{
 		csiDriverIndex: indexPersistentVolumeByCSIDriver,
+		lvolIndex:      indexPersistentVolumeByLvolID,
 	}); err != nil {
 		// Only fails on a duplicate index name or an already-started informer,
 		// neither of which can happen here. Reads stay correct via the API
 		// fallback even without the index, so log and continue.
-		klog.Warningf("kubernetes cache manager: failed to register %q index, "+
-			"PersistentVolume-by-driver reads will use the API: %v", csiDriverIndex, err)
+		klog.Warningf("kubernetes cache manager: failed to register PersistentVolume "+
+			"indexers, those reads will fall back to the API: %v", err)
 	}
 
 	return &Manager{

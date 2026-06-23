@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +18,31 @@ func indexPersistentVolumeByCSIDriver(obj interface{}) ([]string, error) {
 		return nil, nil
 	}
 	return []string{pv.Spec.CSI.Driver}, nil
+}
+
+// indexPersistentVolumeByLvolID is the IndexFunc that maps PersistentVolumes by
+// the lvol ID in their CSI volume handle ("<clusterID>:<poolID>:<lvolID>").
+func indexPersistentVolumeByLvolID(obj interface{}) ([]string, error) {
+	pv, ok := obj.(*corev1.PersistentVolume)
+	if !ok || pv.Spec.CSI == nil {
+		return nil, nil
+	}
+	if lvolID := lvolIDFromVolumeHandle(pv.Spec.CSI.VolumeHandle); lvolID != "" {
+		return []string{lvolID}, nil
+	}
+	return nil, nil
+}
+
+// lvolIDFromVolumeHandle extracts the trailing lvol ID from a CSI volume handle
+// of the form "<clusterID>:<poolID>:<lvolID>", or "" if it is not well-formed.
+// (pkg/util owns the full handle parser, but importing it here would create an
+// import cycle, so the cache layer extracts just the field it indexes on.)
+func lvolIDFromVolumeHandle(handle string) string {
+	parts := strings.Split(handle, ":")
+	if len(parts) != 3 {
+		return ""
+	}
+	return parts[2]
 }
 
 // PersistentVolumesByDriver returns every PersistentVolume provisioned by the
@@ -80,4 +106,41 @@ func (m *Manager) PersistentVolumeByName(ctx context.Context, name string) (*cor
 	}
 
 	return m.client.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
+}
+
+// PersistentVolumeByLogicalVolumeID returns the PersistentVolume whose CSI
+// volume handle ("<clusterID>:<poolID>:<lvolID>") carries the given lvol ID.
+// Served from the cache when synced, otherwise listed from the API and matched
+// client-side (the handle is not an API-queryable field). A missing or
+// ambiguous lvol ID is reported as a NotFound error.
+func (m *Manager) PersistentVolumeByLogicalVolumeID(ctx context.Context, lvolID string) (*corev1.PersistentVolume, error) {
+	if m == nil {
+		return nil, apierrors.NewNotFound(corev1.Resource("persistentvolumes"), lvolID)
+	}
+
+	if m.pvInformer.HasSynced() {
+		objs, err := m.pvInformer.GetIndexer().ByIndex(lvolIndex, lvolID)
+		if err == nil {
+			if len(objs) == 0 {
+				return nil, apierrors.NewNotFound(corev1.Resource("persistentvolumes"), lvolID)
+			}
+			if pv, ok := objs[0].(*corev1.PersistentVolume); ok {
+				return pv, nil
+			}
+		} else {
+			klog.Warningf("kubernetes cache manager: %q index lookup failed, falling back to API: %v", lvolIndex, err)
+		}
+	}
+
+	list, err := m.client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Items {
+		pv := &list.Items[i]
+		if pv.Spec.CSI != nil && lvolIDFromVolumeHandle(pv.Spec.CSI.VolumeHandle) == lvolID {
+			return pv, nil
+		}
+	}
+	return nil, apierrors.NewNotFound(corev1.Resource("persistentvolumes"), lvolID)
 }
