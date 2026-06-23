@@ -614,8 +614,10 @@ func simplyblockLvolSet(ctx context.Context, cs kubernetes.Interface) map[string
 		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != simplyblockCSIDriver {
 			continue
 		}
-		if h := strings.TrimSpace(pv.Spec.CSI.VolumeHandle); h != "" {
-			set[h] = struct{}{}
+		// The reconnect loop matches against the lvol ID alone, so store only
+		// the trailing lvol ID rather than the whole handle.
+		if _, _, lvolID, err := ParseVolumeHandle(pv.Spec.CSI.VolumeHandle); err == nil {
+			set[lvolID] = struct{}{}
 		}
 	}
 	return set

@@ -698,15 +698,15 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 func parseVolumeID(csiVolumeID string) (*spdkVolume, error) {
 	// csiVolumeID format: {clusterUUID}:{poolUUID}:{lvolUUID}
 	// e.g. 8ffac363-0c46-4714-a71b-f9c0b58a1269:df34f16c-...:8e2dcb9d-...
-	ids := strings.Split(csiVolumeID, ":")
-	if len(ids) == 3 {
-		return &spdkVolume{
-			clusterID: ids[0],
-			poolID:    ids[1],
-			lvolID:    ids[2],
-		}, nil
+	clusterID, poolID, lvolID, err := util.ParseVolumeHandle(csiVolumeID)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("missing clusterID or poolID in volume: %s", csiVolumeID)
+	return &spdkVolume{
+		clusterID: clusterID,
+		poolID:    poolID,
+		lvolID:    lvolID,
+	}, nil
 }
 
 func parseSnapshotID(csiSnapshotID string) (*spdkSnapshot, error) {

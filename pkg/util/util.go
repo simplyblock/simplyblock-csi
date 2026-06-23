@@ -55,6 +55,17 @@ func ParseJSONFile(fileName string, result interface{}) error {
 	return json.Unmarshal(bytes, result)
 }
 
+// ParseVolumeHandle splits a CSI volume handle of the form
+// "{clusterID}:{poolID}:{lvolID}" into its three components. It returns an
+// error if the handle is empty or is not exactly three colon-separated parts.
+func ParseVolumeHandle(handle string) (clusterID, poolID, lvolID string, err error) {
+	ids := strings.Split(strings.TrimSpace(handle), ":")
+	if len(ids) != 3 || ids[0] == "" || ids[1] == "" || ids[2] == "" {
+		return "", "", "", fmt.Errorf("invalid volume handle %q (expected {clusterID}:{poolID}:{lvolID})", handle)
+	}
+	return ids[0], ids[1], ids[2], nil
+}
+
 // ToMiB rounds up bytes to megabytes
 func ToMiB(bytes int64) int64 {
 	return (bytes + MIB - 1) / MIB
