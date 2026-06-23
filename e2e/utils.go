@@ -628,6 +628,30 @@ func deleteSnapshotOnly(ns string) {
 // PV helpers
 // ---------------------------------------------------------------------------
 
+// pvVolumeAttrs holds the CSI volume attributes extracted from a PV.
+type pvVolumeAttrs struct {
+	PVName  string
+	NQN     string
+	VolName string // volumeContext["name"] — the member's own API UUID
+}
+
+// getPVVolumeAttrs reads the CSI volume attributes from the PV backing pvcName.
+func getPVVolumeAttrs(c kubernetes.Interface, ns, pvcName string) (pvVolumeAttrs, error) {
+	pvc, err := c.CoreV1().PersistentVolumeClaims(ns).Get(context.Background(), pvcName, metav1.GetOptions{})
+	if err != nil {
+		return pvVolumeAttrs{}, err
+	}
+	pv, err := c.CoreV1().PersistentVolumes().Get(context.Background(), pvc.Spec.VolumeName, metav1.GetOptions{})
+	if err != nil {
+		return pvVolumeAttrs{}, err
+	}
+	return pvVolumeAttrs{
+		PVName:  pv.Name,
+		NQN:     pv.Spec.CSI.VolumeAttributes["nqn"],
+		VolName: pv.Spec.CSI.VolumeAttributes["name"],
+	}, nil
+}
+
 // waitForPVDeleted polls until the named PersistentVolume is gone.
 func waitForPVDeleted(c kubernetes.Interface, pvName string, timeout time.Duration) error {
 	err := wait.PollUntilContextTimeout(context.Background(), 3*time.Second, timeout, true,
