@@ -41,6 +41,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	csicommon "github.com/spdk/spdk-csi/pkg/csi-common"
+	sbkube "github.com/spdk/spdk-csi/pkg/kubernetes"
 	"github.com/spdk/spdk-csi/pkg/util"
 )
 
@@ -71,9 +72,18 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		}
 	}
 
+	// Build one Kubernetes cache manager and share it across the node plugin:
+	// the reconnect loop reads PVs every ~3s and the guardian reads PVs/PVCs
+	// per pod on every poll, so a single shared instance means a single PV
+	// Watch and a single PVC Watch. The manager serves reads from cache once
+	// synced and transparently falls back to the API until then (and if it
+	// never syncs), so consumers need no fallback of their own.
+	manager := sbkube.NewManager(ns.kubeClient)
+	manager.Start(context.Background())
+
 	nodeName := ns.Driver.GetNodeID()
 	gcfg := util.NewDefaultGuardianConfig(nodeName)
-	guardian, gerr := util.StartGuardian(context.Background(), gcfg)
+	guardian, gerr := util.StartGuardian(context.Background(), gcfg, manager)
 	if gerr != nil {
 		klog.Errorf("failed to start guardian: %v", gerr)
 	} else {
@@ -84,7 +94,7 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		if ns.guardian != nil {
 			ns.guardian.MarkBrokenLvol(lvolID)
 		}
-	}, ns.kubeClient)
+	}, manager, ns.Driver.GetName())
 
 	return ns, nil
 }

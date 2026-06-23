@@ -33,9 +33,9 @@ import (
 	"sync"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
+
+	sbkube "github.com/spdk/spdk-csi/pkg/kubernetes"
 )
 
 const (
@@ -48,8 +48,6 @@ const (
 
 	// DefaultCtrlLossTmo is the NVMe-oF controller loss timeout in seconds.
 	DefaultCtrlLossTmo = 60
-
-	simplyblockCSIDriver = "csi.simplyblock.io"
 )
 
 // SpdkCsiInitiator defines interface for NVMeoF/iSCSI initiator
@@ -598,20 +596,22 @@ func parseAddress(address string) string {
 }
 
 // simplyblockLvolSet returns the set of lvolIDs whose PersistentVolumes are
-// provisioned by the simplyblock CSI driver. Returns nil when cs is nil so
-// callers can treat a nil map as "allow all" (degraded / no kube client).
-func simplyblockLvolSet(ctx context.Context, cs kubernetes.Interface) map[string]struct{} {
-	if cs == nil {
+ // provisioned by the given CSI driver, read through the Kubernetes cache
+// manager (cache when synced, API otherwise). Returns nil when manager is nil
+// or the read fails, so callers can treat a nil map as "allow all" (degraded);
+// a non-nil but empty map means the read succeeded and no matching PVs exist.
+func simplyblockLvolSet(manager *sbkube.Manager, driver string) map[string]struct{} {
+	if manager == nil {
 		return nil
 	}
-	pvList, err := cs.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	pvs, err := manager.PersistentVolumesByDriver(context.Background(), driver)
 	if err != nil {
-		klog.Warningf("reconnect: failed to list PersistentVolumes, skipping PV ownership check: %v", err)
+		klog.Warningf("reconnect: failed to read PersistentVolumes, skipping PV ownership check: %v", err)
 		return nil
 	}
-	set := make(map[string]struct{}, len(pvList.Items))
-	for _, pv := range pvList.Items {
-		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != simplyblockCSIDriver {
+	set := make(map[string]struct{}, len(pvs))
+	for _, pv := range pvs {
+		if pv.Spec.CSI == nil {
 			continue
 		}
 		// The reconnect loop matches against the lvol ID alone, so store only
@@ -623,13 +623,13 @@ func simplyblockLvolSet(ctx context.Context, cs kubernetes.Interface) map[string
 	return set
 }
 
-func reconnectSubsystems(markBroken func(lvolID string), cs kubernetes.Interface) error {
+func reconnectSubsystems(markBroken func(lvolID string), manager *sbkube.Manager, driver string) error {
 	devices, err := getNVMeDeviceInfos()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
 	}
 
-	managedLvols := simplyblockLvolSet(context.Background(), cs)
+	managedLvols := simplyblockLvolSet(manager, driver)
 	currentDevices := make(map[string]bool)
 
 	for _, device := range devices {
@@ -857,14 +857,14 @@ const (
 	monitorCircuitCooldown = 30 * time.Second
 )
 
-func MonitorConnection(markBroken func(lvolID string), cs kubernetes.Interface) {
+func MonitorConnection(markBroken func(lvolID string), manager *sbkube.Manager, driver string) {
 	var (
 		consecutiveErrors int
 		backoff           = monitorBaseInterval
 	)
 
 	for {
-		err := reconnectSubsystems(markBroken, cs)
+		err := reconnectSubsystems(markBroken, manager, driver)
 		if err != nil {
 			consecutiveErrors++
 			klog.Errorf("MonitorConnection error (%d consecutive): %v", consecutiveErrors, err)

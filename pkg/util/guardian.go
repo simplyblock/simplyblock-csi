@@ -17,8 +17,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog"
+
+	sbkube "github.com/spdk/spdk-csi/pkg/kubernetes"
 )
 
 // defaultBrokenLvolGracePeriod is the default value for BrokenLvolGracePeriod.
@@ -101,7 +102,13 @@ type LvolState struct {
 type Guardian struct {
 	cfg GuardianConfig
 
-	cs *kubernetes.Clientset
+	// Kubernetes cache manager shared with the rest of the node plugin. It
+	// serves PV/PVC reads from a watch-backed cache and transparently falls
+	// back to the API, so the guardian needs no fallback of its own. Pods and
+	// StorageClasses (which the manager does not cache) are read via its
+	// Client.
+	manager *sbkube.Manager
+	cs      kubernetes.Interface
 
 	mu sync.Mutex
 
@@ -170,8 +177,11 @@ func (g *Guardian) loadState() {
 	)
 }
 
-// StartGuardian starts the guardian loop in a goroutine.
-func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
+// StartGuardian starts the guardian loop in a goroutine. The cache manager is
+// shared with the rest of the node plugin so the guardian reads PV/PVC state
+// from memory rather than issuing a Get per PVC per pod on every poll; it falls
+// back to the API transparently, and a nil manager degrades to API-only reads.
+func StartGuardian(ctx context.Context, cfg GuardianConfig, manager *sbkube.Manager) (*Guardian, error) {
 	if cfg.NodeName == "" {
 		return nil, fmt.Errorf("guardian requires NodeName")
 	}
@@ -197,18 +207,14 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig) (*Guardian, error) {
 		cfg.CSIDriverName = "csi.simplyblock.io"
 	}
 
-	rc, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, fmt.Errorf("guardian in-cluster config: %w", err)
-	}
-	cs, err := kubernetes.NewForConfig(rc)
-	if err != nil {
-		return nil, fmt.Errorf("guardian clientset: %w", err)
+	if manager == nil {
+		return nil, fmt.Errorf("guardian requires a Kubernetes cache manager")
 	}
 
 	g := &Guardian{
 		cfg:                cfg,
-		cs:                 cs,
+		manager:            manager,
+		cs:                 manager.Client(),
 		lvols:              map[string]*LvolState{},
 		lastRestart:        map[string]time.Time{},
 		clusterWasInactive: map[string]bool{},
@@ -706,7 +712,7 @@ func (g *Guardian) podUsesOptedInSimplyBlockStorageClass(ctx context.Context, po
 		}
 		seenPVCs[pvcKey] = struct{}{}
 
-		pvc, err := g.cs.CoreV1().PersistentVolumeClaims(pod.Namespace).Get(ctx, pvcName, metav1.GetOptions{})
+		pvc, err := g.manager.PersistentVolumeClaimByNamespaceAndName(ctx, pod.Namespace, pvcName)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				klog.Warningf("Guardian: PVC %s not found for pod %s/%s", pvcKey, pod.Namespace, pod.Name)
@@ -720,7 +726,7 @@ func (g *Guardian) podUsesOptedInSimplyBlockStorageClass(ctx context.Context, po
 			continue
 		}
 
-		pv, err := g.cs.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		pv, err := g.manager.PersistentVolumeByName(ctx, pvName)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				klog.Warningf("Guardian: PV %s not found for PVC %s", pvName, pvcKey)
