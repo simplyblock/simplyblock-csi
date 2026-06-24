@@ -2,12 +2,13 @@ package kubernetes
 
 import (
 	"context"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
+
+	"github.com/spdk/spdk-csi/pkg/kubernetes/volumehandle"
 )
 
 // indexPersistentVolumeByCSIDriver is the IndexFunc that groups
@@ -22,27 +23,17 @@ func indexPersistentVolumeByCSIDriver(obj interface{}) ([]string, error) {
 
 // indexPersistentVolumeByLvolID is the IndexFunc that maps PersistentVolumes by
 // the lvol ID in their CSI volume handle ("<clusterID>:<poolID>:<lvolID>").
+// Handles that are not well-formed are left out of the index.
 func indexPersistentVolumeByLvolID(obj interface{}) ([]string, error) {
 	pv, ok := obj.(*corev1.PersistentVolume)
 	if !ok || pv.Spec.CSI == nil {
 		return nil, nil
 	}
-	if lvolID := lvolIDFromVolumeHandle(pv.Spec.CSI.VolumeHandle); lvolID != "" {
-		return []string{lvolID}, nil
+	vh, ok := volumehandle.Parse(pv.Spec.CSI.VolumeHandle)
+	if !ok {
+		return nil, nil
 	}
-	return nil, nil
-}
-
-// lvolIDFromVolumeHandle extracts the trailing lvol ID from a CSI volume handle
-// of the form "<clusterID>:<poolID>:<lvolID>", or "" if it is not well-formed.
-// (pkg/util owns the full handle parser, but importing it here would create an
-// import cycle, so the cache layer extracts just the field it indexes on.)
-func lvolIDFromVolumeHandle(handle string) string {
-	parts := strings.Split(handle, ":")
-	if len(parts) != 3 {
-		return ""
-	}
-	return parts[2]
+	return []string{vh.VolumeID}, nil
 }
 
 // PersistentVolumesByDriver returns every PersistentVolume provisioned by the
@@ -138,7 +129,10 @@ func (m *Manager) PersistentVolumeByLogicalVolumeID(ctx context.Context, lvolID 
 	}
 	for i := range list.Items {
 		pv := &list.Items[i]
-		if pv.Spec.CSI != nil && lvolIDFromVolumeHandle(pv.Spec.CSI.VolumeHandle) == lvolID {
+		if pv.Spec.CSI == nil {
+			continue
+		}
+		if vh, ok := volumehandle.Parse(pv.Spec.CSI.VolumeHandle); ok && vh.VolumeID == lvolID {
 			return pv, nil
 		}
 	}

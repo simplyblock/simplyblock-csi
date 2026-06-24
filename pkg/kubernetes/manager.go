@@ -80,6 +80,18 @@ func (m *Manager) Start(ctx context.Context) {
 	m.factory.Start(ctx.Done())
 }
 
+// HasSynced reports whether both informer caches have completed their initial
+// LIST. It is a status query (useful for readiness checks and tests), not a
+// gate: the caches populate automatically after Start, and reads transparently
+// fall back to the API until this returns true, so callers never need to block
+// on it. Returns false on a nil Manager.
+func (m *Manager) HasSynced() bool {
+	if m == nil {
+		return false
+	}
+	return m.pvInformer.HasSynced() && m.pvcInformer.HasSynced()
+}
+
 // Client returns the underlying Kubernetes client, for reads of resources the
 // Manager does not cache (e.g. Pods, StorageClasses). Returns nil on a nil
 // Manager.

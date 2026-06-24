@@ -596,6 +596,20 @@ func parseAddress(address string) string {
 	return ""
 }
 
+// isManagedLvol reports whether lvolID is backed by a PersistentVolume
+// provisioned by the given CSI driver. Only such lvols are reconnected;
+// benchmark and foreign (non-simplyblock, or other-driver) volumes are skipped.
+func isManagedLvol(manager *sbkube.Manager, lvolID, driver string) bool {
+	pv, err := manager.PersistentVolumeByLogicalVolumeID(context.Background(), lvolID)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.Errorf("reconnect: failed to read PersistentVolume for lvolID %s: %v", lvolID, err)
+		}
+		return false
+	}
+	return pv.Spec.CSI != nil && pv.Spec.CSI.Driver == driver
+}
+
 func reconnectSubsystems(markBroken func(lvolID string), manager *sbkube.Manager, driver string) error {
 	devices, err := getNVMeDeviceInfos()
 	if err != nil {
@@ -626,13 +640,9 @@ func reconnectSubsystems(markBroken func(lvolID string), manager *sbkube.Manager
 					lvolID = nqnLvolID
 				}
 
-				managedLvol, err := manager.PersistentVolumeByLogicalVolumeID(context.Background(), lvolID)
-				if !apierrors.IsNotFound(err) {
-					klog.Errorf("reconnect: failed to read PersistentVolume for lvolID %s: %v", lvolID, err)
-					continue
-				}
-				if managedLvol == nil {
-					// Only act on CSI driver managed PVs
+				// Only act on lvols backed by a PV from our CSI driver; skip
+				// benchmark and foreign volumes.
+				if !isManagedLvol(manager, lvolID, driver) {
 					continue
 				}
 
