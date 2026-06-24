@@ -853,9 +853,40 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 		})
 	}
 
+	page, nextToken, err := paginateSnapshots(all, req.GetStartingToken(), int(req.GetMaxEntries()))
+	if err != nil {
+		return nil, err
+	}
+
 	return &csi.ListSnapshotsResponse{
-		Entries: all,
+		Entries:   page,
+		NextToken: nextToken,
 	}, nil
+}
+
+// paginateSnapshots returns one page of entries starting at startingToken (an
+// absolute index from a prior call). pageSize 0 returns all remaining entries.
+func paginateSnapshots(all []*csi.ListSnapshotsResponse_Entry, startingToken string, pageSize int) ([]*csi.ListSnapshotsResponse_Entry, string, error) {
+	start := 0
+	if startingToken != "" {
+		var parseErr error
+		start, parseErr = strconv.Atoi(startingToken)
+		if parseErr != nil || start < 0 {
+			return nil, "", status.Errorf(codes.Aborted, "invalid starting token: %q", startingToken)
+		}
+	}
+	if start > len(all) {
+		start = len(all)
+	}
+	page := all[start:]
+
+	var nextToken string
+	if pageSize > 0 && len(page) > pageSize {
+		nextToken = strconv.Itoa(start + pageSize)
+		page = page[:pageSize]
+	}
+
+	return page, nextToken, nil
 }
 
 // lvolIDFromURL extracts the volume UUID from a URL path like
