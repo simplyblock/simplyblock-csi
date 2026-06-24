@@ -108,7 +108,7 @@ mod-check:
 .PHONY: unit-test
 unit-test:
 	@echo === running unit test
-	@go test -v -race -cover $(foreach d,$(SOURCE_DIRS),./$(d)/...)
+	@go test -v -race -cover $(if $(SKIP_TESTS),-skip $(SKIP_TESTS)) $(foreach d,$(SOURCE_DIRS),./$(d)/...)
 
 # e2e test
 .PHONY: e2e-test
@@ -158,6 +158,3 @@ image: spdkcsi
 clean:
 	rm -f $(OUT_DIR)/spdkcsi
 	go clean -testcache
-
-sanity-test: spdkcsi
-	test/sanity/run-test.sh
