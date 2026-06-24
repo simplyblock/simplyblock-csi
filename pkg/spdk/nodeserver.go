@@ -289,7 +289,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			initiator.Disconnect(ctx) //nolint:errcheck // ignore error
 		}
 	}()
-	if err = ns.stageVolume(devicePath, stagingTargetPath, req, vc); err != nil { // idempotent
+	if err = ns.stageVolume(ctx, devicePath, stagingTargetPath, req, vc); err != nil { // idempotent
 		klog.Errorf("failed to stage volume, volumeID: %s devicePath:%s err: %v", volumeID, devicePath, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -465,10 +465,45 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
+// defaultChunkBS is the fallback distribution chunk block size in bytes,
+// used when the cluster API does not return distr_chunk_bs.
+const defaultChunkBS = 4096
+
+// xfsStripeOptions returns mkfs.xfs format options that align the stripe geometry
+// with the cluster's distribution parameters (chunk size and data-chunk count).
+// Returns nil if the cluster info cannot be fetched, so the caller can proceed
+// without stripe options rather than failing the mount.
+func xfsStripeOptions(ctx context.Context, volumeID string) []string {
+	spdkVol, err := parseVolumeID(volumeID)
+	if err != nil {
+		return nil
+	}
+	sbcClient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolID)
+	if err != nil {
+		klog.Warningf("xfsStripeOptions: failed to create cluster client: %v", err)
+		return nil
+	}
+	clusterInfo, err := sbcClient.GetClusterInfo(ctx)
+	if err != nil {
+		klog.Warningf("xfsStripeOptions: failed to get cluster info: %v", err)
+		return nil
+	}
+	ndcs := clusterInfo.DistrNdcs
+	chunkBS := clusterInfo.DistrChunkBS
+	if chunkBS == 0 {
+		chunkBS = defaultChunkBS
+	}
+	if ndcs <= 0 {
+		return nil
+	}
+	su := fmt.Sprintf("%db", chunkBS)
+	return []string{"-d", fmt.Sprintf("su=%s,sw=%d", su, ndcs), "-l", fmt.Sprintf("su=%s", su)}
+}
+
 // must be idempotent
 //
 //nolint:cyclop // many cases in switch increases complexity
-func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeStageVolumeRequest, volumeContext map[string]string) error {
+func (ns *nodeServer) stageVolume(ctx context.Context, devicePath, stagingPath string, req *csi.NodeStageVolumeRequest, volumeContext map[string]string) error {
 	if req.GetVolumeCapability().GetBlock() != nil {
 		klog.Infof("NodeStageVolume: called for volume %s. Skipping staging since it is a block device.", req.GetVolumeId())
 		return nil
@@ -491,6 +526,8 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	formatOptions := []string{}
 
 	if fsType == "xfs" {
+		formatOptions = append(formatOptions, xfsStripeOptions(ctx, req.GetVolumeId())...)
+
 		// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
 		// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
 		mntFlags = append(mntFlags, "nouuid")
