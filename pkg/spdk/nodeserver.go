@@ -368,19 +368,14 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
 
-	// If the staging mount died (total NVMe-oF path loss removed the device),
-	// repair it before bind-mounting into the pod — otherwise the pod inherits
-	// the dead (EIO) mount. kubelet skips NodeStage when the volume is still
-	// referenced by another pod on this node (e.g. a same-node pod replacement),
-	// so NodePublish is the reliable place to heal. Filesystem volumes only.
-	if req.GetVolumeCapability().GetMount() != nil {
-		stagingTargetPath := getStagingTargetPath(req)
-		if ns.stagingMountDead(stagingTargetPath) {
-			if err := ns.restageVolume(ctx, volumeID, stagingTargetPath, req.GetStagingTargetPath(), req.GetVolumeCapability()); err != nil {
-				klog.Errorf("failed to restage dead volume %s before publish: %v", volumeID, err)
-				return nil, status.Errorf(codes.Internal, "restage dead volume %s: %v", volumeID, err)
-			}
-		}
+	// If the backing NVMe-oF device was lost (total path loss), repair it before
+	// bind-mounting into the pod — otherwise the pod inherits the dead mount/
+	// missing device. kubelet skips NodeStage when the volume is still referenced
+	// on this node (e.g. a same-node pod replacement), so NodePublish is the
+	// reliable place to heal.
+	if err := ns.healVolumeBeforePublish(ctx, req); err != nil {
+		klog.Errorf("failed to heal volume %s before publish: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "heal volume %s before publish: %v", volumeID, err)
 	}
 
 	err := ns.publishVolume(getStagingTargetPath(req), req) // idempotent
@@ -608,6 +603,64 @@ func (ns *nodeServer) forceUnmountStaging(stagingPath string) error {
 		return fmt.Errorf("lazy unmount %s: %w (%s)", stagingPath, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// healVolumeBeforePublish repairs a volume whose backing NVMe-oF device was lost
+// (total path loss) before it is bind-mounted into a (replacement) pod. For
+// filesystem volumes it restages the dead staging mount; for block volumes it
+// reconnects the missing device. No-op when the volume is healthy.
+func (ns *nodeServer) healVolumeBeforePublish(ctx context.Context, req *csi.NodePublishVolumeRequest) error {
+	volCap := req.GetVolumeCapability()
+	stagingParentPath := req.GetStagingTargetPath()
+
+	switch {
+	case volCap.GetBlock() != nil:
+		return ns.ensureDeviceConnected(ctx, req.GetVolumeId(), stagingParentPath)
+	case volCap.GetMount() != nil:
+		stagingTargetPath := getStagingTargetPath(req)
+		if ns.stagingMountDead(stagingTargetPath) {
+			return ns.restageVolume(ctx, req.GetVolumeId(), stagingTargetPath, stagingParentPath, volCap)
+		}
+	}
+	return nil
+}
+
+// ensureDeviceConnected reconnects a block volume's NVMe-oF device if it has
+// gone away. The by-id device path is stable across reconnects, so only the
+// connection needs re-establishing (no mount). Idempotent.
+func (ns *nodeServer) ensureDeviceConnected(ctx context.Context, volumeID, stagingParentPath string) error {
+	volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+	if err != nil {
+		return fmt.Errorf("lookup volume context: %w", err)
+	}
+	if devicePath := volumeContext["devicePath"]; devicePath != "" && deviceExists(devicePath) {
+		return nil
+	}
+
+	klog.Warningf("block volume %s device is gone; reconnecting NVMe-oF", volumeID)
+	initiator, err := util.NewSpdkCsiInitiator(volumeContext)
+	if err != nil {
+		return fmt.Errorf("new initiator: %w", err)
+	}
+	devicePath, err := initiator.Connect(ctx) // idempotent
+	if err != nil {
+		return fmt.Errorf("reconnect device: %w", err)
+	}
+	if volumeContext["devicePath"] != devicePath {
+		volumeContext["devicePath"] = devicePath
+		if err := util.StashVolumeContext(volumeContext, stagingParentPath); err != nil {
+			klog.Warningf("ensureDeviceConnected: re-stash volume context for %s: %v", volumeID, err)
+		}
+	}
+	klog.Infof("reconnected block volume %s device %s", volumeID, devicePath)
+	return nil
+}
+
+// deviceExists reports whether path resolves to an existing device, following
+// symlinks such as /dev/disk/by-id/nvme-<uuid>_ha_1.
+func deviceExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // restageVolume repairs a staging mount whose backing NVMe-oF device was lost
