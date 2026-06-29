@@ -41,6 +41,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	csicommon "github.com/spdk/spdk-csi/pkg/csi-common"
+	sbkube "github.com/spdk/spdk-csi/pkg/kubernetes"
 	"github.com/spdk/spdk-csi/pkg/util"
 )
 
@@ -71,9 +72,18 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		}
 	}
 
+	// Build one Kubernetes cache manager and share it across the node plugin:
+	// the reconnect loop reads PVs every ~3s and the guardian reads PVs/PVCs
+	// per pod on every poll, so a single shared instance means a single PV
+	// Watch and a single PVC Watch. The manager serves reads from cache once
+	// synced and transparently falls back to the API until then (and if it
+	// never syncs), so consumers need no fallback of their own.
+	manager := sbkube.NewManager(ns.kubeClient)
+	manager.Start(context.Background())
+
 	nodeName := ns.Driver.GetNodeID()
 	gcfg := util.NewDefaultGuardianConfig(nodeName)
-	guardian, gerr := util.StartGuardian(context.Background(), gcfg)
+	guardian, gerr := util.StartGuardian(context.Background(), gcfg, manager)
 	if gerr != nil {
 		klog.Errorf("failed to start guardian: %v", gerr)
 	} else {
@@ -84,7 +94,7 @@ func newNodeServer(d *csicommon.CSIDriver) (*nodeServer, error) {
 		if ns.guardian != nil {
 			ns.guardian.MarkBrokenLvol(lvolID)
 		}
-	})
+	}, manager, ns.Driver.GetName())
 
 	return ns, nil
 }
@@ -232,7 +242,17 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if isStaged {
-		klog.Warning("volume already staged")
+		// A staged volume whose backing NVMe-oF device was lost leaves a dead
+		// (EIO) mount that isStaged still reports as staged. Repair it in place
+		// instead of short-circuiting.
+		if !ns.stagingMountDead(stagingTargetPath) {
+			klog.Warning("volume already staged")
+			return &csi.NodeStageVolumeResponse{}, nil
+		}
+		klog.Warningf("volume %s already staged but its mount is dead; restaging", volumeID)
+		if err := ns.restageVolume(ctx, volumeID, stagingTargetPath, stagingParentPath, req.GetVolumeCapability()); err != nil {
+			return nil, status.Errorf(codes.Internal, "restage volume %s: %v", volumeID, err)
+		}
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -347,6 +367,16 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	volumeID := req.GetVolumeId()
 	unlock := ns.volumeLocks.Lock(volumeID)
 	defer unlock()
+
+	// If the backing NVMe-oF device was lost (total path loss), repair it before
+	// bind-mounting into the pod — otherwise the pod inherits the dead mount/
+	// missing device. kubelet skips NodeStage when the volume is still referenced
+	// on this node (e.g. a same-node pod replacement), so NodePublish is the
+	// reliable place to heal.
+	if err := ns.healVolumeBeforePublish(ctx, req); err != nil {
+		klog.Errorf("failed to heal volume %s before publish: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "heal volume %s before publish: %v", volumeID, err)
+	}
 
 	err := ns.publishVolume(getStagingTargetPath(req), req) // idempotent
 	if err != nil {
@@ -481,32 +511,9 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	if mounted {
 		return nil
 	}
-	fsType := req.GetVolumeCapability().GetMount().GetFsType()
-	// if fsType is not specified, use ext4 as default
-	if fsType == "" {
-		fsType = "ext4"
-	}
-
-	mntFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
+	fsType := fsTypeOrDefault(req.GetVolumeCapability())
+	mntFlags := stagingMountFlags(req.GetVolumeCapability())
 	formatOptions := []string{}
-
-	if fsType == "xfs" {
-		// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
-		// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
-		mntFlags = append(mntFlags, "nouuid")
-	}
-
-	switch req.GetVolumeCapability().GetAccessMode().GetMode() {
-	case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
-		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
-		mntFlags = append(mntFlags, "ro")
-	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
-	case csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER:
-	case csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER:
-	case csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER:
-	case csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:
-	case csi.VolumeCapability_AccessMode_UNKNOWN:
-	}
 
 	klog.Infof("mount %s to %s, fstype: %s, flags: %v", devicePath, stagingPath, fsType, mntFlags)
 	klog.Infof("formatOptions %v", formatOptions)
@@ -531,6 +538,175 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 		}
 	}
 
+	return nil
+}
+
+// fsTypeOrDefault returns the requested filesystem type, defaulting to ext4.
+func fsTypeOrDefault(volCap *csi.VolumeCapability) string {
+	if fsType := volCap.GetMount().GetFsType(); fsType != "" {
+		return fsType
+	}
+	return "ext4"
+}
+
+// stagingMountFlags builds the mount flags used when mounting a volume at its
+// staging path, so the initial stage and a later restage stay consistent.
+func stagingMountFlags(volCap *csi.VolumeCapability) []string {
+	flags := append([]string{}, volCap.GetMount().GetMountFlags()...)
+
+	if volCap.GetMount().GetFsType() == "xfs" {
+		// xfs refuses to mount two filesystems with the same uuid; nouuid lets a
+		// volume and its clone/restored snapshot mount on the same node.
+		flags = append(flags, "nouuid")
+	}
+
+	switch volCap.GetAccessMode().GetMode() {
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+		flags = append(flags, "ro")
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		csi.VolumeCapability_AccessMode_UNKNOWN:
+	}
+	return flags
+}
+
+// stagingMountDead reports whether stagingPath is a dead/corrupted mount — the
+// state left behind when total NVMe-oF path loss makes the kernel remove the
+// backing device. Such a mount returns ENOTCONN/ESTALE/EIO on access, which
+// mount.IsCorruptedMnt detects.
+func (ns *nodeServer) stagingMountDead(stagingPath string) bool {
+	if _, err := ns.mounter.IsMountPoint(stagingPath); err != nil {
+		return mount.IsCorruptedMnt(err)
+	}
+	// IsMountPoint can still succeed on a mount whose device just vanished;
+	// a stat of the path then fails with an EIO-class error.
+	if _, err := os.Stat(stagingPath); err != nil {
+		return mount.IsCorruptedMnt(err)
+	}
+	return false
+}
+
+// forceUnmountStaging detaches a dead staging mount. A lazy unmount (umount -l)
+// is used because a normal unmount can hang or fail when the backing device is
+// gone. The staging directory itself is preserved for the remount.
+func (ns *nodeServer) forceUnmountStaging(stagingPath string) error {
+	out, err := osexec.Command("umount", "-l", stagingPath).CombinedOutput()
+	if err != nil {
+		msg := strings.ToLower(string(out))
+		if strings.Contains(msg, "not mounted") || strings.Contains(msg, "not found") {
+			return nil
+		}
+		return fmt.Errorf("lazy unmount %s: %w (%s)", stagingPath, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// healVolumeBeforePublish repairs a volume whose backing NVMe-oF device was lost
+// (total path loss) before it is bind-mounted into a (replacement) pod. For
+// filesystem volumes it restages the dead staging mount; for block volumes it
+// reconnects the missing device. No-op when the volume is healthy.
+func (ns *nodeServer) healVolumeBeforePublish(ctx context.Context, req *csi.NodePublishVolumeRequest) error {
+	volCap := req.GetVolumeCapability()
+	stagingParentPath := req.GetStagingTargetPath()
+
+	switch {
+	case volCap.GetBlock() != nil:
+		return ns.ensureDeviceConnected(ctx, req.GetVolumeId(), stagingParentPath)
+	case volCap.GetMount() != nil:
+		stagingTargetPath := getStagingTargetPath(req)
+		if ns.stagingMountDead(stagingTargetPath) {
+			return ns.restageVolume(ctx, req.GetVolumeId(), stagingTargetPath, stagingParentPath, volCap)
+		}
+	}
+	return nil
+}
+
+// ensureDeviceConnected reconnects a block volume's NVMe-oF device if it has
+// gone away. The by-id device path is stable across reconnects, so only the
+// connection needs re-establishing (no mount). Idempotent.
+func (ns *nodeServer) ensureDeviceConnected(ctx context.Context, volumeID, stagingParentPath string) error {
+	volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+	if err != nil {
+		return fmt.Errorf("lookup volume context: %w", err)
+	}
+	if devicePath := volumeContext["devicePath"]; devicePath != "" && deviceExists(devicePath) {
+		return nil
+	}
+
+	klog.Warningf("block volume %s device is gone; reconnecting NVMe-oF", volumeID)
+	initiator, err := util.NewSpdkCsiInitiator(volumeContext)
+	if err != nil {
+		return fmt.Errorf("new initiator: %w", err)
+	}
+	devicePath, err := initiator.Connect(ctx) // idempotent
+	if err != nil {
+		return fmt.Errorf("reconnect device: %w", err)
+	}
+	if volumeContext["devicePath"] != devicePath {
+		volumeContext["devicePath"] = devicePath
+		if err := util.StashVolumeContext(volumeContext, stagingParentPath); err != nil {
+			klog.Warningf("ensureDeviceConnected: re-stash volume context for %s: %v", volumeID, err)
+		}
+	}
+	klog.Infof("reconnected block volume %s device %s", volumeID, devicePath)
+	return nil
+}
+
+// deviceExists reports whether path resolves to an existing device, following
+// symlinks such as /dev/disk/by-id/nvme-<uuid>_ha_1.
+func deviceExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// restageVolume repairs a staging mount whose backing NVMe-oF device was lost
+// (total path loss → the kernel removed the device, leaving a dead EIO mount).
+// It force-unmounts the dead mount, reconnects the volume, and remounts the
+// EXISTING filesystem in place. It never reformats — the volume already holds
+// data. Filesystem (mount) volumes only; block volumes have no staging mount.
+func (ns *nodeServer) restageVolume(ctx context.Context, volumeID, stagingTargetPath, stagingParentPath string, volCap *csi.VolumeCapability) error {
+	if volCap.GetMount() == nil {
+		klog.Warningf("restageVolume: volume %s is not a filesystem volume; skipping", volumeID)
+		return nil
+	}
+	klog.Warningf("restaging volume %s: staging mount %s is dead, reconnecting NVMe-oF and remounting", volumeID, stagingTargetPath)
+
+	volumeContext, err := util.LookupVolumeContext(stagingParentPath)
+	if err != nil {
+		return fmt.Errorf("lookup volume context: %w", err)
+	}
+
+	if err := ns.forceUnmountStaging(stagingTargetPath); err != nil {
+		return fmt.Errorf("unmount dead staging mount: %w", err)
+	}
+
+	initiator, err := util.NewSpdkCsiInitiator(volumeContext)
+	if err != nil {
+		return fmt.Errorf("new initiator: %w", err)
+	}
+	devicePath, err := initiator.Connect(ctx) // idempotent: re-establishes the lost device
+	if err != nil {
+		return fmt.Errorf("reconnect device: %w", err)
+	}
+
+	if _, err := ns.createMountPoint(stagingTargetPath); err != nil {
+		return fmt.Errorf("recreate staging dir: %w", err)
+	}
+	// Plain Mount, not FormatAndMount: the volume already holds a filesystem and
+	// reformatting would destroy data.
+	if err := ns.mounter.Mount(devicePath, stagingTargetPath, fsTypeOrDefault(volCap), stagingMountFlags(volCap)); err != nil {
+		return fmt.Errorf("remount device %s at %s: %w", devicePath, stagingTargetPath, err)
+	}
+
+	volumeContext["devicePath"] = devicePath
+	if err := util.StashVolumeContext(volumeContext, stagingParentPath); err != nil {
+		klog.Warningf("restageVolume: failed to re-stash volume context for %s: %v", volumeID, err)
+	}
+	klog.Infof("restaged volume %s on fresh device %s", volumeID, devicePath)
 	return nil
 }
 

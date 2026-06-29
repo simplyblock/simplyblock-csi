@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/spdk/spdk-csi/pkg/kubernetes/volumehandle"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -698,15 +699,15 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 func parseVolumeID(csiVolumeID string) (*spdkVolume, error) {
 	// csiVolumeID format: {clusterUUID}:{poolUUID}:{lvolUUID}
 	// e.g. 8ffac363-0c46-4714-a71b-f9c0b58a1269:df34f16c-...:8e2dcb9d-...
-	ids := strings.Split(csiVolumeID, ":")
-	if len(ids) == 3 {
-		return &spdkVolume{
-			clusterID: ids[0],
-			poolID:    ids[1],
-			lvolID:    ids[2],
-		}, nil
+	vh, ok := volumehandle.Parse(csiVolumeID)
+	if !ok {
+		return nil, fmt.Errorf("invalid volume handle %q (expected {clusterID}:{poolID}:{lvolID})", csiVolumeID)
 	}
-	return nil, fmt.Errorf("missing clusterID or poolID in volume: %s", csiVolumeID)
+	return &spdkVolume{
+		clusterID: vh.ClusterID,
+		poolID:    vh.PoolID,
+		lvolID:    vh.VolumeID,
+	}, nil
 }
 
 func parseSnapshotID(csiSnapshotID string) (*spdkSnapshot, error) {

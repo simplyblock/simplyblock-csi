@@ -33,7 +33,10 @@ import (
 	"sync"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog"
+
+	sbkube "github.com/spdk/spdk-csi/pkg/kubernetes"
 )
 
 const (
@@ -593,7 +596,21 @@ func parseAddress(address string) string {
 	return ""
 }
 
-func reconnectSubsystems(markBroken func(lvolID string)) error {
+// isManagedLvol reports whether lvolID is backed by a PersistentVolume
+// provisioned by the given CSI driver. Only such lvols are reconnected;
+// benchmark and foreign (non-simplyblock, or other-driver) volumes are skipped.
+func isManagedLvol(manager *sbkube.Manager, lvolID, driver string) bool {
+	pv, err := manager.PersistentVolumeByLogicalVolumeID(context.Background(), lvolID)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.Errorf("reconnect: failed to read PersistentVolume for lvolID %s: %v", lvolID, err)
+		}
+		return false
+	}
+	return pv.Spec.CSI != nil && pv.Spec.CSI.Driver == driver
+}
+
+func reconnectSubsystems(markBroken func(lvolID string), manager *sbkube.Manager, driver string) error {
 	devices, err := getNVMeDeviceInfos()
 	if err != nil {
 		return fmt.Errorf("failed to get NVMe device paths: %v", err)
@@ -621,6 +638,12 @@ func reconnectSubsystems(markBroken func(lvolID string)) error {
 				lvolID := device.lvolID
 				if lvolID == "" {
 					lvolID = nqnLvolID
+				}
+
+				// Only act on lvols backed by a PV from our CSI driver; skip
+				// benchmark and foreign volumes.
+				if !isManagedLvol(manager, lvolID, driver) {
+					continue
 				}
 
 				// Only mark the device present once we have a confirmed lvolID,
@@ -818,14 +841,14 @@ const (
 	monitorCircuitCooldown = 30 * time.Second
 )
 
-func MonitorConnection(markBroken func(lvolID string)) {
+func MonitorConnection(markBroken func(lvolID string), manager *sbkube.Manager, driver string) {
 	var (
 		consecutiveErrors int
 		backoff           = monitorBaseInterval
 	)
 
 	for {
-		err := reconnectSubsystems(markBroken)
+		err := reconnectSubsystems(markBroken, manager, driver)
 		if err != nil {
 			consecutiveErrors++
 			klog.Errorf("MonitorConnection error (%d consecutive): %v", consecutiveErrors, err)

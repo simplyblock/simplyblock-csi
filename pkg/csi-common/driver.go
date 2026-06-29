@@ -95,6 +95,10 @@ func (d *CSIDriver) GetVolumeCapabilityAccessModes() []*csi.VolumeCapability_Acc
 	return d.vc
 }
 
+func (d *CSIDriver) GetName() string {
+	return d.name
+}
+
 func (d *CSIDriver) GetNodeID() string {
 	return d.nodeID
 }
