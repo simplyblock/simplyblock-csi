@@ -34,11 +34,6 @@ jobs:
 
           mv "spdk-csi-$VERSION.tgz" "../$VERSION/"
 
-      - name: Update index.yaml
-        run: |
-          cd charts/spdk-csi
-          helm repo index . --url https://install.simplyblock.io/helm
-
       - name: Prepare release metadata
         id: release_meta
         run: |
@@ -52,6 +47,9 @@ jobs:
           BRANCH="${{ steps.release_meta.outputs.branch }}"
           git fetch origin master
           git checkout -b "$BRANCH" origin/master
+
+          cd charts/spdk-csi
+          helm repo index . --url https://install.simplyblock.io/helm
 
           git add charts/spdk-csi/index.yaml charts/spdk-csi/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
