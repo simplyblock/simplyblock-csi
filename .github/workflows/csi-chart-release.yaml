@@ -48,8 +48,7 @@ jobs:
           git fetch origin master
           git checkout -b "$BRANCH" origin/master
 
-          cd charts/spdk-csi
-          helm repo index . --url https://install.simplyblock.io/helm
+          helm repo index charts/spdk-csi/ --url https://install.simplyblock.io/helm
           
           git add charts/spdk-csi/index.yaml charts/spdk-csi/${{ env.VERSION }}/
           git commit -m "helm release for simplyblock csi ${{ env.VERSION }}" || echo "No changes to commit"
