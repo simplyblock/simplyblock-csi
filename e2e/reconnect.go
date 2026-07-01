@@ -221,11 +221,17 @@ func subsystemForLvol(subs []nvmeSubsystem, lvolID string) *nvmeSubsystem {
 // waitForSubsystem polls until the subsystem for lvolID appears on the node.
 func waitForSubsystem(f *framework.Framework, podName, container, lvolID string, timeout time.Duration) *nvmeSubsystem {
 	var found *nvmeSubsystem
+	var seen []string
 	gomega.Eventually(func() *nvmeSubsystem {
-		found = subsystemForLvol(listSubsystems(f, podName, container), lvolID)
+		subs := listSubsystems(f, podName, container)
+		seen = seen[:0]
+		for i := range subs {
+			seen = append(seen, subs[i].NQN)
+		}
+		found = subsystemForLvol(subs, lvolID)
 		return found
 	}, timeout, 3*time.Second).ShouldNot(gomega.BeNil(),
-		"NVMe subsystem for lvol %s never appeared on the node", lvolID)
+		"NVMe subsystem for lvol %s never appeared on node (via %s); subsystems seen: %v", lvolID, podName, seen)
 	return found
 }
 

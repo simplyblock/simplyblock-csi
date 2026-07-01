@@ -835,6 +835,26 @@ func deletePodByName(c kubernetes.Interface, ns, podName string) {
 // Reconnect helpers — shared by the SPDKCSI-RECONNECT-* specs.
 // ---------------------------------------------------------------------------
 
+// poolNameForTests resolves the storage pool the reconnect tests should use for
+// directly-created (unmanaged) volumes. It prefers E2E_SB_POOL, then the
+// pool_name of the StorageClass under test (guaranteed to exist on this
+// cluster), then POOL_NAME. It never returns "" — as a last resort it falls back
+// to "testing1" so misconfiguration surfaces as a clear "pool not found".
+func poolNameForTests(c kubernetes.Interface) string {
+	if p := os.Getenv("E2E_SB_POOL"); p != "" {
+		return p
+	}
+	if sc, err := c.StorageV1().StorageClasses().Get(context.Background(), storageClassName, metav1.GetOptions{}); err == nil {
+		if p := sc.Parameters["pool_name"]; p != "" {
+			return p
+		}
+	}
+	if p := os.Getenv("POOL_NAME"); p != "" {
+		return p
+	}
+	return "testing1"
+}
+
 // managedWorkload is a node-pinned workload and the NVMe-oF volume it consumes,
 // set up for a total-path-loss scenario. It is produced by setupManagedWorkload
 // and shared by SPDKCSI-RECONNECT-FULLLOSS and SPDKCSI-RECONNECT-GUARDIAN.

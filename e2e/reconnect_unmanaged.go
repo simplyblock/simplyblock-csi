@@ -27,7 +27,7 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-UNMANAGED", func() {
 		// monitor leaves it alone (no recovery) — the behavior the positive
 		// SPDKCSI-RECONNECT test shows it WOULD apply to a managed volume.
 		ginkgo.It("skips a connected simplyblock volume that has no PV/PVC", func() {
-			pool := envOr("E2E_SB_POOL", "testing1")
+			pool := poolNameForTests(f.ClientSet)
 			size := envOr("E2E_SB_VOLUME_SIZE", "1G")
 			volName := "e2e-unmanaged-" + f.Namespace.Name
 
