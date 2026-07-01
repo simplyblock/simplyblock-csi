@@ -22,6 +22,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"path/filepath"
@@ -584,10 +585,37 @@ func (ns *nodeServer) stagingMountDead(stagingPath string) bool {
 	}
 	// IsMountPoint can still succeed on a mount whose device just vanished;
 	// a stat of the path then fails with an EIO-class error.
-	if _, err := os.Stat(stagingPath); err != nil {
+	fi, err := os.Stat(stagingPath)
+	if err != nil {
 		return mount.IsCorruptedMnt(err)
 	}
-	return false
+	// Some filesystems (notably ext4) do NOT shut down when their backing block
+	// device is removed on total NVMe-oF path loss — unlike xfs, which goes EIO
+	// and is caught above. IsMountPoint and stat then both succeed from cache, so
+	// the dead mount looks healthy and never gets restaged. Detect it by checking
+	// that the block device backing the mount still exists: the mountpoint's
+	// st_dev gives the device major:minor, and once the kernel removes the device
+	// /sys/dev/block/<major>:<minor> disappears. A later reconnect gets a NEW
+	// major:minor, but this mount stays bound to the old (gone) one until it is
+	// restaged, so this never false-positives on a healthy, read-only, or full fs.
+	return backingBlockDeviceGone(fi)
+}
+
+// backingBlockDeviceGone reports whether the block device that backs the mounted
+// filesystem described by fi no longer exists in sysfs. It returns false for
+// filesystems with an anonymous super-block device (tmpfs/overlay/etc.), which
+// have no /sys/dev/block entry to check.
+func backingBlockDeviceGone(fi os.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	dev := uint64(st.Dev) //nolint:unconvert // st.Dev is uint64 on linux/amd64, int32 elsewhere
+	if unix.Major(dev) == 0 {
+		return false
+	}
+	_, err := os.Stat(fmt.Sprintf("/sys/dev/block/%d:%d", unix.Major(dev), unix.Minor(dev)))
+	return os.IsNotExist(err)
 }
 
 // forceUnmountStaging detaches a dead staging mount. A lazy unmount (umount -l)
