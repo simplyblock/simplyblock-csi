@@ -888,7 +888,14 @@ func setupManagedWorkload(f *framework.Framework, m fullLossMode, appLabel strin
 
 	ginkgo.By("create an opt-in StorageClass on the live cluster and the PVC")
 	scName := fmt.Sprintf("%s-%s", appLabel, ns)
-	scParams := map[string]string{"cluster_id": liveClusterID(f)}
+	// max_namespace_per_subsys=1 gives each volume its own NVMe-oF subsystem, so
+	// the NQN carries this volume's lvol id (not a shared subsystem's), a total
+	// disconnect affects only this volume (no cross-spec interference under
+	// parallelism), and staging never races a sibling's "already connected" path.
+	scParams := map[string]string{
+		"cluster_id":               liveClusterID(f),
+		"max_namespace_per_subsys": "1",
+	}
 	if !m.block {
 		scParams["csi.storage.k8s.io/fstype"] = m.fsType
 	}
