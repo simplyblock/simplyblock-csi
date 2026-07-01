@@ -26,7 +26,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"k8s.io/klog"
 )
@@ -156,7 +155,7 @@ func NewConnection(endpoint string) (*Connection, error) {
 
 	return &Connection{
 		Endpoint: endpoint,
-		HTTP:     &http.Client{Timeout: cfgRPCTimeoutSeconds * time.Second, Transport: transport},
+		HTTP:     &http.Client{Timeout: httpClientTimeout, Transport: transport},
 	}, nil
 }
 
@@ -190,6 +189,24 @@ func (c *ClusterClient) ListStoragePools(ctx context.Context) ([]StoragePool, er
 // hostNQN is passed to the sbcli API when the volume has allowed_hosts configured.
 func (c *ClusterClient) VolumeInfo(ctx context.Context, lvolID string, hostNQN string) (map[string]string, error) {
 	return c.API.getVolumeInfo(ctx, c.poolID, lvolID, hostNQN)
+}
+
+// VolumeHealth fetches the volume from the SimplyBlock API and returns whether
+// it is healthy.  A volume is considered unhealthy if health_check is false or
+// io_error is true.  The second return value carries a human-readable reason
+// when the volume is unhealthy.
+func (c *ClusterClient) VolumeHealth(ctx context.Context, lvolID string) (healthy bool, reason string, err error) {
+	vol, err := c.API.getVolumeByUUID(ctx, c.poolID, lvolID)
+	if err != nil {
+		return false, "", err
+	}
+	if !vol.HealthCheck {
+		return false, "volume health_check is false", nil
+	}
+	if vol.IOError {
+		return false, "volume has io_error set", nil
+	}
+	return true, "", nil
 }
 
 // CreateLVolData is the data structure for creating a logical volume
