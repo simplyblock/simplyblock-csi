@@ -142,7 +142,7 @@ func testPodNode(c kubernetes.Interface, ns, podName string) string {
 	return pod.Spec.NodeName
 }
 
-// nodePluginPodOnNode returns the csi-node DaemonSet pod (and its first
+// nodePluginPodOnNode returns the csi-node DaemonSet pod (and its plugin
 // container) running on the given node.
 func nodePluginPodOnNode(c kubernetes.Interface, nodeName string) (podName, container string) {
 	dns := driverNamespace()

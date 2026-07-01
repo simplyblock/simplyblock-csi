@@ -110,7 +110,7 @@ func envOr(key, def string) string {
 }
 
 // anyNodePluginPod returns an arbitrary csi-node DaemonSet pod, its node, and
-// its first container.
+// its plugin container.
 func anyNodePluginPod(c kubernetes.Interface) (nodeName, podName, container string) {
 	dns := driverNamespace()
 	ds, err := c.AppsV1().DaemonSets(dns).Get(context.Background(), nodeDsName, metav1.GetOptions{})
