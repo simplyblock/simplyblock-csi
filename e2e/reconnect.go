@@ -40,6 +40,14 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT", func() {
 	f := newTestFramework("spdkcsi")
 
 	ginkgo.Context("NVMe-oF path recovery for PV/PVC-managed volumes", func() {
+		// A PV/PVC-managed volume is connected over multiple NVMe-oF paths. When
+		// one path degrades (a controller is deleted on the node, leaving at least
+		// one live path so I/O continues), the node plugin's monitor must
+		// automatically reconnect the lost path without disrupting the workload.
+		// We write data, drop one path, and confirm the monitor restores the full
+		// path count and that the data written before the disruption is intact.
+		// The mirror-image SPDKCSI-RECONNECT-UNMANAGED test shows the monitor does
+		// NOT do this for a volume with no PV/PVC.
 		ginkgo.It("restores a degraded managed volume's NVMe paths", func() {
 			ns := f.Namespace.Name
 			pvcLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}

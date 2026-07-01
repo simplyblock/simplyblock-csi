@@ -31,6 +31,24 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-FULLLOSS", func() {
 	f := newTestFramework("spdkcsi")
 
 	ginkgo.Context("volume recovers after total NVMe-oF path loss", func() {
+		// Unlike SPDKCSI-RECONNECT (which drops ONE of several paths and lets the
+		// monitor reconnect it in place), this exercises TOTAL path loss: the whole
+		// NVMe-oF subsystem is disconnected, so the kernel removes the device and
+		// the in-place mount is dead — it can only recover when the pod is restarted
+		// and the volume is restaged on the replacement pod's NodePublish.
+		//
+		// In production the guardian is what restarts the pod after detecting the
+		// broken lvol. The test does NOT wait for that; it force-deletes the pod
+		// itself (grace period 0) to stand in for the guardian's restart — this
+		// keeps the test deterministic (no wait for the guardian's poll cycle) and
+		// biases toward the race where the replacement pod's NodePublish runs before
+		// kubelet unstages the old mount. We then verify the replacement pod comes
+		// up with the volume restaged and usable again.
+		//
+		// Because an unclean total loss can roll back the filesystem journal, we
+		// assert the volume is writable+readable again rather than that the exact
+		// pre-outage marker survived. Run for raw block, ext4 and xfs, since each
+		// filesystem behaves differently when its backing device disappears.
 		modes := []fullLossMode{
 			{name: "raw block", block: true},
 			{name: "ext4 filesystem", fsType: "ext4"},
@@ -40,79 +58,30 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-FULLLOSS", func() {
 		for _, m := range modes {
 			m := m
 			ginkgo.It(fmt.Sprintf("reconnects and keeps data for a %s volume", m.name), func() {
-				ns := f.Namespace.Name
-				appLabel := "fullloss"
-				pvcName := "fullloss-pvc"
-				depName := "fullloss"
-				marker := "fullloss-" + ns
-				if len(marker) > 60 {
-					marker = marker[:60]
-				}
-
-				ginkgo.By("check node DaemonSet is ready")
-				framework.ExpectNoError(waitForNodeServerReady(f.ClientSet, 3*time.Minute), "node DaemonSet ready")
-
-				ginkgo.By("create the StorageClass / PVC for this volume type")
-				// Build our own StorageClass pinned to the live cluster rather than
-				// reusing the operator's default SC, which may reference a stale
-				// cluster_id. Raw block, ext4 and xfs each get a dedicated SC.
-				// The SC opts in to guardian auto-restart on path loss: filesystem
-				// volumes recover from total path loss only via a guardian-driven
-				// pod restart + mount restage.
-				scTag := "block"
-				scParams := map[string]string{"cluster_id": liveClusterID(f)}
-				if !m.block {
-					scTag = m.fsType
-					scParams["csi.storage.k8s.io/fstype"] = m.fsType
-				}
-				scName := fmt.Sprintf("fullloss-%s-%s", scTag, ns)
-				createStorageClassWithParamsAndLabels(f.ClientSet, scName, scParams,
-					map[string]string{"simplyblock.io/auto-restart-on-pathloss": "true"})
-				ginkgo.DeferCleanup(func() { deleteStorageClass(f.ClientSet, scName) })
-				framework.ExpectNoError(createModePVC(f.ClientSet, ns, pvcName, scName, m.block), "create PVC")
-
-				ginkgo.By("pick a worker node and run a pod pinned to it")
-				workerNode, _, _ := anyNodePluginPod(f.ClientSet)
-				framework.ExpectNoError(
-					createPinnedDeployment(f.ClientSet, ns, depName, appLabel, pvcName, workerNode, m.block),
-					"create workload")
-				ginkgo.DeferCleanup(func() {
-					_ = f.ClientSet.AppsV1().Deployments(ns).Delete(context.Background(), depName, metav1.DeleteOptions{})
-				})
-
-				pod := waitForReadyPod(f.ClientSet, ns, appLabel, "", 5*time.Minute)
-
-				ginkgo.By("write a marker to the volume")
-				writeMarker(f, ns, appLabel, m, marker)
-
-				ginkgo.By("locate the csi-node pod and the volume's NVMe subsystem")
-				pluginPod, pluginContainer := nodePluginPodOnNode(f.ClientSet, workerNode)
-				lvolID := lvolIDForPVC(f.ClientSet, ns, pvcName)
-				sub := waitForSubsystem(f, pluginPod, pluginContainer, lvolID, time.Minute)
-
-				ginkgo.By("induce TOTAL path loss by disconnecting the whole subsystem")
-				execInPod(f, driverNamespace(), pluginPod, pluginContainer, "nvme disconnect -n "+sub.NQN)
+				w := setupManagedWorkload(f, m, "fullloss")
+				w.induceTotalPathLoss(f)
 
 				ginkgo.By("force-delete the pod to trigger a same-node replacement")
 				// GracePeriod 0 mimics the guardian's restart and biases toward the
 				// race where the new pod's NodePublish runs before kubelet unstages.
 				zero := int64(0)
 				framework.ExpectNoError(
-					f.ClientSet.CoreV1().Pods(ns).Delete(context.Background(), pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &zero}),
-					"force-delete pod %s", pod.Name)
+					f.ClientSet.CoreV1().Pods(w.ns).Delete(context.Background(), w.pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &zero}),
+					"force-delete pod %s", w.pod.Name)
 
-				ginkgo.By("wait for the guardian to restart the pod, restage the mount, and make the volume usable")
-				// Total path loss leaves the in-place mount dead (I/O error); it can
-				// only recover via a guardian-driven pod restart + restage, which runs
-				// on the guardian poll cycle (default 5m). The timeout must span a full
-				// poll cycle plus the restart + remount, so use 12m. We assert the
-				// volume is writable+readable again rather than that the pre-outage
-				// marker survived: an unclean total path loss can roll back the journal.
-				token := "recovered-" + ns
+				ginkgo.By("wait for the replacement pod to restage the mount and make the volume usable")
+				// Total path loss leaves the in-place mount dead (I/O error); it
+				// recovers when the replacement pod's NodePublish restages the volume.
+				// Poll until it is writable+readable again. The generous timeout also
+				// covers the fallback where the guardian, not the test's force-delete,
+				// drives the restart on its poll cycle (default 5m). We assert
+				// usability rather than that the pre-outage marker survived: an unclean
+				// total loss can roll back the journal.
+				token := "recovered-" + w.ns
 				gomega.Eventually(func() error {
-					return verifyVolumeUsableE(f, ns, appLabel, m, token)
+					return verifyVolumeUsableE(f, w.ns, w.appLabel, m, token)
 				}, 12*time.Minute, 10*time.Second).Should(gomega.Succeed(),
-					"volume not usable after full path loss + guardian-driven restage")
+					"volume not usable after full path loss + restage")
 			})
 		}
 	})

@@ -830,3 +830,92 @@ func deletePodByName(c kubernetes.Interface, ns, podName string) {
 		framework.Logf("failed to delete pod %s: %v", podName, err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Reconnect helpers — shared by the SPDKCSI-RECONNECT-* specs.
+// ---------------------------------------------------------------------------
+
+// managedWorkload is a node-pinned workload and the NVMe-oF volume it consumes,
+// set up for a total-path-loss scenario. It is produced by setupManagedWorkload
+// and shared by SPDKCSI-RECONNECT-FULLLOSS and SPDKCSI-RECONNECT-GUARDIAN.
+type managedWorkload struct {
+	ns              string
+	appLabel        string
+	mode            fullLossMode
+	pod             *corev1.Pod
+	workerNode      string
+	pluginPod       string
+	pluginContainer string
+	lvolID          string
+	sub             *nvmeSubsystem
+}
+
+// setupManagedWorkload provisions everything a total-path-loss test needs: a
+// StorageClass on the live cluster that opts in to guardian auto-restart, a PVC
+// and a node-pinned pod for mode m, a marker written to the volume, and the
+// volume's NVMe-oF subsystem located on the node. It registers DeferCleanups for
+// the StorageClass and Deployment and returns the handles needed to drive and
+// verify recovery.
+//
+// We build our own StorageClass (pinned to the live cluster_id via sbctl) rather
+// than reusing the operator's default SC, which may reference a stale cluster.
+func setupManagedWorkload(f *framework.Framework, m fullLossMode, appLabel string) managedWorkload {
+	ns := f.Namespace.Name
+	pvcName := appLabel + "-pvc"
+
+	ginkgo.By("check the node DaemonSet is ready")
+	framework.ExpectNoError(waitForNodeServerReady(f.ClientSet, 3*time.Minute), "node DaemonSet ready")
+
+	ginkgo.By("create an opt-in StorageClass on the live cluster and the PVC")
+	scName := fmt.Sprintf("%s-%s", appLabel, ns)
+	scParams := map[string]string{"cluster_id": liveClusterID(f)}
+	if !m.block {
+		scParams["csi.storage.k8s.io/fstype"] = m.fsType
+	}
+	createStorageClassWithParamsAndLabels(f.ClientSet, scName, scParams,
+		map[string]string{"simplyblock.io/auto-restart-on-pathloss": "true"})
+	ginkgo.DeferCleanup(func() { deleteStorageClass(f.ClientSet, scName) })
+	framework.ExpectNoError(createModePVC(f.ClientSet, ns, pvcName, scName, m.block), "create PVC")
+
+	ginkgo.By("pick a worker node and run a pod pinned to it")
+	workerNode, _, _ := anyNodePluginPod(f.ClientSet)
+	framework.ExpectNoError(
+		createPinnedDeployment(f.ClientSet, ns, appLabel, appLabel, pvcName, workerNode, m.block),
+		"create workload")
+	ginkgo.DeferCleanup(func() {
+		_ = f.ClientSet.AppsV1().Deployments(ns).Delete(context.Background(), appLabel, metav1.DeleteOptions{})
+	})
+	pod := waitForReadyPod(f.ClientSet, ns, appLabel, "", 5*time.Minute)
+
+	ginkgo.By("write a marker to the volume")
+	marker := appLabel + "-" + ns
+	if len(marker) > 60 {
+		marker = marker[:60]
+	}
+	writeMarker(f, ns, appLabel, m, marker)
+
+	ginkgo.By("locate the csi-node pod and the volume's NVMe subsystem")
+	pluginPod, pluginContainer := nodePluginPodOnNode(f.ClientSet, workerNode)
+	lvolID := lvolIDForPVC(f.ClientSet, ns, pvcName)
+	sub := waitForSubsystem(f, pluginPod, pluginContainer, lvolID, time.Minute)
+
+	return managedWorkload{
+		ns:              ns,
+		appLabel:        appLabel,
+		mode:            m,
+		pod:             pod,
+		workerNode:      workerNode,
+		pluginPod:       pluginPod,
+		pluginContainer: pluginContainer,
+		lvolID:          lvolID,
+		sub:             sub,
+	}
+}
+
+// induceTotalPathLoss disconnects the whole NVMe-oF subsystem for the workload's
+// volume on its node, so the kernel removes the device (total path loss) and the
+// in-place mount goes dead.
+func (w managedWorkload) induceTotalPathLoss(f *framework.Framework) {
+	ginkgo.By("induce TOTAL path loss by disconnecting the whole subsystem")
+	execInPod(f, driverNamespace(), w.pluginPod, w.pluginContainer, "nvme disconnect -n "+w.sub.NQN)
+}
