@@ -460,6 +460,37 @@ func execCommandInPod(f *framework.Framework, cmd, ns string, opt *metav1.ListOp
 	return stdOut, stdErr
 }
 
+// execCommandInPodE is like execCommandInPod but returns the exec error instead
+// of failing the test, and targets a Running+Ready pod matching opt (the first
+// match otherwise). Use it inside polling assertions where the pod may be
+// mid-restart or its volume momentarily unreadable.
+func execCommandInPodE(f *framework.Framework, cmd, ns string, opt *metav1.ListOptions) (string, string, error) {
+	podList, err := e2epod.PodClientNS(f, ns).List(context.Background(), *opt)
+	if err != nil {
+		return "", "", err
+	}
+	if len(podList.Items) == 0 {
+		return "", "", fmt.Errorf("no pods matched selector %q", opt.LabelSelector)
+	}
+	pod := podList.Items[0]
+	for i := range podList.Items {
+		p := &podList.Items[i]
+		if p.Status.Phase == corev1.PodRunning && p.DeletionTimestamp == nil && podReady(p) {
+			pod = *p
+			break
+		}
+	}
+	return e2epod.ExecWithOptions(f, e2epod.ExecOptions{
+		Command:            []string{"/bin/sh", "-c", cmd},
+		PodName:            pod.Name,
+		Namespace:          ns,
+		ContainerName:      pod.Spec.Containers[0].Name,
+		CaptureStdout:      true,
+		CaptureStderr:      true,
+		PreserveWhitespace: true,
+	})
+}
+
 func getCommandInPodOpts(f *framework.Framework, cmd, ns string, opt *metav1.ListOptions) e2epod.ExecOptions {
 	podList, err := e2epod.PodClientNS(f, ns).List(context.Background(), *opt)
 	framework.ExpectNoError(err, "list pods for exec (selector: %s)", opt.LabelSelector)
@@ -649,6 +680,13 @@ func waitForPVDeleted(c kubernetes.Interface, pvName string, timeout time.Durati
 // ---------------------------------------------------------------------------
 
 func createStorageClassWithParams(c kubernetes.Interface, scName string, extraParams map[string]string) {
+	createStorageClassWithParamsAndLabels(c, scName, extraParams, nil)
+}
+
+// createStorageClassWithParamsAndLabels is like createStorageClassWithParams but
+// also sets metadata labels on the StorageClass (e.g. the guardian
+// auto-restart-on-pathloss opt-in).
+func createStorageClassWithParamsAndLabels(c kubernetes.Interface, scName string, extraParams, scLabels map[string]string) {
 	base, err := c.StorageV1().StorageClasses().Get(context.Background(), storageClassName, metav1.GetOptions{})
 	if err != nil {
 		ginkgo.Skip(fmt.Sprintf("base StorageClass %q unavailable (%v) — skipping", storageClassName, err))
@@ -664,7 +702,7 @@ func createStorageClassWithParams(c kubernetes.Interface, scName string, extraPa
 	}
 
 	sc := &storagev1.StorageClass{
-		ObjectMeta:           metav1.ObjectMeta{Name: scName},
+		ObjectMeta:           metav1.ObjectMeta{Name: scName, Labels: scLabels},
 		Provisioner:          base.Provisioner,
 		Parameters:           params,
 		ReclaimPolicy:        base.ReclaimPolicy,
@@ -674,6 +712,42 @@ func createStorageClassWithParams(c kubernetes.Interface, scName string, extraPa
 	}
 	_, err = c.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
 	framework.ExpectNoError(err, "create StorageClass %s", scName)
+}
+
+// liveClusterID resolves the UUID of the simplyblock cluster the tests run
+// against from `sbctl cluster list` (matched by CLUSTER_NAME when set, else the
+// sole cluster). Tests use this to build StorageClasses pinned to the current
+// cluster instead of relying on a possibly stale operator-created SC.
+func liveClusterID(f *framework.Framework) string {
+	name := os.Getenv("CLUSTER_NAME")
+	id := sbctlClusterID(f, name)
+	gomega.Expect(id).NotTo(gomega.BeEmpty(),
+		"resolve live cluster UUID (CLUSTER_NAME=%q) from sbctl cluster list", name)
+	return id
+}
+
+// createFilesystemTestPod creates a single alpine pod that mounts pvcName as a
+// filesystem at /spdkvol, labelled app=appLabel. It mirrors templates/testpod.yaml
+// but lets callers point the PVC at a test-owned StorageClass.
+func createFilesystemTestPod(c kubernetes.Interface, ns, podName, appLabel, pvcName string) error {
+	_, err := c.CoreV1().Pods(ns).Create(context.Background(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: podName, Labels: map[string]string{"app": appLabel}},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name:         "alpine",
+				Image:        "alpine:3",
+				Command:      []string{"sleep", "365d"},
+				VolumeMounts: []corev1.VolumeMount{{Name: "spdk-volume", MountPath: "/spdkvol"}},
+			}},
+			Volumes: []corev1.Volume{{
+				Name: "spdk-volume",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName},
+				},
+			}},
+		},
+	}, metav1.CreateOptions{})
+	return err
 }
 
 func deleteStorageClass(c kubernetes.Interface, scName string) {
@@ -755,4 +829,113 @@ func deletePodByName(c kubernetes.Interface, ns, podName string) {
 	if err := c.CoreV1().Pods(ns).Delete(context.Background(), podName, metav1.DeleteOptions{}); err != nil {
 		framework.Logf("failed to delete pod %s: %v", podName, err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Reconnect helpers — shared by the SPDKCSI-RECONNECT-* specs.
+// ---------------------------------------------------------------------------
+
+// poolNameForTests resolves the storage pool the reconnect tests should use for
+// directly-created (unmanaged) volumes. It prefers E2E_SB_POOL, then the
+// pool_name of the StorageClass under test (guaranteed to exist on this
+// cluster), then POOL_NAME. It never returns "" — as a last resort it falls back
+// to "testing1" so misconfiguration surfaces as a clear "pool not found".
+func poolNameForTests(c kubernetes.Interface) string {
+	if p := os.Getenv("E2E_SB_POOL"); p != "" {
+		return p
+	}
+	if sc, err := c.StorageV1().StorageClasses().Get(context.Background(), storageClassName, metav1.GetOptions{}); err == nil {
+		if p := sc.Parameters["pool_name"]; p != "" {
+			return p
+		}
+	}
+	if p := os.Getenv("POOL_NAME"); p != "" {
+		return p
+	}
+	return "testing1"
+}
+
+// managedWorkload is a node-pinned workload and the NVMe-oF volume it consumes,
+// set up for a total-path-loss scenario. It is produced by setupManagedWorkload
+// and shared by SPDKCSI-RECONNECT-FULLLOSS and SPDKCSI-RECONNECT-GUARDIAN.
+type managedWorkload struct {
+	ns              string
+	appLabel        string
+	mode            fullLossMode
+	pod             *corev1.Pod
+	workerNode      string
+	pluginPod       string
+	pluginContainer string
+	lvolID          string
+	sub             *nvmeSubsystem
+}
+
+// setupManagedWorkload provisions everything a total-path-loss test needs: a
+// StorageClass on the live cluster that opts in to guardian auto-restart, a PVC
+// and a node-pinned pod for mode m, a marker written to the volume, and the
+// volume's NVMe-oF subsystem located on the node. It registers DeferCleanups for
+// the StorageClass and Deployment and returns the handles needed to drive and
+// verify recovery.
+//
+// We build our own StorageClass (pinned to the live cluster_id via sbctl) rather
+// than reusing the operator's default SC, which may reference a stale cluster.
+func setupManagedWorkload(f *framework.Framework, m fullLossMode, appLabel string) managedWorkload {
+	ns := f.Namespace.Name
+	pvcName := appLabel + "-pvc"
+
+	ginkgo.By("check the node DaemonSet is ready")
+	framework.ExpectNoError(waitForNodeServerReady(f.ClientSet, 3*time.Minute), "node DaemonSet ready")
+
+	ginkgo.By("create an opt-in StorageClass on the live cluster and the PVC")
+	scName := fmt.Sprintf("%s-%s", appLabel, ns)
+	scParams := map[string]string{"cluster_id": liveClusterID(f)}
+	if !m.block {
+		scParams["csi.storage.k8s.io/fstype"] = m.fsType
+	}
+	createStorageClassWithParamsAndLabels(f.ClientSet, scName, scParams,
+		map[string]string{"simplyblock.io/auto-restart-on-pathloss": "true"})
+	ginkgo.DeferCleanup(func() { deleteStorageClass(f.ClientSet, scName) })
+	framework.ExpectNoError(createModePVC(f.ClientSet, ns, pvcName, scName, m.block), "create PVC")
+
+	ginkgo.By("pick a worker node and run a pod pinned to it")
+	workerNode, _, _ := anyNodePluginPod(f.ClientSet)
+	framework.ExpectNoError(
+		createPinnedDeployment(f.ClientSet, ns, appLabel, appLabel, pvcName, workerNode, m.block),
+		"create workload")
+	ginkgo.DeferCleanup(func() {
+		_ = f.ClientSet.AppsV1().Deployments(ns).Delete(context.Background(), appLabel, metav1.DeleteOptions{})
+	})
+	pod := waitForReadyPod(f.ClientSet, ns, appLabel, "", 5*time.Minute)
+
+	ginkgo.By("write a marker to the volume")
+	marker := appLabel + "-" + ns
+	if len(marker) > 60 {
+		marker = marker[:60]
+	}
+	writeMarker(f, ns, appLabel, m, marker)
+
+	ginkgo.By("locate the csi-node pod and the volume's NVMe subsystem")
+	pluginPod, pluginContainer := nodePluginPodOnNode(f.ClientSet, workerNode)
+	lvolID := lvolIDForPVC(f.ClientSet, ns, pvcName)
+	sub := waitForSubsystem(f, pluginPod, pluginContainer, lvolID, time.Minute)
+
+	return managedWorkload{
+		ns:              ns,
+		appLabel:        appLabel,
+		mode:            m,
+		pod:             pod,
+		workerNode:      workerNode,
+		pluginPod:       pluginPod,
+		pluginContainer: pluginContainer,
+		lvolID:          lvolID,
+		sub:             sub,
+	}
+}
+
+// induceTotalPathLoss disconnects the whole NVMe-oF subsystem for the workload's
+// volume on its node, so the kernel removes the device (total path loss) and the
+// in-place mount goes dead.
+func (w managedWorkload) induceTotalPathLoss(f *framework.Framework) {
+	ginkgo.By("induce TOTAL path loss by disconnecting the whole subsystem")
+	execInPod(f, driverNamespace(), w.pluginPod, w.pluginContainer, "nvme disconnect -n "+w.sub.NQN)
 }

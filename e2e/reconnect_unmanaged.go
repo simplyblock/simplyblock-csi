@@ -2,9 +2,9 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -17,9 +17,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
-// uuidRe extracts a volume UUID from sbctl output.
-var uuidRe = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
-
 var _ = ginkgo.Describe("SPDKCSI-RECONNECT-UNMANAGED", func() {
 	f := newTestFramework("spdkcsi")
 
@@ -27,10 +24,10 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-UNMANAGED", func() {
 		// A simplyblock volume created directly via the API (no PV/PVC) is still
 		// an NVMe-oF subsystem on the host, but the node plugin must NOT manage
 		// its paths. We connect such a volume, degrade it, and confirm the
-		// monitor leaves it alone (no recovery) — the behaviour the positive
+		// monitor leaves it alone (no recovery) — the behavior the positive
 		// SPDKCSI-RECONNECT test shows it WOULD apply to a managed volume.
 		ginkgo.It("skips a connected simplyblock volume that has no PV/PVC", func() {
-			pool := envOr("E2E_SB_POOL", "testing1")
+			pool := poolNameForTests(f.ClientSet)
 			size := envOr("E2E_SB_VOLUME_SIZE", "1G")
 			volName := "e2e-unmanaged-" + f.Namespace.Name
 
@@ -43,12 +40,15 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-UNMANAGED", func() {
 
 			ginkgo.By(fmt.Sprintf("create an unmanaged volume %q via sbctl", volName))
 			addOut := sbctl(f, fmt.Sprintf("volume add %s %s %s", volName, size, pool))
-			volID := uuidRe.FindString(addOut)
-			gomega.Expect(volID).NotTo(gomega.BeEmpty(), "could not parse volume UUID from sbctl output: %q", addOut)
+			framework.Logf("sbctl volume add %s: %s", volName, addOut)
+			// `sbctl volume add` echoes a transient task id, not the volume's Id,
+			// so resolve the real Id by name from the volume list.
+			volID := sbctlVolumeIDByName(f, volName)
+			gomega.Expect(volID).NotTo(gomega.BeEmpty(), "volume %q not found in sbctl volume list", volName)
 			framework.Logf("created unmanaged volume %s (id %s)", volName, volID)
 			// Delete the backend volume even if later steps fail.
 			ginkgo.DeferCleanup(func() {
-				out := sbctl(f, "volume delete "+volID)
+				out := sbctl(f, "volume delete "+volID+" --force")
 				framework.Logf("sbctl volume delete %s: %s", volID, out)
 			})
 
@@ -110,7 +110,7 @@ func envOr(key, def string) string {
 }
 
 // anyNodePluginPod returns an arbitrary csi-node DaemonSet pod, its node, and
-// its first container.
+// its plugin container.
 func anyNodePluginPod(c kubernetes.Interface) (nodeName, podName, container string) {
 	dns := driverNamespace()
 	ds, err := c.AppsV1().DaemonSets(dns).Get(context.Background(), nodeDsName, metav1.GetOptions{})
@@ -123,7 +123,71 @@ func anyNodePluginPod(c kubernetes.Interface) (nodeName, podName, container stri
 	gomega.Expect(pods.Items).NotTo(gomega.BeEmpty(), "no csi-node pods found")
 
 	pod := pods.Items[0]
-	return pod.Spec.NodeName, pod.Name, pod.Spec.Containers[0].Name
+	return pod.Spec.NodeName, pod.Name, pluginContainerName(&pod)
+}
+
+// pluginContainerName returns the node plugin container (the one carrying the
+// spdkcsi binary, nvme-cli and a shell) rather than a sidecar such as
+// csi-registrar or liveness-probe, which run on distroless images with no shell.
+func pluginContainerName(pod *corev1.Pod) string {
+	for _, c := range pod.Spec.Containers {
+		switch c.Name {
+		case "csi-registrar", "node-driver-registrar", "liveness-probe":
+			continue
+		default:
+			return c.Name
+		}
+	}
+	return pod.Spec.Containers[0].Name
+}
+
+// sbctlVolumeIDByName resolves a simplyblock volume's Id from its name via
+// `sbctl volume list --json`. Returns "" if no volume with that name exists.
+func sbctlVolumeIDByName(f *framework.Framework, name string) string {
+	out := sbctl(f, "volume list --json")
+	// sbctl may prefix log lines before the JSON array; slice from the first '['.
+	if i := strings.IndexByte(out, '['); i > 0 {
+		out = out[i:]
+	}
+	var vols []struct {
+		ID   string `json:"Id"`
+		Name string `json:"Name"`
+	}
+	if err := json.Unmarshal([]byte(out), &vols); err != nil {
+		framework.Failf("parse sbctl volume list --json %q: %v", out, err)
+	}
+	for _, v := range vols {
+		if v.Name == name {
+			return v.ID
+		}
+	}
+	return ""
+}
+
+// sbctlClusterID resolves a simplyblock cluster's UUID via `sbctl cluster list
+// --json`. It matches by name when name != "", otherwise (or if the name has no
+// match) falls back to the sole cluster. Returns "" if it cannot resolve one.
+func sbctlClusterID(f *framework.Framework, name string) string {
+	out := sbctl(f, "cluster list --json")
+	if i := strings.IndexByte(out, '['); i > 0 {
+		out = out[i:]
+	}
+	var clusters []struct {
+		UUID string `json:"UUID"`
+		Name string `json:"Name"`
+	}
+	if err := json.Unmarshal([]byte(out), &clusters); err != nil {
+		framework.Failf("parse sbctl cluster list --json %q: %v", out, err)
+	}
+	for _, c := range clusters {
+		if c.Name == name {
+			return c.UUID
+		}
+	}
+	if len(clusters) == 1 {
+		return clusters[0].UUID
+	}
+	return ""
 }
 
 // sbctl runs `sbctl <args>` inside the webappapi pod and returns stdout.
@@ -147,11 +211,15 @@ func webappAPIPod(c kubernetes.Interface) (ns, name, container string) {
 }
 
 // nvmeConnectCommands extracts the `nvme connect ...` command lines emitted by
-// `sbctl volume connect`.
+// `sbctl volume connect`. The CLI prints them as `sudo nvme connect ... \`
+// (sudo prefix, trailing line-continuation backslash), both of which are
+// stripped so the command can run directly in the csi-node container.
 func nvmeConnectCommands(out string) []string {
 	var cmds []string
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\\"))
+		line = strings.TrimPrefix(line, "sudo ")
 		if strings.HasPrefix(line, "nvme connect") {
 			cmds = append(cmds, line)
 		}

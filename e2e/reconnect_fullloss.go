@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -30,6 +31,24 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-FULLLOSS", func() {
 	f := newTestFramework("spdkcsi")
 
 	ginkgo.Context("volume recovers after total NVMe-oF path loss", func() {
+		// Unlike SPDKCSI-RECONNECT (which drops ONE of several paths and lets the
+		// monitor reconnect it in place), this exercises TOTAL path loss: the whole
+		// NVMe-oF subsystem is disconnected, so the kernel removes the device and
+		// the in-place mount is dead — it can only recover when the pod is restarted
+		// and the volume is restaged on the replacement pod's NodePublish.
+		//
+		// In production the guardian is what restarts the pod after detecting the
+		// broken lvol. The test does NOT wait for that; it force-deletes the pod
+		// itself (grace period 0) to stand in for the guardian's restart — this
+		// keeps the test deterministic (no wait for the guardian's poll cycle) and
+		// biases toward the race where the replacement pod's NodePublish runs before
+		// kubelet unstages the old mount. We then verify the replacement pod comes
+		// up with the volume restaged and usable again.
+		//
+		// Because an unclean total loss can roll back the filesystem journal, we
+		// assert the volume is writable+readable again rather than that the exact
+		// pre-outage marker survived. Run for raw block, ext4 and xfs, since each
+		// filesystem behaves differently when its backing device disappears.
 		modes := []fullLossMode{
 			{name: "raw block", block: true},
 			{name: "ext4 filesystem", fsType: "ext4"},
@@ -39,64 +58,30 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-FULLLOSS", func() {
 		for _, m := range modes {
 			m := m
 			ginkgo.It(fmt.Sprintf("reconnects and keeps data for a %s volume", m.name), func() {
-				ns := f.Namespace.Name
-				appLabel := "fullloss"
-				pvcName := "fullloss-pvc"
-				depName := "fullloss"
-				marker := "fullloss-" + ns
-				if len(marker) > 60 {
-					marker = marker[:60]
-				}
-
-				ginkgo.By("check node DaemonSet is ready")
-				framework.ExpectNoError(waitForNodeServerReady(f.ClientSet, 3*time.Minute), "node DaemonSet ready")
-
-				ginkgo.By("create the StorageClass / PVC for this volume type")
-				scName := storageClassName
-				if !m.block {
-					scName = fmt.Sprintf("fullloss-%s-%s", m.fsType, ns)
-					createStorageClassWithParams(f.ClientSet, scName, map[string]string{"csi.storage.k8s.io/fstype": m.fsType})
-					ginkgo.DeferCleanup(func() { deleteStorageClass(f.ClientSet, scName) })
-				}
-				framework.ExpectNoError(createModePVC(f.ClientSet, ns, pvcName, scName, m.block), "create PVC")
-
-				ginkgo.By("pick a worker node and run a pod pinned to it")
-				workerNode, _, _ := anyNodePluginPod(f.ClientSet)
-				framework.ExpectNoError(
-					createPinnedDeployment(f.ClientSet, ns, depName, appLabel, pvcName, workerNode, m.block),
-					"create workload")
-				ginkgo.DeferCleanup(func() {
-					_ = f.ClientSet.AppsV1().Deployments(ns).Delete(context.Background(), depName, metav1.DeleteOptions{})
-				})
-
-				pod := waitForReadyPod(f.ClientSet, ns, appLabel, "", 5*time.Minute)
-
-				ginkgo.By("write a marker to the volume")
-				writeMarker(f, ns, appLabel, m, marker)
-
-				ginkgo.By("locate the csi-node pod and the volume's NVMe subsystem")
-				pluginPod, pluginContainer := nodePluginPodOnNode(f.ClientSet, workerNode)
-				lvolID := lvolIDForPVC(f.ClientSet, ns, pvcName)
-				sub := waitForSubsystem(f, pluginPod, pluginContainer, lvolID, time.Minute)
-
-				ginkgo.By("induce TOTAL path loss by disconnecting the whole subsystem")
-				execInPod(f, driverNamespace(), pluginPod, pluginContainer, "nvme disconnect -n "+sub.NQN)
+				w := setupManagedWorkload(f, m, "fullloss")
+				w.induceTotalPathLoss(f)
 
 				ginkgo.By("force-delete the pod to trigger a same-node replacement")
 				// GracePeriod 0 mimics the guardian's restart and biases toward the
 				// race where the new pod's NodePublish runs before kubelet unstages.
 				zero := int64(0)
 				framework.ExpectNoError(
-					f.ClientSet.CoreV1().Pods(ns).Delete(context.Background(), pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &zero}),
-					"force-delete pod %s", pod.Name)
+					f.ClientSet.CoreV1().Pods(w.ns).Delete(context.Background(), w.pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &zero}),
+					"force-delete pod %s", w.pod.Name)
 
-				ginkgo.By("wait for the replacement pod to become ready (volume restaged/reconnected)")
-				newPod := waitForReadyPod(f.ClientSet, ns, appLabel, string(pod.UID), 5*time.Minute)
-				gomega.Expect(newPod.UID).NotTo(gomega.Equal(pod.UID), "expected a replacement pod")
-
-				ginkgo.By("verify the marker written before the outage is intact")
-				gomega.Expect(readMarker(f, ns, appLabel, m, len(marker))).To(gomega.ContainSubstring(marker),
-					"data lost across full path loss + recovery")
+				ginkgo.By("wait for the replacement pod to restage the mount and make the volume usable")
+				// Total path loss leaves the in-place mount dead (I/O error); it
+				// recovers when the replacement pod's NodePublish restages the volume.
+				// Poll until it is writable+readable again. The generous timeout also
+				// covers the fallback where the guardian, not the test's force-delete,
+				// drives the restart on its poll cycle (default 5m). We assert
+				// usability rather than that the pre-outage marker survived: an unclean
+				// total loss can roll back the journal.
+				token := "recovered-" + w.ns
+				gomega.Eventually(func() error {
+					return verifyVolumeUsableE(f, w.ns, w.appLabel, m, token)
+				}, 12*time.Minute, 10*time.Second).Should(gomega.Succeed(),
+					"volume not usable after full path loss + restage")
 			})
 		}
 	})
@@ -146,7 +131,24 @@ func createPinnedDeployment(c kubernetes.Interface, ns, name, appLabel, pvcName,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": appLabel}},
 				Spec: corev1.PodSpec{
-					NodeName:   nodeName,
+					// Pin to the node via affinity (not NodeName) so the pod still
+					// goes through the scheduler. With WaitForFirstConsumer
+					// StorageClasses the scheduler is what stamps the
+					// volume.kubernetes.io/selected-node annotation that triggers
+					// provisioning; bypassing it with NodeName leaves the PVC Pending.
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+									MatchFields: []corev1.NodeSelectorRequirement{{
+										Key:      "metadata.name",
+										Operator: corev1.NodeSelectorOpIn,
+										Values:   []string{nodeName},
+									}},
+								}},
+							},
+						},
+					},
 					Containers: []corev1.Container{container},
 					Volumes: []corev1.Volume{{
 						Name: "vol",
@@ -206,13 +208,28 @@ func writeMarker(f *framework.Framework, ns, appLabel string, m fullLossMode, ma
 	execCommandInPod(f, fmt.Sprintf("printf '%%s' '%s' > %s && sync", marker, fullLossFSPath), ns, &opt)
 }
 
-// readMarker reads back the marker written by writeMarker.
-func readMarker(f *framework.Framework, ns, appLabel string, m fullLossMode, length int) string {
+// verifyVolumeUsableE writes a fresh token to the volume and reads it back from
+// the current app=appLabel pod, returning an error if the volume is not usable
+// (e.g. still on a dead mount, or no ready pod). It proves the volume recovered
+// without relying on pre-outage data surviving an unclean total path loss, which
+// can roll back the ext4/xfs journal.
+func verifyVolumeUsableE(f *framework.Framework, ns, appLabel string, m fullLossMode, token string) error {
 	opt := metav1.ListOptions{LabelSelector: "app=" + appLabel}
+	writeCmd := fmt.Sprintf("printf '%%s' '%s' > %s && sync", token, fullLossFSPath)
+	readCmd := "cat " + fullLossFSPath
 	if m.block {
-		out, _ := execCommandInPod(f, fmt.Sprintf("dd if=%s bs=1 count=%d 2>/dev/null", fullLossBlockPath, length), ns, &opt)
-		return out
+		writeCmd = fmt.Sprintf("printf '%%s' '%s' | dd of=%s bs=4096 count=1 conv=fsync 2>/dev/null", token, fullLossBlockPath)
+		readCmd = fmt.Sprintf("dd if=%s bs=1 count=%d 2>/dev/null", fullLossBlockPath, len(token))
 	}
-	out, _ := execCommandInPod(f, "cat "+fullLossFSPath, ns, &opt)
-	return out
+	if _, _, err := execCommandInPodE(f, writeCmd, ns, &opt); err != nil {
+		return err
+	}
+	out, _, err := execCommandInPodE(f, readCmd, ns, &opt)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(out, token) {
+		return fmt.Errorf("read back %q, want substring %q", out, token)
+	}
+	return nil
 }

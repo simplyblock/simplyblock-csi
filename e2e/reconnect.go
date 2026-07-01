@@ -40,6 +40,14 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT", func() {
 	f := newTestFramework("spdkcsi")
 
 	ginkgo.Context("NVMe-oF path recovery for PV/PVC-managed volumes", func() {
+		// A PV/PVC-managed volume is connected over multiple NVMe-oF paths. When
+		// one path degrades (a controller is deleted on the node, leaving at least
+		// one live path so I/O continues), the node plugin's monitor must
+		// automatically reconnect the lost path without disrupting the workload.
+		// We write data, drop one path, and confirm the monitor restores the full
+		// path count and that the data written before the disruption is intact.
+		// The mirror-image SPDKCSI-RECONNECT-UNMANAGED test shows the monitor does
+		// NOT do this for a volume with no PV/PVC.
 		ginkgo.It("restores a degraded managed volume's NVMe paths", func() {
 			ns := f.Namespace.Name
 			pvcLabel := metav1.ListOptions{LabelSelector: "app=spdkcsi-pvc"}
@@ -50,9 +58,14 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT", func() {
 			framework.ExpectNoError(waitForControllerReady(f.ClientSet, 4*time.Minute), "controller ready")
 			framework.ExpectNoError(waitForNodeServerReady(f.ClientSet, 3*time.Minute), "node DaemonSet ready")
 
-			ginkgo.By("create PVC and test pod")
-			deployPVC(ns)
-			deployTestPod(ns)
+			ginkgo.By("create a StorageClass pinned to the live cluster, PVC and test pod")
+			// Use a test-owned StorageClass pinned to the live cluster rather than
+			// the operator's default SC, which may reference a stale cluster_id.
+			scName := fmt.Sprintf("reconnect-%s", ns)
+			createStorageClassWithParams(f.ClientSet, scName, map[string]string{"cluster_id": liveClusterID(f)})
+			ginkgo.DeferCleanup(func() { deleteStorageClass(f.ClientSet, scName) })
+			framework.ExpectNoError(createModePVC(f.ClientSet, ns, "spdkcsi-pvc", scName, false), "create PVC")
+			framework.ExpectNoError(createFilesystemTestPod(f.ClientSet, ns, testPodName, "spdkcsi-pvc", "spdkcsi-pvc"), "create test pod")
 			ginkgo.DeferCleanup(func() { deletePVCAndTestPod(ns) })
 			framework.ExpectNoError(
 				waitForTestPodReady(f.ClientSet, 5*time.Minute, ns, testPodName),
@@ -129,7 +142,7 @@ func testPodNode(c kubernetes.Interface, ns, podName string) string {
 	return pod.Spec.NodeName
 }
 
-// nodePluginPodOnNode returns the csi-node DaemonSet pod (and its first
+// nodePluginPodOnNode returns the csi-node DaemonSet pod (and its plugin
 // container) running on the given node.
 func nodePluginPodOnNode(c kubernetes.Interface, nodeName string) (podName, container string) {
 	dns := driverNamespace()
@@ -144,7 +157,7 @@ func nodePluginPodOnNode(c kubernetes.Interface, nodeName string) (podName, cont
 	gomega.Expect(pods.Items).NotTo(gomega.BeEmpty(), "no csi-node pod found on node %s", nodeName)
 
 	pod := pods.Items[0]
-	return pod.Name, pod.Spec.Containers[0].Name
+	return pod.Name, pluginContainerName(&pod)
 }
 
 // lvolIDForPVC resolves the lvol (volume) ID from the PVC's bound PV handle.
@@ -208,11 +221,17 @@ func subsystemForLvol(subs []nvmeSubsystem, lvolID string) *nvmeSubsystem {
 // waitForSubsystem polls until the subsystem for lvolID appears on the node.
 func waitForSubsystem(f *framework.Framework, podName, container, lvolID string, timeout time.Duration) *nvmeSubsystem {
 	var found *nvmeSubsystem
+	var seen []string
 	gomega.Eventually(func() *nvmeSubsystem {
-		found = subsystemForLvol(listSubsystems(f, podName, container), lvolID)
+		subs := listSubsystems(f, podName, container)
+		seen = seen[:0]
+		for i := range subs {
+			seen = append(seen, subs[i].NQN)
+		}
+		found = subsystemForLvol(subs, lvolID)
 		return found
 	}, timeout, 3*time.Second).ShouldNot(gomega.BeNil(),
-		"NVMe subsystem for lvol %s never appeared on the node", lvolID)
+		"NVMe subsystem for lvol %s never appeared on node (via %s); subsystems seen: %v", lvolID, podName, seen)
 	return found
 }
 
