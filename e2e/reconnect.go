@@ -62,7 +62,12 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT", func() {
 			// Use a test-owned StorageClass pinned to the live cluster rather than
 			// the operator's default SC, which may reference a stale cluster_id.
 			scName := fmt.Sprintf("reconnect-%s", ns)
-			createStorageClassWithParams(f.ClientSet, scName, map[string]string{"cluster_id": liveClusterID(f)})
+			// max_namespace_per_subsys=1 keeps each volume in its own NVMe-oF
+			// subsystem so its NQN carries this volume's own lvol id.
+			createStorageClassWithParams(f.ClientSet, scName, map[string]string{
+				"cluster_id":               liveClusterID(f),
+				"max_namespace_per_subsys": "1",
+			})
 			ginkgo.DeferCleanup(func() { deleteStorageClass(f.ClientSet, scName) })
 			framework.ExpectNoError(createModePVC(f.ClientSet, ns, "spdkcsi-pvc", scName, false), "create PVC")
 			framework.ExpectNoError(createFilesystemTestPod(f.ClientSet, ns, testPodName, "spdkcsi-pvc", "spdkcsi-pvc"), "create test pod")
@@ -170,6 +175,16 @@ func lvolIDForPVC(c kubernetes.Interface, ns, pvcName string) string {
 	framework.ExpectNoError(err, "get PV %s", pvc.Spec.VolumeName)
 	gomega.Expect(pv.Spec.CSI).NotTo(gomega.BeNil(), "PV %s has no CSI source", pv.Name)
 
+	// The NVMe-oF subsystem NQN is built from the lvol's "model" UUID. With
+	// max_namespace_per_subsys=1 that equals the volume handle's VolumeID, but
+	// with >1 several volumes share one subsystem whose NQN carries the primary
+	// lvol's model — so the handle's VolumeID won't appear in the NQN. Match on
+	// the model from the PV's volume attributes, falling back to the handle.
+	if attrs := pv.Spec.CSI.VolumeAttributes; attrs != nil {
+		if model := attrs["model"]; model != "" {
+			return model
+		}
+	}
 	vh, ok := volumehandle.Parse(pv.Spec.CSI.VolumeHandle)
 	gomega.Expect(ok).To(gomega.BeTrue(), "parse volume handle %q", pv.Spec.CSI.VolumeHandle)
 	return vh.VolumeID
@@ -197,15 +212,25 @@ func execInPod(f *framework.Framework, ns, podName, container, cmd string) strin
 // listSubsystems runs `nvme list-subsys` in the csi-node pod and parses it.
 func listSubsystems(f *framework.Framework, podName, container string) []nvmeSubsystem {
 	out := execInPod(f, driverNamespace(), podName, container, "nvme list-subsys -o json")
-	var hosts []nvmeSubsysHost
-	if err := json.Unmarshal([]byte(out), &hosts); err != nil {
+	subs, err := parseSubsystems(out)
+	if err != nil {
 		framework.Failf("parse nvme list-subsys output %q: %v", out, err)
+	}
+	return subs
+}
+
+// parseSubsystems flattens `nvme list-subsys -o json` output (an array of hosts,
+// each with a Subsystems list) into a single slice.
+func parseSubsystems(raw string) ([]nvmeSubsystem, error) {
+	var hosts []nvmeSubsysHost
+	if err := json.Unmarshal([]byte(raw), &hosts); err != nil {
+		return nil, err
 	}
 	var subs []nvmeSubsystem
 	for _, h := range hosts {
 		subs = append(subs, h.Subsystems...)
 	}
-	return subs
+	return subs, nil
 }
 
 // subsystemForLvol returns the subsystem whose NQN carries the given lvol ID.
@@ -221,17 +246,16 @@ func subsystemForLvol(subs []nvmeSubsystem, lvolID string) *nvmeSubsystem {
 // waitForSubsystem polls until the subsystem for lvolID appears on the node.
 func waitForSubsystem(f *framework.Framework, podName, container, lvolID string, timeout time.Duration) *nvmeSubsystem {
 	var found *nvmeSubsystem
-	var seen []string
+	var lastSubsys, lastList string
 	gomega.Eventually(func() *nvmeSubsystem {
-		subs := listSubsystems(f, podName, container)
-		seen = seen[:0]
-		for i := range subs {
-			seen = append(seen, subs[i].NQN)
-		}
+		lastSubsys = execInPod(f, driverNamespace(), podName, container, "nvme list-subsys -o json")
+		lastList = execInPod(f, driverNamespace(), podName, container, "nvme list")
+		subs, _ := parseSubsystems(lastSubsys) // ignore parse errors here; raw is logged on timeout
 		found = subsystemForLvol(subs, lvolID)
 		return found
 	}, timeout, 3*time.Second).ShouldNot(gomega.BeNil(),
-		"NVMe subsystem for lvol %s never appeared on node (via %s); subsystems seen: %v", lvolID, podName, seen)
+		"NVMe subsystem for lvol %s never appeared on node (via %s).\nlast `nvme list-subsys -o json`:\n%s\nlast `nvme list`:\n%s",
+		lvolID, podName, lastSubsys, lastList)
 	return found
 }
 
