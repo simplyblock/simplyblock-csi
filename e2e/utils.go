@@ -460,6 +460,37 @@ func execCommandInPod(f *framework.Framework, cmd, ns string, opt *metav1.ListOp
 	return stdOut, stdErr
 }
 
+// execCommandInPodE is like execCommandInPod but returns the exec error instead
+// of failing the test, and targets a Running+Ready pod matching opt (the first
+// match otherwise). Use it inside polling assertions where the pod may be
+// mid-restart or its volume momentarily unreadable.
+func execCommandInPodE(f *framework.Framework, cmd, ns string, opt *metav1.ListOptions) (string, string, error) {
+	podList, err := e2epod.PodClientNS(f, ns).List(context.Background(), *opt)
+	if err != nil {
+		return "", "", err
+	}
+	if len(podList.Items) == 0 {
+		return "", "", fmt.Errorf("no pods matched selector %q", opt.LabelSelector)
+	}
+	pod := podList.Items[0]
+	for i := range podList.Items {
+		p := &podList.Items[i]
+		if p.Status.Phase == corev1.PodRunning && p.DeletionTimestamp == nil && podReady(p) {
+			pod = *p
+			break
+		}
+	}
+	return e2epod.ExecWithOptions(f, e2epod.ExecOptions{
+		Command:            []string{"/bin/sh", "-c", cmd},
+		PodName:            pod.Name,
+		Namespace:          ns,
+		ContainerName:      pod.Spec.Containers[0].Name,
+		CaptureStdout:      true,
+		CaptureStderr:      true,
+		PreserveWhitespace: true,
+	})
+}
+
 func getCommandInPodOpts(f *framework.Framework, cmd, ns string, opt *metav1.ListOptions) e2epod.ExecOptions {
 	podList, err := e2epod.PodClientNS(f, ns).List(context.Background(), *opt)
 	framework.ExpectNoError(err, "list pods for exec (selector: %s)", opt.LabelSelector)
@@ -649,6 +680,13 @@ func waitForPVDeleted(c kubernetes.Interface, pvName string, timeout time.Durati
 // ---------------------------------------------------------------------------
 
 func createStorageClassWithParams(c kubernetes.Interface, scName string, extraParams map[string]string) {
+	createStorageClassWithParamsAndLabels(c, scName, extraParams, nil)
+}
+
+// createStorageClassWithParamsAndLabels is like createStorageClassWithParams but
+// also sets metadata labels on the StorageClass (e.g. the guardian
+// auto-restart-on-pathloss opt-in).
+func createStorageClassWithParamsAndLabels(c kubernetes.Interface, scName string, extraParams, scLabels map[string]string) {
 	base, err := c.StorageV1().StorageClasses().Get(context.Background(), storageClassName, metav1.GetOptions{})
 	if err != nil {
 		ginkgo.Skip(fmt.Sprintf("base StorageClass %q unavailable (%v) — skipping", storageClassName, err))
@@ -664,7 +702,7 @@ func createStorageClassWithParams(c kubernetes.Interface, scName string, extraPa
 	}
 
 	sc := &storagev1.StorageClass{
-		ObjectMeta:           metav1.ObjectMeta{Name: scName},
+		ObjectMeta:           metav1.ObjectMeta{Name: scName, Labels: scLabels},
 		Provisioner:          base.Provisioner,
 		Parameters:           params,
 		ReclaimPolicy:        base.ReclaimPolicy,
@@ -674,6 +712,42 @@ func createStorageClassWithParams(c kubernetes.Interface, scName string, extraPa
 	}
 	_, err = c.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
 	framework.ExpectNoError(err, "create StorageClass %s", scName)
+}
+
+// liveClusterID resolves the UUID of the simplyblock cluster the tests run
+// against from `sbctl cluster list` (matched by CLUSTER_NAME when set, else the
+// sole cluster). Tests use this to build StorageClasses pinned to the current
+// cluster instead of relying on a possibly stale operator-created SC.
+func liveClusterID(f *framework.Framework) string {
+	name := os.Getenv("CLUSTER_NAME")
+	id := sbctlClusterID(f, name)
+	gomega.Expect(id).NotTo(gomega.BeEmpty(),
+		"resolve live cluster UUID (CLUSTER_NAME=%q) from sbctl cluster list", name)
+	return id
+}
+
+// createFilesystemTestPod creates a single alpine pod that mounts pvcName as a
+// filesystem at /spdkvol, labelled app=appLabel. It mirrors templates/testpod.yaml
+// but lets callers point the PVC at a test-owned StorageClass.
+func createFilesystemTestPod(c kubernetes.Interface, ns, podName, appLabel, pvcName string) error {
+	_, err := c.CoreV1().Pods(ns).Create(context.Background(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: podName, Labels: map[string]string{"app": appLabel}},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name:         "alpine",
+				Image:        "alpine:3",
+				Command:      []string{"sleep", "365d"},
+				VolumeMounts: []corev1.VolumeMount{{Name: "spdk-volume", MountPath: "/spdkvol"}},
+			}},
+			Volumes: []corev1.Volume{{
+				Name: "spdk-volume",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName},
+				},
+			}},
+		},
+	}, metav1.CreateOptions{})
+	return err
 }
 
 func deleteStorageClass(c kubernetes.Interface, scName string) {

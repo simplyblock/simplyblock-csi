@@ -50,9 +50,14 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT", func() {
 			framework.ExpectNoError(waitForControllerReady(f.ClientSet, 4*time.Minute), "controller ready")
 			framework.ExpectNoError(waitForNodeServerReady(f.ClientSet, 3*time.Minute), "node DaemonSet ready")
 
-			ginkgo.By("create PVC and test pod")
-			deployPVC(ns)
-			deployTestPod(ns)
+			ginkgo.By("create a StorageClass pinned to the live cluster, PVC and test pod")
+			// Use a test-owned StorageClass pinned to the live cluster rather than
+			// the operator's default SC, which may reference a stale cluster_id.
+			scName := fmt.Sprintf("reconnect-%s", ns)
+			createStorageClassWithParams(f.ClientSet, scName, map[string]string{"cluster_id": liveClusterID(f)})
+			ginkgo.DeferCleanup(func() { deleteStorageClass(f.ClientSet, scName) })
+			framework.ExpectNoError(createModePVC(f.ClientSet, ns, "spdkcsi-pvc", scName, false), "create PVC")
+			framework.ExpectNoError(createFilesystemTestPod(f.ClientSet, ns, testPodName, "spdkcsi-pvc", "spdkcsi-pvc"), "create test pod")
 			ginkgo.DeferCleanup(func() { deletePVCAndTestPod(ns) })
 			framework.ExpectNoError(
 				waitForTestPodReady(f.ClientSet, 5*time.Minute, ns, testPodName),
@@ -144,7 +149,7 @@ func nodePluginPodOnNode(c kubernetes.Interface, nodeName string) (podName, cont
 	gomega.Expect(pods.Items).NotTo(gomega.BeEmpty(), "no csi-node pod found on node %s", nodeName)
 
 	pod := pods.Items[0]
-	return pod.Name, pod.Spec.Containers[0].Name
+	return pod.Name, pluginContainerName(&pod)
 }
 
 // lvolIDForPVC resolves the lvol (volume) ID from the PVC's bound PV handle.
