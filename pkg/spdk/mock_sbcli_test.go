@@ -14,16 +14,25 @@ import (
 )
 
 const (
-	sanityClusterID = "test-cluster"
+	sanityClusterID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 	sanityPoolName  = "test-pool"
 	sanityPoolUUID  = "11111111-1111-1111-1111-111111111111"
 	sanitySecret    = "test-secret"
 )
 
 type mockVolume struct {
-	UUID string
-	Name string
-	Size int64
+	UUID   string
+	Name   string
+	Size   int64
+	Status string // defaults to "online" when empty
+}
+
+// status returns the volume's reported status, defaulting to "online".
+func (v *mockVolume) status() string {
+	if v.Status == "" {
+		return "online"
+	}
+	return v.Status
 }
 
 type mockSnapshot struct {
@@ -39,6 +48,46 @@ type mockSBCLI struct {
 	mu        sync.Mutex
 	volumes   map[string]*mockVolume
 	snapshots map[string]*mockSnapshot
+
+	// failCreateOnce, when true, makes the next createVolume call respond with
+	// HTTP 500 without persisting the lvol. This mimics the control plane
+	// failing volume creation: the lvol never comes into existence, yet a
+	// broken PersistentVolume can be left dangling on the Kubernetes side.
+	failCreateOnce bool
+
+	// snapshotCreateStatus, when non-zero, makes every snapshot POST respond
+	// with this HTTP status without persisting. Used to model permanent
+	// control-plane errors (e.g. HTTP 400) during snapshot creation.
+	snapshotCreateStatus int
+
+	// strictSnapshotNameConflict makes the snapshot POST return HTTP 409 for any
+	// existing snapshot that shares the requested name, regardless of its source
+	// volume — the non-idempotent behavior the real web API exhibits under load.
+	strictSnapshotNameConflict bool
+
+	// allowDuplicateNames disables the create-volume name-conflict check, modeling
+	// a control plane that does NOT enforce volume-name uniqueness. Under this
+	// mode a driver that relies on the control plane for idempotency leaks a new
+	// volume on every retry.
+	allowDuplicateNames bool
+
+	// failGetVolume makes GET .../volumes/{id}/ respond with HTTP 500. The
+	// controller's publishVolume step is a GET, so this fails CreateVolume
+	// *after* the volume has already been created.
+	failGetVolume bool
+
+	// failIf, when set, is consulted on every request before its handler runs;
+	// returning true makes the mock respond HTTP 500 without running the handler.
+	// It lets a test fail every API except a chosen one — a future-proof way to
+	// assert an RPC performs no ordering-sensitive call (e.g. that CreateSnapshot
+	// creates the snapshot only after every other API call has succeeded).
+	failIf func(r *http.Request) bool
+
+	// injectStatus, when set, is consulted before each handler; a non-zero return
+	// makes the mock respond with that HTTP status without running the handler.
+	// It lets a test drive an RPC through every control-plane response and assert
+	// the resulting gRPC code.
+	injectStatus func(r *http.Request) int
 }
 
 func newMockSBCLI() *mockSBCLI {
@@ -48,16 +97,16 @@ func newMockSBCLI() *mockSBCLI {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/",                                    m.locked(m.handleListPools))
-	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/",                   m.locked(m.handleListVolumes))
-	mux.HandleFunc("POST /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/",                  m.locked(m.createVolume))
-	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/",        m.locked(m.handleGetVolume))
-	mux.HandleFunc("DELETE /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/",     m.locked(m.handleDeleteVolume))
-	mux.HandleFunc("PUT /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/",        m.locked(m.handleResizeVolume))
+	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/", m.locked(m.handleListPools))
+	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/", m.locked(m.handleListVolumes))
+	mux.HandleFunc("POST /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/", m.locked(m.createVolume))
+	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/", m.locked(m.handleGetVolume))
+	mux.HandleFunc("DELETE /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/", m.locked(m.handleDeleteVolume))
+	mux.HandleFunc("PUT /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/", m.locked(m.handleResizeVolume))
 	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/connect", m.locked(m.handleVolumeConnect))
 	mux.HandleFunc("POST /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/snapshots", m.locked(m.handleCreateSnapshot))
-	mux.HandleFunc("POST /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/clone",  m.locked(m.handleCloneVolume))
-	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/{poolID}/snapshots/",                 m.locked(m.handleListSnapshots))
+	mux.HandleFunc("POST /api/v2/clusters/{clusterID}/storage-pools/{poolID}/volumes/{volumeID}/clone", m.locked(m.handleCloneVolume))
+	mux.HandleFunc("GET /api/v2/clusters/{clusterID}/storage-pools/{poolID}/snapshots/", m.locked(m.handleListSnapshots))
 	mux.HandleFunc("DELETE /api/v2/clusters/{clusterID}/storage-pools/{poolID}/snapshots/{snapshotID}/", m.locked(m.handleDeleteSnapshot))
 
 	m.srv = httptest.NewServer(mux)
@@ -72,6 +121,16 @@ func (m *mockSBCLI) locked(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
+		if m.failIf != nil && m.failIf(r) {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "injected failure"})
+			return
+		}
+		if m.injectStatus != nil {
+			if code := m.injectStatus(r); code != 0 {
+				writeJSON(w, code, map[string]string{"detail": "injected status"})
+				return
+			}
+		}
 		h(w, r)
 	}
 }
@@ -112,19 +171,23 @@ func (m *mockSBCLI) handleListVolumes(w http.ResponseWriter, _ *http.Request) {
 	list := make([]map[string]any, 0, len(m.volumes))
 	for _, volume := range m.volumes {
 		list = append(list, map[string]any{
-			"id": volume.UUID, "name": volume.Name, "size": volume.Size, "status": "online",
+			"id": volume.UUID, "name": volume.Name, "size": volume.Size, "status": volume.status(),
 		})
 	}
 	writeJSON(w, http.StatusOK, list)
 }
 
 func (m *mockSBCLI) handleGetVolume(w http.ResponseWriter, r *http.Request) {
+	if m.failGetVolume {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "get volume failed"})
+		return
+	}
 	volume := m.lookupVolume(w, r.PathValue("volumeID"))
 	if volume == nil {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id": volume.UUID, "name": volume.Name, "size": volume.Size, "status": "online",
+		"id": volume.UUID, "name": volume.Name, "size": volume.Size, "status": volume.status(),
 	})
 }
 
@@ -179,19 +242,26 @@ func (m *mockSBCLI) handleCreateSnapshot(w http.ResponseWriter, r *http.Request)
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
+	// Simulate a permanent control-plane rejection (e.g. HTTP 400) without
+	// persisting anything.
+	if m.snapshotCreateStatus != 0 {
+		writeJSON(w, m.snapshotCreateStatus, map[string]string{"detail": "snapshot create rejected"})
+		return
+	}
+
 	// Idempotency: check if a snapshot with this name already exists.
 	for _, snapshot := range m.snapshots {
 		if snapshot.Name != body.Name {
 			continue
 		}
-		if snapshot.VolUUID == volumeID {
+		if snapshot.VolUUID == volumeID && !m.strictSnapshotNameConflict {
 			// Same source → idempotent success, return existing location.
 			w.Header().Set("Location", fmt.Sprintf("/api/v2/clusters/%s/storage-pools/%s/snapshots/%s/",
 				sanityClusterID, sanityPoolUUID, snapshot.UUID))
 			w.WriteHeader(http.StatusCreated)
 			return
 		}
-		// Different source → conflict.
+		// Different source (or strict mode: any duplicate name) → conflict.
 		writeJSON(w, http.StatusConflict, map[string]string{"detail": "snapshot name already exists"})
 		return
 	}
@@ -251,12 +321,14 @@ func (m *mockSBCLI) createVolume(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	for _, volume := range m.volumes {
-		if volume.Name == body.Name {
-			writeJSON(w, http.StatusConflict, map[string]string{
-				"detail": "Volume " + body.Name + " exists",
-			})
-			return
+	if !m.allowDuplicateNames {
+		for _, volume := range m.volumes {
+			if volume.Name == body.Name {
+				writeJSON(w, http.StatusConflict, map[string]string{
+					"detail": "Volume " + body.Name + " exists",
+				})
+				return
+			}
 		}
 	}
 
@@ -280,6 +352,15 @@ func (m *mockSBCLI) createVolume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newID := uuid.New().String()
+
+	// Simulate the control plane failing the create request without persisting
+	// the lvol: the client sees an error and no volume comes into existence.
+	if m.failCreateOnce {
+		m.failCreateOnce = false
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "internal error creating volume"})
+		return
+	}
+
 	m.volumes[newID] = &mockVolume{UUID: newID, Name: body.Name, Size: size}
 	w.Header().Set("Location", fmt.Sprintf("/api/v2/clusters/%s/storage-pools/%s/volumes/%s/",
 		sanityClusterID, sanityPoolUUID, newID))
