@@ -93,6 +93,10 @@ spec:
         - name: host-modules
           hostPath:
             path: /lib/modules
+        - name: modules-load
+          hostPath:
+            path: /etc/modules-load.d
+            type: DirectoryOrCreate
         {{- include "simplyblock.tlsVolume" (dict "ctx" $ "secret" "simplyblock-storage-node-api-tls") | nindent 8 }}
       hostNetwork: true
       {{- if .tolerations.create }}
@@ -200,6 +204,8 @@ spec:
           mountPath: /etc/simplyblock
         - name: host-sys
           mountPath: /sys
+        - name: modules-load
+          mountPath: /host/etc/modules-load.d
 
 {{- end }}
 
