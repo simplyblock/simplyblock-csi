@@ -39,7 +39,17 @@ var _ = ginkgo.Describe("SPDKCSI-RECONNECT-UNMANAGED", func() {
 			framework.Logf("using node %q (csi-node pod %q)", workerNode, pluginPod)
 
 			ginkgo.By(fmt.Sprintf("create an unmanaged volume %q via sbctl", volName))
-			addOut := sbctl(f, fmt.Sprintf("volume add %s %s %s", volName, size, pool))
+			// --max-namespace-per-subsys 1 pins this volume to its own NVMe-oF
+			// subsystem (the default is 32, which packs several lvols into one
+			// subsystem). Recovery is gated per-lvol on PV/PVC ownership, but the
+			// node plugin reconnects at the *subsystem/controller* level — shared
+			// by every namespace in the subsystem. If this unmanaged volume shared
+			// a subsystem with a PV-backed one, the managed sibling would drive
+			// recovery of the shared controllers and restore this volume's dropped
+			// path, defeating the negative assertion below. A dedicated subsystem
+			// guarantees the only thing that could reconnect it is management of
+			// this very lvol — which there is none.
+			addOut := sbctl(f, fmt.Sprintf("volume add %s %s %s --max-namespace-per-subsys 1", volName, size, pool))
 			framework.Logf("sbctl volume add %s: %s", volName, addOut)
 			// `sbctl volume add` echoes a transient task id, not the volume's Id,
 			// so resolve the real Id by name from the volume list.
