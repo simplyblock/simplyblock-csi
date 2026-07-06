@@ -317,13 +317,13 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		if _, isStatus := status.FromError(err); isStatus {
 			return nil, err
 		}
-		return nil, status.Error(codes.Unavailable, err.Error())
+		return nil, classifyCreateVolumeError(err)
 	}
 
 	volumeInfo, err := cs.publishVolume(ctx, csiVolume.GetVolumeId(), sbClient)
 	if err != nil {
 		klog.Errorf("failed to publish volume, volumeID: %s err: %v", volumeID, err)
-		return nil, status.Error(codes.Unavailable, err.Error())
+		return nil, classifyCreateVolumeError(err)
 	}
 
 	// copy volume info. node needs these info to contact target(ip, port, nqn, ...)
@@ -379,7 +379,7 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		klog.Warningf("volume not published: %s", volumeID)
 	case err != nil:
 		klog.Errorf("failed to unpublish volume, volumeID: %s err: %v", volumeID, err)
-		return nil, status.Error(codes.Unavailable, err.Error())
+		return nil, classifyDeleteVolumeError(err)
 	}
 
 	// no harm if volume already deleted
@@ -389,7 +389,7 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		klog.Warningf("volume not exists: %s", volumeID)
 	} else if err != nil {
 		klog.Errorf("failed to delete volume, volumeID: %s err: %v", volumeID, err)
-		return nil, status.Error(codes.Unavailable, err.Error())
+		return nil, classifyDeleteVolumeError(err)
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
@@ -413,7 +413,7 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if _, err := sbclient.VolumeInfo(ctx, spdkVol.lvolID, ""); err != nil {
-		return nil, status.Errorf(codes.NotFound, "volume %q not found: %v", volumeID, err)
+		return nil, classifyValidateVolumeCapabilitiesError(err)
 	}
 
 	// make sure we support all requested caps
@@ -434,6 +434,40 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 			VolumeCapabilities: req.GetVolumeCapabilities(),
 		},
 	}, nil
+}
+
+// reconcileExistingSnapshot handles a 409 from CreateSnapshot: the control plane
+// says a snapshot with this name already exists. It lists snapshots and, if the
+// existing one has the same source volume, returns it as success (CSI
+// idempotency — this is our own snapshot from an earlier attempt). If the source
+// differs, it is a real name conflict → AlreadyExists.
+func reconcileExistingSnapshot(ctx context.Context, sbclient util.ClusterAPI, sourceLvolID, snapshotName string) (*csi.CreateSnapshotResponse, error) {
+	snaps, err := sbclient.ListSnapshots(ctx)
+	if err != nil {
+		return nil, classifyCreateSnapshotError(err)
+	}
+	for _, s := range snaps {
+		if s.Name != snapshotName {
+			continue
+		}
+		if lvolIDFromURL(s.LvolURL) != sourceLvolID {
+			return nil, status.Errorf(codes.AlreadyExists, "snapshot %q already exists with a different source volume", snapshotName)
+		}
+		creationTime := timestamppb.Now()
+		if ts, perr := time.Parse(time.RFC3339Nano, s.CreatedAt); perr == nil {
+			creationTime = timestamppb.New(ts)
+		}
+		return &csi.CreateSnapshotResponse{
+			Snapshot: &csi.Snapshot{
+				SizeBytes:      s.Size,
+				SnapshotId:     fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), s.UUID),
+				SourceVolumeId: sourceLvolID,
+				CreationTime:   creationTime,
+				ReadyToUse:     true,
+			},
+		}, nil
+	}
+	return nil, status.Errorf(codes.Internal, "snapshot %q reported as existing but was not found", snapshotName)
 }
 
 func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
@@ -462,27 +496,32 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		return nil, status.Error(codes.Unavailable, err.Error())
 	}
 
-	snapshotID, err := sbclient.CreateSnapshot(ctx, spdkVol.lvolID, snapshotName)
-	klog.Infof("CreateSnapshot : snapshotID=%s", snapshotID)
-	if err != nil {
-		klog.Errorf("failed to create snapshot, volumeID: %s snapshotName: %s err: %v", volumeID, snapshotName, err)
-		if errors.Is(err, util.ErrSnapshotExists) {
-			return nil, status.Errorf(codes.AlreadyExists, "snapshot %q already exists with a different source volume", snapshotName)
-		}
-		return nil, status.Error(codes.Unavailable, err.Error())
-	}
-
 	volSize, err := sbclient.GetVolumeSize(ctx, spdkVol.lvolID)
 	klog.Infof("CreateSnapshot : volSize=%s", volSize)
 	if err != nil {
 		klog.Errorf("failed to get volume info, volumeID: %s err: %v", volumeID, err)
-		return nil, status.Error(codes.Unavailable, err.Error())
+		return nil, classifyCreateSnapshotError(err)
 	}
 	size, err := strconv.ParseInt(volSize, 10, 64)
 	if err != nil {
 		klog.Errorf("failed to parse volume size, size: %s err: %v", volSize, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	snapshotID, err := sbclient.CreateSnapshot(ctx, spdkVol.lvolID, snapshotName)
+	klog.Infof("CreateSnapshot : snapshotID=%s", snapshotID)
+	if err != nil {
+		d := classifyCreateSnapshotError(err)
+		if d.IsIdempotent() {
+			// 409: the snapshot already exists. Reconcile — if it is ours (same
+			// source) return it as success (CSI idempotency); if it belongs to a
+			// different source, it is a genuine name conflict.
+			return reconcileExistingSnapshot(ctx, sbclient, spdkVol.lvolID, snapshotName)
+		}
+		klog.Errorf("failed to create snapshot, volumeID: %s snapshotName: %s err: %v", volumeID, snapshotName, err)
+		return nil, d
+	}
+
 	creationTime := timestamppb.Now()
 	snapshotData := csi.Snapshot{
 		SizeBytes:      size,
@@ -522,8 +561,12 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 
 	err = sbclient.DeleteSnapshot(ctx, sbSnapshot.snapshotID)
 	if err != nil {
-		klog.Errorf("failed to delete snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
-		return nil, status.Error(codes.Unavailable, err.Error())
+		if d := classifyDeleteSnapshotError(err); !d.IsSuccess() {
+			klog.Errorf("failed to delete snapshot, snapshotID: %s err: %v", csiSnapshotID, err)
+			return nil, d
+		}
+		// already gone — idempotent success
+		klog.Warningf("snapshot not found, treating as already deleted: %s", csiSnapshotID)
 	}
 
 	return &csi.DeleteSnapshotResponse{}, nil
@@ -624,6 +667,39 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	return &createVolReq, nil
 }
 
+// reconcileExistingVolume handles a 409 (name already exists) on a volume create
+// or clone. If an online volume with the name exists it is reused (after a size
+// check); a non-online leftover from a failed earlier attempt is deleted so the
+// caller can recreate. It returns the existing volume's UUID to reuse, "" to
+// recreate, or an error (a size conflict, or a list/delete failure).
+func reconcileExistingVolume(ctx context.Context, sbclient util.ClusterAPI, name string, requiredBytes int64) (string, error) {
+	volumes, err := sbclient.ListVolumes(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, v := range volumes {
+		if v.Name != name {
+			continue
+		}
+		if strings.EqualFold(v.Status, "online") {
+			if requiredBytes > 0 {
+				aligned := util.AlignToGiBBytes(requiredBytes)
+				if v.LvolSize != aligned {
+					return "", status.Errorf(codes.AlreadyExists, "volume %q exists with size %d but requested %d", name, v.LvolSize, aligned)
+				}
+			}
+			klog.Infof("reconcile: reusing online existing volume %q id=%s", name, v.UUID)
+			return v.UUID, nil
+		}
+		// Non-online leftover from a failed attempt: it will never come online.
+		klog.Warningf("reconcile: deleting non-online leftover volume %q id=%s status=%s", name, v.UUID, v.Status)
+		if delErr := sbclient.DeleteVolume(ctx, v.UUID); delErr != nil {
+			return "", delErr
+		}
+	}
+	return "", nil
+}
+
 func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest, sbclient util.ClusterAPI) (*csi.Volume, error) {
 	size := req.GetCapacityRange().GetRequiredBytes()
 	if size == 0 {
@@ -665,27 +741,23 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	volumeID, err := sbclient.CreateVolume(ctx, createVolReq)
 	if err != nil {
 		if errors.Is(err, util.ErrVolumeExists) {
-			klog.Infof("createVolume: volume %q already exists, searching for online match", req.GetName())
-			volumes, listErr := sbclient.ListVolumes(ctx)
-			if listErr != nil {
-				klog.Errorf("createVolume: failed to list volumes during exists fallback: %v", listErr)
-				return nil, listErr
+			klog.Infof("createVolume: volume %q already exists, reconciling", req.GetName())
+			existingUUID, rerr := reconcileExistingVolume(ctx, sbclient, req.GetName(), req.GetCapacityRange().GetRequiredBytes())
+			if rerr != nil {
+				return nil, rerr
 			}
-			for _, v := range volumes {
-				if v.Name == req.GetName() && strings.EqualFold(v.Status, "online") {
-					klog.Infof("createVolume: found online existing volume %q id=%s", req.GetName(), v.UUID)
-					if req.GetCapacityRange().GetRequiredBytes() > 0 {
-						alignedRequired := util.AlignToGiBBytes(req.GetCapacityRange().GetRequiredBytes())
-						if v.LvolSize != alignedRequired {
-							return nil, status.Errorf(codes.AlreadyExists, "volume %q exists with size %d but requested %d", req.GetName(), v.LvolSize, alignedRequired)
-						}
-					}
-					vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), v.UUID)
-					return &vol, nil
-				}
+			if existingUUID != "" {
+				vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), existingUUID)
+				return &vol, nil
 			}
-			klog.Errorf("createVolume: volume %q exists but is not online yet", req.GetName())
-			return nil, status.Errorf(codes.AlreadyExists, "volume %q exists but is not online yet", req.GetName())
+			// The non-online leftover (if any) has been cleaned up; create fresh.
+			volumeID, err = sbclient.CreateVolume(ctx, createVolReq)
+			if err != nil {
+				klog.Errorf("createVolume: recreate after cleanup failed: %v", err)
+				return nil, err
+			}
+			vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
+			return &vol, nil
 		}
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -799,7 +871,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	err = sbclient.ResizeVolume(ctx, spdkVol.lvolID, capacityBytes)
 	if err != nil {
 		klog.Errorf("failed to resize lvol, LVolID: %s err: %v", spdkVol.lvolID, err)
-		return nil, err
+		return nil, classifyControllerExpandVolumeError(err)
 	}
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         capacityBytes,
@@ -825,7 +897,7 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 
 		snapshotEntries, err := sbclient.ListSnapshots(ctx)
 		if err != nil {
-			return nil, err
+			return nil, classifyListSnapshotsError(err)
 		}
 		entries = append(entries, snapshotEntries...)
 	}
@@ -1048,8 +1120,24 @@ func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *
 	newSize := strconv.FormatInt(sizeBytes, 10)
 	volumeID, err := sbclient.CloneSnapshot(ctx, sbSnapshot.snapshotID, snapshotName, newSize, pvcFullName)
 	if err != nil {
-		klog.Errorf("error creating simplyBlock volume: %v", err)
-		return nil, err
+		if !classifyCreateVolumeError(err).IsIdempotent() {
+			klog.Errorf("error cloning snapshot: %v", err)
+			return nil, err
+		}
+		// 409: a clone with this name already exists — reconcile it.
+		existingUUID, rerr := reconcileExistingVolume(ctx, sbclient, snapshotName, sizeBytes)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if existingUUID != "" {
+			vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), existingUUID)
+			return vol, nil
+		}
+		volumeID, err = sbclient.CloneSnapshot(ctx, sbSnapshot.snapshotID, snapshotName, newSize, pvcFullName)
+		if err != nil {
+			klog.Errorf("error re-cloning snapshot after cleanup: %v", err)
+			return nil, err
+		}
 	}
 	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
 	klog.V(5).Info("successfully Restored Snapshot from Simplyblock with Volume ID: ", vol.GetVolumeId())
@@ -1081,6 +1169,7 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 	}
 	// Volume clone goes to the same pool as the source volume.
 	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolID)
+
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Unavailable, err.Error())
@@ -1090,8 +1179,24 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 	klog.Infof("CloneVolume : cloneName=%s", cloneName)
 	volumeID, err := sbclient.CloneVolume(ctx, spdkVol.lvolID, cloneName, newSize, pvcFullName)
 	if err != nil {
-		klog.Errorf("error creating simplyBlock volume: %v", err)
-		return nil, err
+		if !classifyCreateVolumeError(err).IsIdempotent() {
+			klog.Errorf("error cloning volume: %v", err)
+			return nil, err
+		}
+		// 409: a clone with this name already exists — reconcile it.
+		existingUUID, rerr := reconcileExistingVolume(ctx, sbclient, cloneName, sizeBytes)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if existingUUID != "" {
+			vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), existingUUID)
+			return vol, nil
+		}
+		volumeID, err = sbclient.CloneVolume(ctx, spdkVol.lvolID, cloneName, newSize, pvcFullName)
+		if err != nil {
+			klog.Errorf("error re-cloning volume after cleanup: %v", err)
+			return nil, err
+		}
 	}
 	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
 	klog.V(5).Info("successfully created clone volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
