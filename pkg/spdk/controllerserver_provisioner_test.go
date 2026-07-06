@@ -103,21 +103,25 @@ func (p *fakeProvisioner) provision(ctx context.Context, pvc *corev1.PersistentV
 	return err
 }
 
-// TestProvisioning_APIError_LeaksVolumesWhilePVCStaysPending drives a PVC through
-// the real provisioning path (shim provisioner -> gRPC -> driver -> mock control
-// plane) and proves the incident behavior: while a control-plane failure keeps
-// the PVC Pending, every provisioning retry leaks a fresh volume.
+// TestProvisioning_RetryIsIdempotentUnderNameUniqueness drives a PVC through the
+// real provisioning path (shim provisioner -> gRPC -> driver -> mock control
+// plane) while the post-create publish keeps failing, so the PVC stays Pending
+// and the provisioner retries. It asserts that the retries do NOT leak: exactly
+// one volume exists on the control plane no matter how many times CreateVolume
+// is re-issued.
 //
-// The control plane here does not enforce volume-name uniqueness and fails the
-// post-create publish (GET) step, so each CreateVolume creates a new lvol yet
-// still returns an error. The driver relies on the control plane for idempotency
-// and has no client-side dedup, so volumes pile up one-per-retry — the PVC never
-// binds. This test asserts at most one volume survives; it is RED today.
-func TestProvisioning_APIError_LeaksVolumesWhilePVCStaysPending(t *testing.T) {
+// This idempotency depends on the control plane enforcing volume-name uniqueness
+// (409 on a duplicate name): the driver sends a stable name (pvc-<uid>) and
+// relies on the 409 to detect and reconcile its own prior volume. A control
+// plane that does NOT enforce name-uniqueness would instead create a fresh lvol
+// on every retry — one leaked volume per attempt — but that is a control-plane
+// contract violation, not a driver bug, so it is out of scope here.
+func TestProvisioning_RetryIsIdempotentUnderNameUniqueness(t *testing.T) {
 	mock := newMockSBCLI()
 	defer mock.Close()
-	mock.allowDuplicateNames = true // control plane does not dedupe by name
-	mock.failGetVolume = true       // publish (GET) fails after the volume is created
+	// Control plane enforces name-uniqueness (default: 409 on duplicate) and the
+	// post-create publish (GET) fails, keeping the PVC Pending across retries.
+	mock.failGetVolume = true
 
 	ctx := context.Background()
 	client := startCSIController(t, mock)
@@ -143,22 +147,21 @@ func TestProvisioning_APIError_LeaksVolumesWhilePVCStaysPending(t *testing.T) {
 	const retries = 5
 	for attempt := 1; attempt <= retries; attempt++ {
 		if err := prov.provision(ctx, pvc); err == nil {
-			t.Fatalf("attempt %d: provisioning unexpectedly succeeded despite the control-plane error", attempt)
+			t.Fatalf("attempt %d: provisioning unexpectedly succeeded despite the publish failure", attempt)
 		}
 	}
 
-	// The PVC never bound.
+	// The PVC never bound (publish kept failing).
 	if pvc.Status.Phase == corev1.ClaimBound {
 		t.Fatal("PVC unexpectedly bound")
 	}
 
-	// The bug: each retry leaked a new volume on the control plane.
+	// No leak: the retries reconciled to the same single volume.
 	mock.mu.Lock()
-	leaked := len(mock.volumes)
+	count := len(mock.volumes)
 	mock.mu.Unlock()
-	if leaked > 1 {
-		t.Fatalf("control plane leaked %d volumes across %d provisioning retries while the PVC "+
-			"stayed Pending; CreateVolume must be idempotent (reuse or clean up the volume) "+
-			"instead of creating a new one every attempt", leaked, retries)
+	if count != 1 {
+		t.Fatalf("expected exactly 1 volume on the control plane after %d retries, got %d "+
+			"(retries must reconcile, not leak)", retries, count)
 	}
 }

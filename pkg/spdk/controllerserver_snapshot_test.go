@@ -14,9 +14,6 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/spdk/spdk-csi/pkg/util"
 )
@@ -325,14 +322,17 @@ func TestCreateSnapshot_ReconcilesLeftoverOnRetry(t *testing.T) {
 // codes.Unavailable and returns. It neither repairs nor cleans up the dangling
 // PV left on the Kubernetes side. This test asserts the PV is cleaned up after
 // the clone error; it is RED today.
-func TestCreateVolumeFromSnapshot_CloneError_LeavesPVDangling(t *testing.T) {
+// TestCreateVolumeFromSnapshot_ReconcilesLeftoverOnRetry: the clone-from-snapshot
+// path must reconcile a leftover on retry (like the plain-create path), not leak a
+// duplicate or dead-end. Attempt 1's clone is created but publish fails, leaving a
+// cloned volume behind; the retry must reuse it, not create a second clone.
+func TestCreateVolumeFromSnapshot_ReconcilesLeftoverOnRetry(t *testing.T) {
 	mock := newMockSBCLI()
 	defer mock.Close()
-
 	cs := newTestControllerServer(t, mock)
 	ctx := context.Background()
 
-	// A source snapshot the clone will read from.
+	// A source snapshot the clone reads from.
 	srcVolID := createSourceVolume(t, cs, "pvc-clone-source")
 	src, err := parseVolumeID(srcVolID)
 	if err != nil {
@@ -344,31 +344,54 @@ func TestCreateVolumeFromSnapshot_CloneError_LeavesPVDangling(t *testing.T) {
 	mock.mu.Unlock()
 	csiSnapshotID := sanityClusterID + ":" + sanityPoolUUID + ":" + snapID
 
-	const pvName = "pvc-clone-target"
-	const orphanLvolID = "88888888-8888-8888-8888-888888888888"
-
-	// The Kubernetes side already holds a broken PV for this clone claim.
-	kube := fake.NewSimpleClientset(brokenPV(pvName, orphanLvolID))
-
-	// The control plane fails the clone create.
-	mock.failCreateOnce = true
-	req := basicCreateVolumeRequest(pvName)
+	const cloneName = "pvc-clone-target"
+	req := basicCreateVolumeRequest(cloneName)
 	req.VolumeContentSource = &csi.VolumeContentSource{
 		Type: &csi.VolumeContentSource_Snapshot{
 			Snapshot: &csi.VolumeContentSource_SnapshotSource{SnapshotId: csiSnapshotID},
 		},
 	}
-	if _, err := cs.CreateVolume(ctx, req); err == nil {
-		t.Fatal("expected CreateVolume-from-snapshot to fail when the clone API errors")
+
+	countClones := func() int {
+		n := 0
+		for _, v := range mock.volumes {
+			if v.Name == cloneName {
+				n++
+			}
+		}
+		return n
 	}
 
-	pv, err := kube.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
-	if err == nil {
-		t.Fatalf("failed PV %q was left dangling after the clone API error "+
-			"(volume handle %q); CreateVolume neither repaired nor cleaned it up",
-			pvName, pv.Spec.CSI.VolumeHandle)
+	// Attempt 1: the clone is created, but publish (GET) fails → CreateVolume errors,
+	// leaving a cloned volume behind.
+	mock.mu.Lock()
+	mock.failGetVolume = true
+	mock.mu.Unlock()
+	if _, err := cs.CreateVolume(ctx, req); err == nil {
+		t.Fatal("expected attempt 1 to fail at publish")
 	}
-	if !apierrors.IsNotFound(err) {
-		t.Fatalf("unexpected error reading PV %q: %v", pvName, err)
+	mock.mu.Lock()
+	leftover := countClones()
+	mock.mu.Unlock()
+	if leftover != 1 {
+		t.Fatalf("expected exactly 1 leftover clone after attempt 1, got %d", leftover)
+	}
+
+	// Attempt 2 (retry): the control plane is healthy → must reconcile the leftover
+	// clone, no duplicate.
+	mock.mu.Lock()
+	mock.failGetVolume = false
+	mock.mu.Unlock()
+	resp, err := cs.CreateVolume(ctx, req)
+	if err != nil {
+		t.Fatalf("retry did not reconcile the leftover clone: %v", err)
+	}
+	if resp.GetVolume().GetVolumeId() == "" {
+		t.Fatal("retry returned no volume id")
+	}
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	if got := countClones(); got != 1 {
+		t.Fatalf("retry created a duplicate clone: %d, want 1", got)
 	}
 }

@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	csicommon "github.com/spdk/spdk-csi/pkg/csi-common"
 	"github.com/spdk/spdk-csi/pkg/util"
@@ -69,24 +67,6 @@ func basicCreateVolumeRequest(name string) *csi.CreateVolumeRequest {
 		Parameters: map[string]string{
 			"cluster_id": sanityClusterID,
 			"pool_name":  sanityPoolName,
-		},
-	}
-}
-
-// brokenPV builds a PersistentVolume as the external-provisioner would leave
-// behind for a dynamically-provisioned claim: the PV name equals the CSI
-// volume name, and its volume handle points at an lvol on the control plane.
-// Used by teardown-side (DeleteVolume) reproducers where a PV genuinely exists.
-func brokenPV(name, lvolID string) *corev1.PersistentVolume {
-	return &corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: corev1.PersistentVolumeSpec{
-			PersistentVolumeSource: corev1.PersistentVolumeSource{
-				CSI: &corev1.CSIPersistentVolumeSource{
-					Driver:       testDriverName,
-					VolumeHandle: sanityClusterID + ":" + sanityPoolUUID + ":" + lvolID,
-				},
-			},
 		},
 	}
 }

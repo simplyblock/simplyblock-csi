@@ -667,6 +667,39 @@ func prepareCreateVolumeReq(ctx context.Context, req *csi.CreateVolumeRequest, c
 	return &createVolReq, nil
 }
 
+// reconcileExistingVolume handles a 409 (name already exists) on a volume create
+// or clone. If an online volume with the name exists it is reused (after a size
+// check); a non-online leftover from a failed earlier attempt is deleted so the
+// caller can recreate. It returns the existing volume's UUID to reuse, "" to
+// recreate, or an error (a size conflict, or a list/delete failure).
+func reconcileExistingVolume(ctx context.Context, sbclient util.ClusterAPI, name string, requiredBytes int64) (string, error) {
+	volumes, err := sbclient.ListVolumes(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, v := range volumes {
+		if v.Name != name {
+			continue
+		}
+		if strings.EqualFold(v.Status, "online") {
+			if requiredBytes > 0 {
+				aligned := util.AlignToGiBBytes(requiredBytes)
+				if v.LvolSize != aligned {
+					return "", status.Errorf(codes.AlreadyExists, "volume %q exists with size %d but requested %d", name, v.LvolSize, aligned)
+				}
+			}
+			klog.Infof("reconcile: reusing online existing volume %q id=%s", name, v.UUID)
+			return v.UUID, nil
+		}
+		// Non-online leftover from a failed attempt: it will never come online.
+		klog.Warningf("reconcile: deleting non-online leftover volume %q id=%s status=%s", name, v.UUID, v.Status)
+		if delErr := sbclient.DeleteVolume(ctx, v.UUID); delErr != nil {
+			return "", delErr
+		}
+	}
+	return "", nil
+}
+
 func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest, sbclient util.ClusterAPI) (*csi.Volume, error) {
 	size := req.GetCapacityRange().GetRequiredBytes()
 	if size == 0 {
@@ -708,27 +741,23 @@ func (cs *controllerServer) createVolume(ctx context.Context, req *csi.CreateVol
 	volumeID, err := sbclient.CreateVolume(ctx, createVolReq)
 	if err != nil {
 		if errors.Is(err, util.ErrVolumeExists) {
-			klog.Infof("createVolume: volume %q already exists, searching for online match", req.GetName())
-			volumes, listErr := sbclient.ListVolumes(ctx)
-			if listErr != nil {
-				klog.Errorf("createVolume: failed to list volumes during exists fallback: %v", listErr)
-				return nil, listErr
+			klog.Infof("createVolume: volume %q already exists, reconciling", req.GetName())
+			existingUUID, rerr := reconcileExistingVolume(ctx, sbclient, req.GetName(), req.GetCapacityRange().GetRequiredBytes())
+			if rerr != nil {
+				return nil, rerr
 			}
-			for _, v := range volumes {
-				if v.Name == req.GetName() && strings.EqualFold(v.Status, "online") {
-					klog.Infof("createVolume: found online existing volume %q id=%s", req.GetName(), v.UUID)
-					if req.GetCapacityRange().GetRequiredBytes() > 0 {
-						alignedRequired := util.AlignToGiBBytes(req.GetCapacityRange().GetRequiredBytes())
-						if v.LvolSize != alignedRequired {
-							return nil, status.Errorf(codes.AlreadyExists, "volume %q exists with size %d but requested %d", req.GetName(), v.LvolSize, alignedRequired)
-						}
-					}
-					vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), v.UUID)
-					return &vol, nil
-				}
+			if existingUUID != "" {
+				vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), existingUUID)
+				return &vol, nil
 			}
-			klog.Errorf("createVolume: volume %q exists but is not online yet", req.GetName())
-			return nil, status.Errorf(codes.AlreadyExists, "volume %q exists but is not online yet", req.GetName())
+			// The non-online leftover (if any) has been cleaned up; create fresh.
+			volumeID, err = sbclient.CreateVolume(ctx, createVolReq)
+			if err != nil {
+				klog.Errorf("createVolume: recreate after cleanup failed: %v", err)
+				return nil, err
+			}
+			vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
+			return &vol, nil
 		}
 		klog.Errorf("error creating simplyBlock volume: %v", err)
 		return nil, err
@@ -1091,8 +1120,24 @@ func (cs *controllerServer) handleSnapshotSource(ctx context.Context, snapshot *
 	newSize := strconv.FormatInt(sizeBytes, 10)
 	volumeID, err := sbclient.CloneSnapshot(ctx, sbSnapshot.snapshotID, snapshotName, newSize, pvcFullName)
 	if err != nil {
-		klog.Errorf("error creating simplyBlock volume: %v", err)
-		return nil, err
+		if !classifyCreateVolumeError(err).IsIdempotent() {
+			klog.Errorf("error cloning snapshot: %v", err)
+			return nil, err
+		}
+		// 409: a clone with this name already exists — reconcile it.
+		existingUUID, rerr := reconcileExistingVolume(ctx, sbclient, snapshotName, sizeBytes)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if existingUUID != "" {
+			vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), existingUUID)
+			return vol, nil
+		}
+		volumeID, err = sbclient.CloneSnapshot(ctx, sbSnapshot.snapshotID, snapshotName, newSize, pvcFullName)
+		if err != nil {
+			klog.Errorf("error re-cloning snapshot after cleanup: %v", err)
+			return nil, err
+		}
 	}
 	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
 	klog.V(5).Info("successfully Restored Snapshot from Simplyblock with Volume ID: ", vol.GetVolumeId())
@@ -1124,6 +1169,7 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 	}
 	// Volume clone goes to the same pool as the source volume.
 	sbclient, err := util.NewsimplyBlockClient(ctx, spdkVol.clusterID, spdkVol.poolID)
+
 	if err != nil {
 		klog.Errorf("failed to create spdk client: %v", err)
 		return nil, status.Error(codes.Unavailable, err.Error())
@@ -1133,8 +1179,24 @@ func (cs *controllerServer) handleVolumeSource(ctx context.Context, srcVolume *c
 	klog.Infof("CloneVolume : cloneName=%s", cloneName)
 	volumeID, err := sbclient.CloneVolume(ctx, spdkVol.lvolID, cloneName, newSize, pvcFullName)
 	if err != nil {
-		klog.Errorf("error creating simplyBlock volume: %v", err)
-		return nil, err
+		if !classifyCreateVolumeError(err).IsIdempotent() {
+			klog.Errorf("error cloning volume: %v", err)
+			return nil, err
+		}
+		// 409: a clone with this name already exists — reconcile it.
+		existingUUID, rerr := reconcileExistingVolume(ctx, sbclient, cloneName, sizeBytes)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if existingUUID != "" {
+			vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), existingUUID)
+			return vol, nil
+		}
+		volumeID, err = sbclient.CloneVolume(ctx, spdkVol.lvolID, cloneName, newSize, pvcFullName)
+		if err != nil {
+			klog.Errorf("error re-cloning volume after cleanup: %v", err)
+			return nil, err
+		}
 	}
 	vol.VolumeId = fmt.Sprintf("%s:%s:%s", sbclient.ClusterID(), sbclient.PoolID(), volumeID)
 	klog.V(5).Info("successfully created clone volume from Simplyblock with Volume ID: ", vol.GetVolumeId())
