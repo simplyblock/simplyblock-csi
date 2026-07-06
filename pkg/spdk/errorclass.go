@@ -63,9 +63,8 @@ func classifyControlPlaneError(err error) controlPlaneErrorClass {
 		return controlPlaneErrorClass{Code: codes.OK}
 	}
 
-	var httpErr *util.HTTPError
-	if errors.As(err, &httpErr) {
-		return classifyHTTPStatus(httpErr.StatusCode)
+	if code := httpStatusOf(err); code != 0 {
+		return classifyHTTPStatus(code)
 	}
 
 	switch {
@@ -83,6 +82,25 @@ func classifyControlPlaneError(err error) controlPlaneErrorClass {
 
 	// Unknown, non-transport error — treat as an internal fault, not a retry.
 	return controlPlaneErrorClass{Code: codes.Internal}
+}
+
+// httpStatusOf returns the HTTP status a control-plane error represents, or 0 if
+// it is not an HTTP error. The client converts a few statuses to sentinel errors
+// (404 → Err*NotFound, 409 → Err*Exists) before they reach the RPC, so those are
+// mapped back to their status here — otherwise the 404/409 dispositions could
+// never fire.
+func httpStatusOf(err error) int {
+	switch {
+	case errors.Is(err, util.ErrVolumeNotFound), errors.Is(err, util.ErrSnapshotNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, util.ErrVolumeExists), errors.Is(err, util.ErrSnapshotExists):
+		return http.StatusConflict
+	}
+	var httpErr *util.HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode
+	}
+	return 0
 }
 
 // classifyHTTPStatus applies the generic policy to a raw HTTP status code.

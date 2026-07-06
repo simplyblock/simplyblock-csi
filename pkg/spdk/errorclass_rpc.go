@@ -1,13 +1,10 @@
 package spdk
 
 import (
-	"errors"
 	"net/http"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/spdk/spdk-csi/pkg/util"
 )
 
 // errorClassifier is a per-RPC control-plane response policy. Any HTTP status in
@@ -25,9 +22,8 @@ type errorClassifier struct {
 
 // Classify maps a control-plane error to this RPC's disposition.
 func (c errorClassifier) Classify(err error) controlPlaneErrorClass {
-	var httpErr *util.HTTPError
-	if errors.As(err, &httpErr) {
-		if d, ok := c.overrides[httpErr.StatusCode]; ok {
+	if code := httpStatusOf(err); code != 0 {
+		if d, ok := c.overrides[code]; ok {
 			return d
 		}
 	}

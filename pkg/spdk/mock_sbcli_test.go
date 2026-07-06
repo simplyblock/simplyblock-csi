@@ -60,6 +60,11 @@ type mockSBCLI struct {
 	// control-plane errors (e.g. HTTP 400) during snapshot creation.
 	snapshotCreateStatus int
 
+	// snapshotCreatePersistThenFail, when true, makes the next snapshot POST
+	// persist the snapshot but respond HTTP 500 — the ambiguous timeout where the
+	// control plane created the snapshot but the client never saw success.
+	snapshotCreatePersistThenFail bool
+
 	// strictSnapshotNameConflict makes the snapshot POST return HTTP 409 for any
 	// existing snapshot that shares the requested name, regardless of its source
 	// volume — the non-idempotent behavior the real web API exhibits under load.
@@ -246,6 +251,15 @@ func (m *mockSBCLI) handleCreateSnapshot(w http.ResponseWriter, r *http.Request)
 	// persisting anything.
 	if m.snapshotCreateStatus != 0 {
 		writeJSON(w, m.snapshotCreateStatus, map[string]string{"detail": "snapshot create rejected"})
+		return
+	}
+
+	// Simulate an ambiguous timeout: persist the snapshot, then fail the response.
+	if m.snapshotCreatePersistThenFail {
+		m.snapshotCreatePersistThenFail = false
+		id := uuid.New().String()
+		m.snapshots[id] = &mockSnapshot{UUID: id, Name: body.Name, VolUUID: volumeID, Size: volume.Size, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "created but response lost"})
 		return
 	}
 

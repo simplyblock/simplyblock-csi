@@ -269,22 +269,20 @@ func TestCreateSnapshot_NoAPICallBeforeMetadataResolved(t *testing.T) {
 }
 
 // TestCreateSnapshot_ReconcilesLeftoverOnRetry is the CreateSnapshot analog of
-// TestCreateVolume_ReconcilesLeftoverOnRetry — and it is RED, showing the retry
-// does NOT reconcile.
+// TestCreateVolume_ReconcilesLeftoverOnRetry: an ambiguous-timeout leftover must
+// be reconciled on retry, not dead-ended on AlreadyExists.
 //
-// Attempt 1 creates the snapshot but fails at GetVolumeSize, leaving a valid
-// snapshot of the correct source behind. On retry the real web API answers 409
-// for the duplicate name; CreateSnapshot detects ErrSnapshotExists but — unlike
-// CreateVolume, which lists and returns the existing volume — maps it straight to
-// AlreadyExists. So the retry never returns the existing snapshot as success,
-// even though it is ours (same source). Detecting the 409 is not the same as
-// reconciling it.
+// Attempt 1's create is persisted by the control plane but the response is lost,
+// so the client sees an error — a valid snapshot of the correct source is left
+// behind. On retry the real web API answers 409 for the duplicate name;
+// CreateSnapshot must list, see the same source, and return the existing snapshot
+// as success (CSI idempotency) — not a duplicate, not AlreadyExists.
 func TestCreateSnapshot_ReconcilesLeftoverOnRetry(t *testing.T) {
 	mock := newMockSBCLI()
 	defer mock.Close()
-	// Real web API: a duplicate snapshot name yields 409 (not idempotent).
 	mock.mu.Lock()
-	mock.strictSnapshotNameConflict = true
+	mock.strictSnapshotNameConflict = true        // real web API 409s on a duplicate name
+	mock.snapshotCreatePersistThenFail = true     // attempt 1: created server-side, response lost
 	mock.mu.Unlock()
 
 	cs := newTestControllerServer(t, mock)
@@ -292,13 +290,9 @@ func TestCreateSnapshot_ReconcilesLeftoverOnRetry(t *testing.T) {
 	srcVolID := seedSnapshotSource(mock)
 	req := &csi.CreateSnapshotRequest{SourceVolumeId: srcVolID, Name: "snap-reconcile"}
 
-	// Attempt 1: the snapshot is created, but GetVolumeSize fails → error, leaving
-	// a valid snapshot of the correct source behind.
-	mock.mu.Lock()
-	mock.failGetVolume = true
-	mock.mu.Unlock()
+	// Attempt 1: the snapshot is created but the client sees an error.
 	if _, err := cs.CreateSnapshot(ctx, req); err == nil {
-		t.Fatal("expected attempt 1 to fail at GetVolumeSize")
+		t.Fatal("expected attempt 1 to fail (create persisted but response lost)")
 	}
 	mock.mu.Lock()
 	leftover := len(mock.snapshots)
@@ -307,11 +301,8 @@ func TestCreateSnapshot_ReconcilesLeftoverOnRetry(t *testing.T) {
 		t.Fatalf("expected exactly 1 leftover snapshot after attempt 1, got %d", leftover)
 	}
 
-	// Attempt 2 (retry, same name + source): the control plane is healthy again.
-	// It must return the existing snapshot as success — same source, so it is ours.
-	mock.mu.Lock()
-	mock.failGetVolume = false
-	mock.mu.Unlock()
+	// Attempt 2 (retry, same name + source): must reconcile — return the existing
+	// snapshot as success, no duplicate.
 	resp, err := cs.CreateSnapshot(ctx, req)
 	if err != nil {
 		t.Fatalf("retry did not reconcile the leftover snapshot: %v", err)
