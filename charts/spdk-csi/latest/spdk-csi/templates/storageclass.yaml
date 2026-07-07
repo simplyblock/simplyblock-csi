@@ -29,6 +29,10 @@ parameters:
   fabric: "{{ .Values.logicalVolume.fabric }}"
   max_namespace_per_subsys: "{{ .Values.logicalVolume.max_namespace_per_subsys }}"
   tune2fs_reserved_blocks: "{{ .Values.logicalVolume.tune2fs_reserved_blocks }}"
+{{- if and .Values.logicalVolume.xfs_su .Values.logicalVolume.xfs_sw }}
+  xfs_su: "{{ .Values.logicalVolume.xfs_su }}"
+  xfs_sw: "{{ .Values.logicalVolume.xfs_sw }}"
+{{- end }}
 {{- if .Values.storageclass.zoneClusterMap }}
   zone_cluster_map: |
     {{ .Values.storageclass.zoneClusterMap | toJson }}

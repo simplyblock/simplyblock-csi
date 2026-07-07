@@ -21,6 +21,10 @@ parameters:
   distr_npcs: "1"
   lvol_priority_class: "0"
   tune2fs_reserved_blocks: "0"
+  # xfs_su and xfs_sw set the XFS stripe unit/width (mkfs.xfs -d su=,sw=).
+  # Both must be set together; if unset, they default to su=16k, sw=1.
+  # xfs_su: "16k"
+  # xfs_sw: "1"
   zone_cluster_map: |
     {"us-east-1a":"cluster-uuid-1","us-east-1b":"cluster-uuid-2"}
 reclaimPolicy: Delete

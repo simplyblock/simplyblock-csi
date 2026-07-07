@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -496,6 +497,37 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
+// defaultXFSStripeUnit and defaultXFSStripeWidth are the fallback mkfs.xfs
+// stripe geometry used when the StorageClass does not override xfs_su/xfs_sw.
+// These are a starting point based on initial testing, not a computed value
+// derived from cluster NDCS (which did not reliably improve performance).
+const (
+	defaultXFSStripeUnit  = "16k"
+	defaultXFSStripeWidth = "1"
+)
+
+// xfsStripeOptions returns mkfs.xfs format options that set the stripe geometry
+// from the StorageClass-provided xfs_su/xfs_sw parameters, falling back to
+// defaultXFSStripeUnit/defaultXFSStripeWidth when unset. Both parameters must
+// be set together; if only one is set, the defaults are used instead.
+func xfsStripeOptions(volumeContext map[string]string) []string {
+	su := volumeContext["xfs_su"]
+	sw := volumeContext["xfs_sw"]
+	switch {
+	case su == "" && sw == "":
+		su, sw = defaultXFSStripeUnit, defaultXFSStripeWidth
+	case su == "" || sw == "":
+		klog.Warningf("xfsStripeOptions: xfs_su and xfs_sw must both be set; got xfs_su=%q xfs_sw=%q, falling back to defaults su=%s,sw=%s",
+			su, sw, defaultXFSStripeUnit, defaultXFSStripeWidth)
+		su, sw = defaultXFSStripeUnit, defaultXFSStripeWidth
+	}
+	if swVal, err := strconv.Atoi(sw); err != nil || swVal <= 0 {
+		klog.Warningf("xfsStripeOptions: xfs_sw must be a positive integer, got %q, skipping stripe alignment", sw)
+		return nil
+	}
+	return []string{"-d", fmt.Sprintf("su=%s,sw=%s", su, sw), "-l", fmt.Sprintf("su=%s", su)}
+}
+
 // must be idempotent
 //
 //nolint:cyclop // many cases in switch increases complexity
@@ -515,6 +547,10 @@ func (ns *nodeServer) stageVolume(devicePath, stagingPath string, req *csi.NodeS
 	fsType := fsTypeOrDefault(req.GetVolumeCapability())
 	mntFlags := stagingMountFlags(req.GetVolumeCapability())
 	formatOptions := []string{}
+
+	if fsType == "xfs" {
+		formatOptions = append(formatOptions, xfsStripeOptions(volumeContext)...)
+	}
 
 	klog.Infof("mount %s to %s, fstype: %s, flags: %v", devicePath, stagingPath, fsType, mntFlags)
 	klog.Infof("formatOptions %v", formatOptions)
