@@ -481,6 +481,19 @@ func (g *Guardian) tick(ctx context.Context) {
 					continue
 				}
 
+				// Suppress restart when the pod's volume uses a namespaced NVMe
+				// subsystem (max_namespace_per_subsys > 1 in the StorageClass).
+				// Restarting the pod would tear down the shared subsystem and
+				// knock out NVMe-oF paths of every other volume on it.
+				if g.podUsesNamespacedSubsystem(ctx, &pod) {
+					klog.Warningf("Guardian: suppressing auto-restart for pod %s/%s (uid=%s, lvol=%s): "+
+						"volume shares an NVMe subsystem (max_namespace_per_subsys > 1); "+
+						"restarting would disrupt other volumes on the same subsystem",
+						pod.Namespace, pod.Name, podUID, lvolID)
+					g.emitSharedSubsystemEvent(ctx, &pod)
+					continue
+				}
+
 				// if pod.Labels[g.cfg.OptOutLabelKey] == g.cfg.OptOutLabelValue {
 				// 	continue
 				// }
@@ -775,4 +788,109 @@ func (g *Guardian) podUsesOptedInSimplyBlockStorageClass(ctx context.Context, po
 	}
 
 	return false, nil
+}
+
+// podUsesNamespacedSubsystem returns true if any of the pod's simplyblock PVCs
+// use a StorageClass with max_namespace_per_subsys > 1. Such volumes share an
+// NVMe subsystem with other volumes, so restarting the pod would tear down the
+// shared subsystem and disrupt every other volume on it.
+func (g *Guardian) podUsesNamespacedSubsystem(ctx context.Context, pod *v1.Pod) bool {
+	seenPVCs := map[string]struct{}{}
+	seenSCs := map[string]struct{}{}
+
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim == nil {
+			continue
+		}
+		pvcName := strings.TrimSpace(vol.PersistentVolumeClaim.ClaimName)
+		if pvcName == "" {
+			continue
+		}
+		pvcKey := pod.Namespace + "/" + pvcName
+		if _, seen := seenPVCs[pvcKey]; seen {
+			continue
+		}
+		seenPVCs[pvcKey] = struct{}{}
+
+		pvc, err := g.manager.PersistentVolumeClaimByNamespaceAndName(ctx, pod.Namespace, pvcName)
+		if err != nil {
+			klog.Warningf("Guardian: podUsesNamespacedSubsystem: PVC %s: %v", pvcKey, err)
+			continue
+		}
+
+		pvName := strings.TrimSpace(pvc.Spec.VolumeName)
+		if pvName == "" {
+			continue
+		}
+
+		pv, err := g.manager.PersistentVolumeByName(ctx, pvName)
+		if err != nil {
+			klog.Warningf("Guardian: podUsesNamespacedSubsystem: PV %s: %v", pvName, err)
+			continue
+		}
+		if pv.Spec.CSI == nil || strings.TrimSpace(pv.Spec.CSI.Driver) != g.cfg.CSIDriverName {
+			continue
+		}
+
+		scName := ""
+		if pvc.Spec.StorageClassName != nil {
+			scName = strings.TrimSpace(*pvc.Spec.StorageClassName)
+		}
+		if scName == "" {
+			scName = strings.TrimSpace(pvc.Annotations["volume.beta.kubernetes.io/storage-class"])
+		}
+		if scName == "" {
+			continue
+		}
+		if _, seen := seenSCs[scName]; seen {
+			continue
+		}
+		seenSCs[scName] = struct{}{}
+
+		sc, err := g.cs.StorageV1().StorageClasses().Get(ctx, scName, metav1.GetOptions{})
+		if err != nil {
+			klog.Warningf("Guardian: podUsesNamespacedSubsystem: StorageClass %s: %v", scName, err)
+			continue
+		}
+
+		if v, ok := sc.Parameters["max_namespace_per_subsys"]; ok {
+			n := 0
+			if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// emitSharedSubsystemEvent records a Warning event on the pod explaining that
+// auto-restart was skipped because the volume shares an NVMe subsystem.
+func (g *Guardian) emitSharedSubsystemEvent(ctx context.Context, pod *v1.Pod) {
+	now := metav1.Now()
+	event := &v1.Event{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "guardian-shared-subsystem-",
+			Namespace:    pod.Namespace,
+		},
+		InvolvedObject: v1.ObjectReference{
+			Kind:       "Pod",
+			Namespace:  pod.Namespace,
+			Name:       pod.Name,
+			UID:        pod.UID,
+			APIVersion: "v1",
+		},
+		Reason:  "AutoRestartSuppressed",
+		Message: "Guardian auto-restart skipped: volume shares an NVMe subsystem (max_namespace_per_subsys > 1). Restarting this pod would tear down the shared NVMe-oF paths used by other volumes on the same subsystem. Resolve the pathloss manually.",
+		Type:    v1.EventTypeWarning,
+		Source: v1.EventSource{
+			Component: "guardian",
+		},
+		FirstTimestamp:      now,
+		LastTimestamp:       now,
+		Count: 1,
+	}
+	if _, err := g.cs.CoreV1().Events(pod.Namespace).Create(ctx, event, metav1.CreateOptions{}); err != nil {
+		klog.Warningf("Guardian: failed to emit AutoRestartSuppressed event for pod %s/%s: %v",
+			pod.Namespace, pod.Name, err)
+	}
 }
