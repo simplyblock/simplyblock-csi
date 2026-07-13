@@ -113,7 +113,7 @@ type LvolConnectResp struct {
 	TargetType     string `json:"transport"`
 	IP             string `json:"ip"`
 	Connect        string `json:"connect"`
-	NSID           int    `json:"ns_id"`
+	NSID           int    `json:"ns-id"`
 	HostIface      string `json:"host-iface,omitempty"`
 }
 
