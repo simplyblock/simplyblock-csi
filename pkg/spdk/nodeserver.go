@@ -387,7 +387,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	if ns.guardian != nil {
-		ns.guardian.RegisterPublish(req.VolumeContext["nqn"], req.TargetPath)
+		ns.guardian.RegisterPublish(req.VolumeContext[paramClusterID], req.VolumeContext["uuid"], req.TargetPath)
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil

@@ -229,10 +229,9 @@ func StartGuardian(ctx context.Context, cfg GuardianConfig, manager *sbkube.Mana
 	return g, nil
 }
 
-// RegisterPublish records that a volume (identified by NQN) is published to a pod via targetPath.
-// Call this from NodePublishVolume.
-func (g *Guardian) RegisterPublish(nqn string, targetPath string) {
-	clusterID, lvolID := getLvolIDFromNQN(nqn)
+// RegisterPublish records that a volume (identified by its per-namespace lvol
+// UUID) is published to a pod via targetPath.
+func (g *Guardian) RegisterPublish(clusterID, lvolID, targetPath string) {
 	podUID := podUIDFromTargetPath(targetPath)
 	if lvolID == "" || podUID == "" || clusterID == "" {
 		return
