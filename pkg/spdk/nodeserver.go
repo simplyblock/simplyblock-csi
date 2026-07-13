@@ -166,7 +166,7 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 		// key on the CSINode, WaitForFirstConsumer provisioning fails. The controller
 		// falls through to its single-cluster fallback when hostname doesn't match
 		// any zone/region map entry.
-		return map[string]string{"topology.kubernetes.io/hostname": node.Name}
+		return map[string]string{"topology.simplyblock.io/hostname": node.Name}
 	}
 
 	return segments
