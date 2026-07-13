@@ -152,26 +152,29 @@ func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest
 		if sel := tryList(topoReq.GetRequisite()); sel != nil {
 			return sel, nil
 		}
-	}
-
-	// No topology requirements (node has no topology labels) or no matching
-	// zone/region found. Fall back to a single-cluster configuration — if all
-	// zone/region entries point to the same cluster, use it. This allows nodes
-	// without topology labels to provision volumes without error.
-	uniqueClusters := map[string]struct{}{}
-	for _, id := range zoneMap {
-		uniqueClusters[id] = struct{}{}
-	}
-	for _, id := range regionMap {
-		uniqueClusters[id] = struct{}{}
-	}
-	if len(uniqueClusters) == 1 {
-		for id := range uniqueClusters {
-			return &clusterSelection{clusterID: id}, nil
+		// Topology was provided but contains no zone or region key recognised by
+		// the StorageClass map. This means the worker node is missing the required
+		// topology labels.
+		nodeName := nodeNameFromTopology(topoReq.GetPreferred())
+		if nodeName == "" {
+			nodeName = nodeNameFromTopology(topoReq.GetRequisite())
 		}
+		return nil, fmt.Errorf(
+			"node %q has no %s or %s topology label but the StorageClass uses %s/%s "+
+				"for cluster routing; add the appropriate zone or region label to the node, "+
+				"or switch the StorageClass to use %s",
+			nodeName, topologyKeyZoneStable, topologyKeyRegionStable,
+			paramZoneClusterMap, paramRegionClusterMap, paramClusterID,
+		)
 	}
 
-	return nil, fmt.Errorf("no cluster mapping found for topology requirements and no unambiguous fallback cluster (found %d distinct clusters)", len(uniqueClusters))
+	return nil, fmt.Errorf(
+		"no topology requirements received; the StorageClass uses %s or %s for cluster "+
+			"routing but the node has no topology labels — add %s or %s labels to the node, "+
+			"or switch the StorageClass to use %s",
+		paramZoneClusterMap, paramRegionClusterMap,
+		topologyKeyZoneStable, topologyKeyRegionStable, paramClusterID,
+	)
 }
 
 func parseStringMap(raw, paramName string) (map[string]string, error) {
@@ -199,6 +202,20 @@ func parseStringMap(raw, paramName string) (map[string]string, error) {
 		return nil, fmt.Errorf("%s parameter did not contain any mappings", paramName)
 	}
 	return normalized, nil
+}
+
+// nodeNameFromTopology extracts the node name from the simplyblock hostname
+// fallback topology key set by the node plugin when no zone/region labels exist.
+func nodeNameFromTopology(topos []*csi.Topology) string {
+	for _, topo := range topos {
+		if topo == nil {
+			continue
+		}
+		if name, ok := topo.GetSegments()["topology.simplyblock.io/hostname"]; ok && name != "" {
+			return name
+		}
+	}
+	return "unknown"
 }
 
 func matchTopologyWithRegionMap(topo *csi.Topology, regionMap map[string]string) *clusterSelection {
