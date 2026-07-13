@@ -132,9 +132,6 @@ func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest
 	}
 
 	topoReq := req.GetAccessibilityRequirements()
-	if topoReq == nil {
-		return nil, fmt.Errorf("topology requirements are required when using %s", paramZoneClusterMap)
-	}
 
 	tryList := func(list []*csi.Topology) *clusterSelection {
 		for _, topo := range list {
@@ -148,14 +145,33 @@ func (cs *controllerServer) resolveClusterSelection(req *csi.CreateVolumeRequest
 		return nil
 	}
 
-	if sel := tryList(topoReq.GetPreferred()); sel != nil {
-		return sel, nil
-	}
-	if sel := tryList(topoReq.GetRequisite()); sel != nil {
-		return sel, nil
+	if topoReq != nil {
+		if sel := tryList(topoReq.GetPreferred()); sel != nil {
+			return sel, nil
+		}
+		if sel := tryList(topoReq.GetRequisite()); sel != nil {
+			return sel, nil
+		}
 	}
 
-	return nil, fmt.Errorf("no cluster mapping found for topology requirements")
+	// No topology requirements (node has no topology labels) or no matching
+	// zone/region found. Fall back to a single-cluster configuration — if all
+	// zone/region entries point to the same cluster, use it. This allows nodes
+	// without topology labels to provision volumes without error.
+	uniqueClusters := map[string]struct{}{}
+	for _, id := range zoneMap {
+		uniqueClusters[id] = struct{}{}
+	}
+	for _, id := range regionMap {
+		uniqueClusters[id] = struct{}{}
+	}
+	if len(uniqueClusters) == 1 {
+		for id := range uniqueClusters {
+			return &clusterSelection{clusterID: id}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no cluster mapping found for topology requirements and no unambiguous fallback cluster (found %d distinct clusters)", len(uniqueClusters))
 }
 
 func parseStringMap(raw, paramName string) (map[string]string, error) {

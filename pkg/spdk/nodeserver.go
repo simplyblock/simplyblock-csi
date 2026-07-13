@@ -125,10 +125,21 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 		return nil
 	}
 
+	const maxRetries = 5
+	const retryDelay = 5 * time.Second
+
 	node, err := ns.kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	for attempt := 2; err != nil && attempt <= maxRetries; attempt++ {
+		klog.Warningf("topology discovery: failed to get node %s (attempt %d/%d): %v",
+			nodeName, attempt-1, maxRetries, err)
+		time.Sleep(retryDelay)
+		node, err = ns.kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	}
 	if err != nil {
-		klog.Warningf("failed to get node %s for topology discovery: %v", nodeName, err)
-		return nil
+		// All retries exhausted. Crash so the pod restarts and retries from a
+		// clean state — registering without topology silently breaks PVC provisioning.
+		klog.Fatalf("topology discovery: giving up after %d attempts for node %s — crashing to trigger pod restart: %v",
+			maxRetries, nodeName, err)
 	}
 
 	segments := make(map[string]string)
