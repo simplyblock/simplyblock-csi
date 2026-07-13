@@ -161,7 +161,12 @@ func (ns *nodeServer) buildAccessibleTopology(ctx context.Context) map[string]st
 	}
 
 	if len(segments) == 0 {
-		return nil
+		// No zone/region labels found. Return hostname so the external-provisioner
+		// can still build AccessibilityRequirements — without at least one topology
+		// key on the CSINode, WaitForFirstConsumer provisioning fails. The controller
+		// falls through to its single-cluster fallback when hostname doesn't match
+		// any zone/region map entry.
+		return map[string]string{"topology.kubernetes.io/hostname": node.Name}
 	}
 
 	return segments
