@@ -1,3 +1,7 @@
+# This Repository Is Deprecated
+
+**Attention:** This repository is deprecated and will not be updated anymore. It was merged into the [Simplyblock Operator](https://github.com/simplyblock/simplyblock-operator) repository.
+
 # Simplyblock CSI Driver for Kubernetes
 
 **High-performance NVMe/TCP (NVMe-over-Fabrics) CSI Driver for Kubernetes**
