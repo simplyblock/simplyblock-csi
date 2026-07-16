@@ -90,6 +90,7 @@ type ClusterAPI interface {
 	UnpublishVolume(ctx context.Context, lvolID string) error
 	VolumeInfo(ctx context.Context, lvolID string, hostNQN string) (map[string]string, error)
 	CloneVolume(ctx context.Context, lvolID, cloneName, newSize, pvcName string) (string, error)
+	VolumeHealth(ctx context.Context, lvolID string) (healthy bool, reason string, err error)
 
 	// Snapshots
 	CreateSnapshot(ctx context.Context, lvolID, snapshotName string) (string, error)
@@ -124,10 +125,12 @@ type connectionInfo struct {
 
 // LvolResp is the v2 VolumeDTO returned by the SimplyBlock API
 type LvolResp struct {
-	Name     string `json:"name"`
-	UUID     string `json:"id"`
-	LvolSize int64  `json:"size"`
-	Status   string `json:"status"`
+	Name        string `json:"name"`
+	UUID        string `json:"id"`
+	LvolSize    int64  `json:"size"`
+	Status      string `json:"status"`
+	HealthCheck bool   `json:"health_check"`
+	IOError     bool   `json:"io_error"`
 }
 
 // Connection holds the shared HTTP transport to a webappapi service.
